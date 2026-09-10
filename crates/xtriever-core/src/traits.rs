@@ -85,7 +85,12 @@ pub trait Reranker: Send + Sync {
     fn model_id(&self) -> &str;
     /// One score per passage, in input order. `None` means "not scored within `budget`"; the
     /// pipeline keeps the incoming score for those entries (graceful degradation, §VI).
-    fn rerank(&self, query: &str, passages: &[Passage<'_>], budget: &Budget) -> Result<Vec<Option<f32>>>;
+    fn rerank(
+        &self,
+        query: &str,
+        passages: &[Passage<'_>],
+        budget: &Budget,
+    ) -> Result<Vec<Option<f32>>>;
 }
 
 /// Stage 3 — learned ranking function (e.g. LightGBM LambdaMART) over per-candidate features.

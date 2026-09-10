@@ -377,7 +377,11 @@ pub struct FeatureMatrix {
 impl FeatureMatrix {
     /// Empty matrix with the given columns.
     pub fn new(names: Vec<FeatureName>) -> Self {
-        Self { names, rows: 0, data: Vec::new() }
+        Self {
+            names,
+            rows: 0,
+            data: Vec::new(),
+        }
     }
     /// Column names, in order.
     pub fn names(&self) -> &[FeatureName] {
@@ -394,7 +398,10 @@ impl FeatureMatrix {
     /// Append one row; its length must equal [`Self::width`].
     pub fn push_row(&mut self, row: &[f32]) -> Result<()> {
         if row.len() != self.width() {
-            return Err(Error::DimensionMismatch { expected: self.width(), actual: row.len() });
+            return Err(Error::DimensionMismatch {
+                expected: self.width(),
+                actual: row.len(),
+            });
         }
         self.data.extend_from_slice(row);
         self.rows += 1;
@@ -419,18 +426,27 @@ mod tests {
     fn docset_algebra() {
         let a: DocSet = [1, 2, 3].into_iter().map(DocId).collect();
         let b: DocSet = [2, 3, 4].into_iter().map(DocId).collect();
-        assert_eq!(a.intersection(&b).iter().collect::<Vec<_>>(), vec![DocId(2), DocId(3)]);
+        assert_eq!(
+            a.intersection(&b).iter().collect::<Vec<_>>(),
+            vec![DocId(2), DocId(3)]
+        );
         assert_eq!(a.union(&b).len(), 4);
         assert!(a.difference(&b).contains(DocId(1)));
     }
 
     #[test]
     fn feature_matrix_rejects_ragged_rows() {
-        let mut m = FeatureMatrix::new(vec![FeatureName::from_static("a"), FeatureName::from_static("b")]);
+        let mut m = FeatureMatrix::new(vec![
+            FeatureName::from_static("a"),
+            FeatureName::from_static("b"),
+        ]);
         m.push_row(&[1.0, 2.0]).unwrap();
         assert!(matches!(
             m.push_row(&[1.0]),
-            Err(Error::DimensionMismatch { expected: 2, actual: 1 })
+            Err(Error::DimensionMismatch {
+                expected: 2,
+                actual: 1
+            })
         ));
         assert_eq!(m.row(0), Some(&[1.0, 2.0][..]));
         assert_eq!(m.row(1), None);
