@@ -1,0 +1,13 @@
+[package]
+name = "xtriever-rerank"
+description = "Xtriever: rerank (placeholder until its spec lands)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+xtriever-core = { path = "../xtriever-core" }
+
+[lints]
+workspace = true
