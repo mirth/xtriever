@@ -1,1 +1,22 @@
 target/
+
+# Python reference generator (Constitution §II goldens) — see reference/
+reference/.venv-001/
+__pycache__/
+*.py[cod]
+
+# Pinned model weights: 87.1 MiB, downloaded by gen_001_fixtures.py, NEVER committed.
+# reference/fixtures/ IS tracked — those are the goldens.
+reference/models/
+*.safetensors
+
+# uniffi bindgen output (quickstart Step 3)
+/build/
+
+# macOS / Xcode (harness/ios lands in PR 2)
+.DS_Store
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcarchive
+*.ipa
