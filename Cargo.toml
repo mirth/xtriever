@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91.1"
+license = "MIT"
+
+[workspace.dependencies]
+# Core crates: pure Rust only (Constitution §III). Add deps with `cargo add`, never from memory.
+roaring = "0.10"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_code = "deny"          # opt in per module with #[allow(unsafe_code)] + `// SAFETY:` (dense SIMD only)
+missing_docs = "warn"         # CI runs with -D warnings
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true

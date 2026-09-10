@@ -1,0 +1,27 @@
+name: ci
+on: [push, pull_request]
+env: { CARGO_TERM_COLOR: always, RUSTFLAGS: "-D warnings" }
+jobs:
+  test:
+    strategy: { matrix: { os: [ubuntu-latest, macos-latest, windows-latest] } }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install            # reads rust-toolchain.toml
+      - uses: taiki-e/install-action@v2
+        with: { tool: "cargo-nextest,cargo-deny" }
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets
+      - run: cargo nextest run --workspace
+      - run: cargo deny check
+        if: runner.os == 'Linux'
+  cross-check:                                    # Constitution §III — no linking, so no NDK/Xcode needed yet
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - run: cargo check --workspace --target aarch64-apple-ios
+      - run: cargo check --workspace --target aarch64-apple-ios-sim
+      - run: cargo check --workspace --target aarch64-linux-android
+      - run: cargo check --workspace --target wasm32-unknown-unknown
+        continue-on-error: true                   # best-effort target

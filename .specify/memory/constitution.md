@@ -1,50 +1,105 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Xtriever Constitution
+
+Xtriever is a cross-platform (desktop, server, iOS, Android, best-effort WASM) hybrid retrieval
+engine for RAG: BM25 → dense → fusion → re-rank → LTR. This document is the highest authority
+in the repository. Specs, plans and code MUST comply; conflicts are resolved in its favour.
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Reuse Before Build
+- MUST reuse mature Rust crates for commodity components: `tantivy` (inverted index/BM25),
+  `tokenizers` (HF tokenization), `candle` (default ML inference), `roaring` (doc sets).
+- MUST NOT implement an inverted index, ANN graph or tensor runtime without an accepted ADR
+  showing the reused component fails a *measured* requirement (target, memory, latency, size).
+- The innovation budget goes to: pipeline orchestration, fusion, re-ranking, LTR, evaluation,
+  mobile packaging.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Executable Oracles Over Prose (NON-NEGOTIABLE)
+- Every spec ships acceptance tests BEFORE implementation. Tests are committed failing, then
+  code makes them pass.
+- Behaviour that has a reference implementation (BM25 scoring, tokenization, embeddings, GBDT
+  prediction) MUST be verified against golden fixtures produced by scripts in `reference/`
+  (Python). Tolerances are stated in the spec.
+- Ranking quality MUST be measured with `xtriever-eval` on the fixed benchmark set (BEIR SciFact,
+  NFCorpus, FiQA) and reported as nDCG@10 / Recall@100 deltas in the PR description.
+- Invariants (analyzer determinism, index round-trips, filter algebra) MUST be property-tested.
+- A ranking-affecting change that lowers nDCG@10 on the majority of benchmark datasets does not
+  merge without an ADR explaining why.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Portability Is a Feature
+- `xtriever-core`, `xtriever-analysis`, `xtriever-pipeline`, `xtriever-ltr`, `xtriever-eval` are pure Rust,
+  `std`-only: no C/C++ build deps, no `async`, no `tokio`, no unconditional threads, no
+  `std::time::Instant` in library code (unavailable on wasm32).
+- C/C++ deps (ONNX Runtime, Oniguruma, …) are allowed only in leaf crates (`xtriever-dense`,
+  `xtriever-rerank`, `xtriever-ffi`) behind non-default Cargo features, enforced by `deny.toml`.
+- Every PR MUST `cargo check` on host, `aarch64-apple-ios`, `aarch64-apple-ios-sim`,
+  `aarch64-linux-android`. `wasm32-unknown-unknown` is best-effort (may fail, is tracked).
+- Memory is budgeted. On-device configurations MUST stay under the RSS ceiling stated in their
+  spec (default: 300 MB for a 100k-chunk index including loaded models).
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Measured, Not Asserted
+- Performance claims MUST be backed by `criterion` benchmarks with budgets stated in the spec
+  (p50/p99 latency, index size, RSS).
+- Benchmarks and eval runs are reproducible: fixed seeds, pinned model revisions (SHA), pinned
+  dataset versions.
+- `explain()` is a first-class feature: every hit can report its per-stage scores and features.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Small, Explicit Interfaces
+- The traits in `xtriever-core` (`Analyzer`, `LexicalIndex`, `Embedder`, `VectorIndex`,
+  `Reranker`, `Ranker`) are the contract. Changing a trait, an on-disk format or error
+  semantics REQUIRES human review and an ADR in `docs/adr/`.
+- Core APIs are synchronous. Async wrappers, if any, live in `xtriever-ffi` or server crates.
+- Internal `DocId` is a dense `u32`; external string ids are mapped by the pipeline. Backends
+  never see external ids.
+- One crate per stage. Dependencies point downward only:
+  `core` ← stage crates ← `pipeline` ← `ffi` / `cli`.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### VI. Graceful Degradation and Determinism
+- Failure or timeout of an ML stage (embedder, reranker, ranker) MUST degrade to the previous
+  stage's results, never to an error, unless the caller opts into strict mode.
+- Same index + same query + same config ⇒ identical results (ties broken by ascending `DocId`).
+- Indexes store the embedder fingerprint and a format version; mismatches are hard errors at
+  open time, never silent.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### VII. Rust Hygiene
+- Edition 2024; toolchain pinned in `rust-toolchain.toml`; `Cargo.lock` committed; dependencies
+  added with `cargo add` at current versions — never from memory.
+- `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo nextest run` and
+  `cargo deny check` MUST pass.
+- No `unwrap`/`expect`/`panic!`/`todo!` in library code (test modules may `#[allow]` locally).
+  Library errors are `thiserror` enums; `anyhow` only in binaries.
+- `unsafe` only in `xtriever-dense` SIMD kernels, each block preceded by `// SAFETY:` and tested
+  against the safe path.
+- All public items are documented (`missing_docs` is on).
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Agent Operating Rules
+For AI agents executing specs, in addition to everything above:
+1. Never invent an API. If unsure how a crate works, read the docs for the pinned version
+   (`cargo doc --open`, docs.rs) and cite the item in the plan.
+2. Do not modify `xtriever-core` traits or `deny.toml` unless the spec says so; otherwise stop and ask.
+3. Work one spec at a time on its branch; keep PRs under ~800 changed lines — split otherwise.
+4. Write the acceptance tests first and commit them failing.
+5. Before declaring a task done, run the full gate locally and paste eval/bench deltas into the PR.
+6. If a metric drops or a target fails to build, stop and report. Never "fix" it by weakening
+   tests, tolerances or thresholds.
+7. Prefer boring code: no macros for their own sake, no trait gymnastics, no premature generics.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## Quality Gates (CI)
+| Gate | Blocking |
+|---|---|
+| `fmt`, `clippy -D warnings` | yes |
+| `nextest` on Linux, macOS, Windows | yes |
+| `cargo check` iOS, iOS-sim, Android | yes |
+| `cargo check` wasm32 | no (tracked) |
+| `cargo deny` (licenses, bans, advisories) | yes |
+| eval smoke (SciFact) on changes to `lexical`/`dense`/`rerank`/`ltr`/`pipeline` | yes |
+| `criterion` vs. baseline within the spec's budget | yes |
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+- Amendments: PR touching this file plus an ADR; requires human approval; bump version
+  (MAJOR: principle removed/redefined, MINOR: principle added/expanded, PATCH: wording).
+- Every plan MUST include a "Constitution Check" listing each principle as PASS / FAIL / N/A
+  with justification.
+- This constitution supersedes README, templates and agent instruction files.
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
-
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-09-10 | **Last Amended**: 2026-09-10
