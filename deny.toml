@@ -15,5 +15,5 @@ multiple-versions = "warn"
 deny = [
   { crate = "onig_sys" },                                            # tokenizers: use the fancy-regex feature
   { crate = "openssl-sys" },                                         # use rustls
-  { crate = "ort-sys", wrappers = ["sonar-dense", "sonar-rerank"] },
+  { crate = "ort-sys", wrappers = ["xtriever-dense", "xtriever-rerank"] },
 ]

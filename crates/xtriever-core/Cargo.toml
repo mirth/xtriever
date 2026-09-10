@@ -1,0 +1,15 @@
+[package]
+name = "xtriever-core"
+description = "Core types and stage contracts of the Xtriever retrieval pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+roaring = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
