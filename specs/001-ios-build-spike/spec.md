@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-10
 
-**Status**: Draft
+**Status**: Complete — closed 2026-09-11, see [report.md](./report.md)
 
 **Input**: User description: "Feature 001 — cross-platform build spike. Prove that tantivy (default features minus anything pulling C deps), tokenizers (default-features = false, fancy-regex path), and candle-core/candle-transformers compile for aarch64-apple-ios and aarch64-apple-ios-sim, are exposed through a uniffi Swift binding in sonar-ffi, and run on a physical iPhone: index 1,000 short documents, run one BM25 query, and embed one sentence with all-MiniLM-L6-v2. Record binary size, RSS and wall time. Success: all three work on device within the Constitution's default memory budget. Failure of any part is a documented finding, not something to work around silently."
 

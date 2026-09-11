@@ -1,8 +1,61 @@
 # Spike Report: 001 — iOS Build Spike
 
-**Status**: measured on device. Peak footprint **238.1 MB against a 300 MB ceiling — PASS**, twice, on an iPhone 16e. | **Started**: 2026-09-10 | **Updated**: 2026-09-11
+**Status**: **COMPLETE** (closed 2026-09-11). Measured on device. Peak footprint **238.1 MB against a 300 MB ceiling — PASS**, twice, on an iPhone 16e. | **Started**: 2026-09-10 | **Updated**: 2026-09-11
 
 Evaluated against constitution **v1.1.0** (Principle VII's unsafe clause expanded 2026-09-11).
+
+## Final verdict
+
+**Complete, and successful.** The spec's own rule is that a spike is complete when SC-008, SC-009
+and SC-010 hold — every item carries a verdict, every failure has a finding, and a reviewer without
+the hardware can check it. All three hold. The spike "fails only by producing an undocumented or
+silently worked-around result", and it produced neither.
+
+The primary outcome passed as well: SC-001, SC-003, SC-004 and SC-005 — build, run, fit the budget,
+match the goldens.
+
+| | |
+|---|---|
+| PASS | SC-001, SC-002, SC-003, SC-004, SC-005, SC-008, SC-009, SC-010, SC-011 |
+| Partial, accepted | SC-006 — component breakdown measured, Apple's canonical figure not (F-010) |
+| **Fail, accepted** | SC-007 — wall-time band missed, recorded rather than widened (F-009) |
+
+74/74 tasks carry a verdict. 10 findings, 4 ADRs, 1 constitution amendment (v1.1.0).
+
+## The answer
+
+**Yes — tantivy, tokenizers and candle all build, link and run on a physical iPhone, inside the
+constitution's 300 MB budget.**
+
+| question the spike was commissioned to answer | answer |
+|---|---|
+| Do the three stacks cross-compile C-free for both iOS triples? | **Yes** — 8/8 verdicts, zero `cc` in the graph |
+| Do they run on a real device? | **Yes** — iPhone 16e, iOS 26.6.1, Release |
+| Within the 300 MB ceiling? | **Yes** — 238.1 MB peak, 21% headroom, twice |
+| Are results deterministic host↔device? | **Yes** — BM25 ranking **bit-identical**; embedding within tolerance of torch |
+
+Three results that change what comes next:
+
+1. **Memory-mapped weights cut footprint ~40×** (101.1 MB → 2.56 MB). The `unsafe` exemption in
+   ADR-0002 was granted to measure exactly this, and it paid for itself.
+2. **The model is the app.** 86.7 MB of a 95.8 MB bundle, and the entire Rust retrieval stack
+   compiles to 6.6 MiB. Size and memory work both belong on the weights, not the engine.
+3. **Index memory is the unsolved term.** 12.1 MB at 1,000 documents. A naive ×100 gives ~1.2 GB
+   against a 300 MB ceiling — an extrapolation, not a measurement, but the clearest signpost the
+   spike produced.
+
+Two things did **not** pass, both recorded rather than worked around:
+
+- **F-009** — wall-time reproducibility missed the ±20% band this spec stated (index 38%, query
+  242%, embed 50%). The band was not widened. Memory reproduced at 0.055%.
+- **F-010** — installed size is the unsigned `.app`, not Apple's App Thinning figure, which needs a
+  distribution profile a free Apple ID cannot mint.
+
+Everything else that failed along the way — a candle version that would not compile, Windows
+rewriting the fixtures, a hostless test bundle that cannot run on device — was fixed and is written
+up below.
+
+---
 
 Close-out artifact for Feature 001 (FR-024 – FR-027, SC-008 – SC-010). Every item in FR-001–FR-022
 appears below with a verdict of `pass`, `fail`, or `untested`; **no item may be left blank**. Every
@@ -365,6 +418,54 @@ Not yet applicable (no measurement taken), but binding on PR 3: **1,000 document
 
 ---
 
+## Binary size (FR-018)
+
+Device build, Release, arm64, unsigned, with a linker map.
+
+| component | size | share |
+|---|---:|---:|
+| **`.app` bundle total** | **95.8 MB** | 100% |
+| resource bundle | 87.4 MB | 91% |
+|   └ `model.safetensors` | 86.7 MB | 90% |
+|   └ 9 fixture JSON files | 0.7 MB | 1% |
+| main executable | 8.43 MB | 9% |
+|   └ `__TEXT` (code) | 6.50 MiB | |
+
+Link-map attribution of the executable's symbol bytes:
+
+| contributor | bytes | MiB | share |
+|---|---:|---:|---:|
+| **Rust staticlib** (tantivy + tokenizers + candle + uniffi) | 6,931,326 | 6.61 | **97.7%** |
+| SDK / runtime | 90,992 | 0.09 | 1.3% |
+| Swift bindings + harness | 64,740 | 0.06 | 0.9% |
+| app | 4,606 | 0.00 | 0.1% |
+
+Two things worth carrying forward.
+
+**The entire Rust retrieval stack compiles to 6.6 MiB.** The static archive is 131 MB, and I quoted
+that figure earlier in this feature's history as though it meant something about app size — it does
+not. The linker dead-strips roughly 95% of it. A future spec sizing an on-device build should use
+the linked executable, never the `.a`.
+
+**The model is 90% of the app.** Code size is close to irrelevant next to fp32 weights, which is the
+same conclusion the memory measurement reached from the other direction. Any real size reduction
+comes from quantizing or downloading the weights, not from trimming the engine.
+
+### What this measurement is *not*
+
+Apple is explicit that *"none of the binaries that you create for debugging or that you upload to the
+App Store from within Xcode are suitable for measuring your app's size"*. The documented number is
+the **uncompressed** figure in an `App Thinning Size Report`, produced by archiving and exporting
+with `thinning` set to `<thin-for-all-variants>` (research D10).
+
+That was **not** produced. An Ad Hoc or Development export needs a distribution provisioning
+profile, which the free Apple ID used for this spike cannot mint. So the numbers above are the
+**unsigned on-disk `.app`**, which omits signature overhead and App Store recompression.
+
+The verdict for FR-018 is therefore **partial**: the component breakdown it asks for exists and is
+trustworthy, but the "installed size" figure is not Apple's. Recorded as finding F-010 rather than
+presented as the real thing.
+
 ## What this does *not* tell us (FR-021, FR-023)
 
 Three limits on the result above, stated because the numbers are attractive enough to be
@@ -644,7 +745,7 @@ obvious fix does not work: the same setting in the generated project's build con
 *not* reach the SwiftPM package target, and a clean build with only the project setting still fails.
 Verified both ways from a cleared DerivedData.
 
-### F-009 — wall-time reproducibility misses the stated ±20% band ⚠️ OPEN
+### F-009 — wall-time reproducibility misses the stated ±20% band — **ACCEPTED, deferred**
 
 **Verdict: SC-007 FAILS for wall time.** Memory reproduced at 0.055%; timing did not.
 
@@ -676,6 +777,26 @@ What a follow-up should do instead, in rough order of value:
 
 Nothing here changes the memory verdict, which is what the spike was primarily commissioned to
 answer.
+
+**Accepted 2026-09-11** as a recorded failure rather than fixed. The band stays as written so the
+next spec inherits an honest number to improve on, not a widened one that hides the effect.
+
+### F-010 — installed size is not Apple's documented figure — **ACCEPTED, deferred**
+
+FR-018 asks for installed binary size. The component breakdown exists and is solid (link map,
+`size -m`, bundle inspection), but Apple's documented "installed on device" number comes from an
+`App Thinning Size Report`, which requires archiving and exporting with a **distribution**
+provisioning profile. The free Apple ID used for this spike cannot mint one.
+
+What is reported instead is the unsigned on-disk `.app` — 95.8 MB — which omits code-signature
+overhead and App Store recompression. Close, but not the number Apple says to use, and labelled as
+such rather than quietly substituted.
+
+**Accepted 2026-09-11.** The component breakdown FR-018 actually asks for exists and is
+trustworthy; only the canonical headline number is missing, and it would not change any conclusion —
+the model is 90% of the bundle either way. Reopen with a paid developer account:
+`xcodebuild -exportArchive` with `thinning = <thin-for-all-variants>`, then read the uncompressed
+figure. Roughly fifteen minutes.
 
 ## Deviations (FR-027)
 
@@ -727,6 +848,69 @@ rule, not a departure from it, and the Principle VII gate row passes cleanly.
 
 None. Every blocker raised so far is resolved: the advisory ignore (ADR-0004) and
 the Principle VII amendment (constitution v1.1.0, on ADR-0003's evidence).
+
+## Close-out (User Story 4, FR-024 – FR-028, SC-008 – SC-010)
+
+Verified mechanically at the closing commit, not asserted:
+
+| invariant | check | result |
+|---|---|---|
+| five pure crates untouched (FR-009, Principle III) | `git diff a7ce1bb..HEAD -- crates/xtriever-{core,analysis,pipeline,ltr,eval}` | **empty** |
+| `deny.toml` changed only as authorized (Rule 2) | same diff on `deny.toml` | one `ignore` line + its comment; the `onig_sys` ban untouched |
+| exactly one hand-written `unsafe` (ADR-0002 cond. 2) | `grep -r 'unsafe {' crates/xtriever-ffi/src/` | **1**, in `spike/embed.rs`, `// SAFETY:`-annotated, item-scoped `#[allow]` |
+| lint relaxation confined to the boundary (ADR-0003) | `grep -rl 'allow(unsafe_code)'` | `lib.rs`, `ffi/{mod,types,error}.rs`, plus the one ADR-0002 item |
+| no scaffolding left | `scripts/check-no-stubs.sh` | **PASS** — `SpikeError::NotImplemented` removed once the operations landed |
+| all public items documented (Principle VII) | `clippy -D warnings` with `missing_docs` on | **PASS** |
+
+`scripts/check-no-stubs.sh` **failed on first run** and did its job: the `NotImplemented` scaffold
+had survived the implementation PRs. Removed, bindings regenerated, zero stale references.
+
+### Full gate at the closing commit (T058, Rule 5)
+
+```
+cargo fmt --all --check                                PASS
+cargo clippy --workspace --all-targets                 PASS
+cargo clippy -p xtriever-ffi --features spike          PASS
+cargo nextest run --workspace                          PASS   (9 tests)
+cargo nextest run -p xtriever-ffi --features spike     PASS   (14 tests)
+cargo deny check                                       PASS   (advisories/bans/licenses/sources)
+cargo check --workspace --target aarch64-apple-ios     PASS
+cargo check --workspace --target aarch64-apple-ios-sim PASS
+cargo check --workspace --target aarch64-linux-android PASS
+cargo check --workspace --target wasm32-unknown-unknown PASS
+```
+
+Note the last line: `wasm32` **passes** for the workspace, because the spike's dependencies sit
+behind the non-default `spike` feature and CI builds without it. The `getrandom` failure recorded in
+research D13 appears only with `--features spike`, which is the honest reading — wasm32 is untested
+*for the retrieval stack*, not broken for the workspace.
+
+The eval/bench-delta clause of Rule 5 is N/A here: this spike changes no ranking behaviour and sets
+no budgets, as Principle II's and IV's gate rows record.
+
+### Workarounds applied (FR-027)
+
+One, disclosed with its cost: **`RUSTSEC-2024-0436` is ignored in `deny.toml`** so `cargo deny check`
+passes. It is an unmaintained proc-macro with no CVE, reachable only through candle's matmul backend,
+scoped to that single advisory id rather than the category, and carries review triggers
+([ADR-0004](../../docs/adr/0004-ignore-rustsec-2024-0436.md)). It is a gate relaxation, not a fix —
+the advisory is still true.
+
+No oracle was weakened at any point (FR-028). Three chances to do so were declined:
+
+- the **±20% wall-time band** was missed by three of four operations and is reported as a failure
+  (F-009) rather than widened;
+- the **fixture manifest hashes** could have been normalized to make Windows pass; the fix went into
+  `.gitattributes` instead (F-003);
+- the **BM25 golden** could have been compared as a set rather than an ordered list; instead the
+  generator refuses to emit a fixture whose top-k gaps are smaller than the comparison tolerance.
+
+### Deletion condition on ADR-0002 (T062)
+
+ADR-0002 required the `unsafe` mmap path to be **deleted** if it showed no material footprint
+benefit. It showed a **39.6× reduction, ~99 MB saved**, reproduced to three significant figures
+across both device runs, with bit-identical embeddings from both paths. **Decision: keep.** The
+exemption is vindicated by the measurement it was granted to take.
 
 ## Untested, and why
 

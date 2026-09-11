@@ -58,18 +58,4 @@ pub enum SpikeError {
         /// The underlying inference message.
         message: String,
     },
-
-    /// SCAFFOLD — an operation whose implementation has not landed yet.
-    ///
-    /// This exists so the acceptance tests can be committed failing (FR-013, Agent Operating
-    /// Rule 4) with clean red test *failures* rather than compile errors, and without `todo!` or
-    /// `unimplemented!`, which are lint-banned and would abort the Swift process.
-    ///
-    /// It is temporary. `scripts/check-no-stubs.sh` fails the gate if it survives PR 2, and its
-    /// presence on `main` after the three operations land is a defect.
-    #[error("{operation} is not implemented in this build")]
-    NotImplemented {
-        /// The operation that was called.
-        operation: String,
-    },
 }

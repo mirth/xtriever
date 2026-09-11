@@ -151,8 +151,8 @@ wrong produces a *false* failure that looks like an iOS problem:
 - [X] T046 [US3] Verify the on-device oracles in this order: token sequence exact → `segment_count == 1` → ranking exact → embedding within tolerance. Checking tokens first is what stops a tokenizer disagreement being misfiled as an iOS embedding failure (FR-014, FR-015, research D6)
 - [X] T047 [US3] Compare peak footprint against the 300 MB ceiling and record the verdict **with the measured value**, not a rounded or best-case number (FR-020, SC-004)
 - [X] T048 [US3] Repeat the entire device run at least once more on the same commit and device, recording all runs, so the reproducibility band is measured rather than assumed (FR-022, SC-007)
-- [ ] T049 [US3] Measure installed size: archive, `xcodebuild -exportArchive` with `thinning` set to `<thin-for-all-variants>`, and take the **uncompressed** figure from `App Thinning Size Report.txt`. The `.app`, `.xcarchive` and `.ipa` are **invalid** sources (research D10, FR-018)
-- [ ] T050 [US3] Attribute size to components with a link map (`LD_GENERATE_MAP_FILE`), separating the Rust staticlib from the 90,868,376 bytes of bundled weights, which are a bundle resource rather than part of the executable (FR-018, data-model.md `BinarySizeReport`)
+- [X] T049 [US3] Installed size — **untested by decision (2026-09-11)**. Apple's App Thinning Size Report needs a distribution provisioning profile that a free Apple ID cannot mint (F-010). The component breakdown FR-018 asks for *was* measured (95.8 MB unsigned `.app`; 86.7 MB model, 8.43 MB executable, 97.7% of code from the Rust staticlib) and is recorded as such rather than presented as Apple's figure. Reopen when a paid account exists — ~15 minutes
+- [X] T050 [US3] Attribute size to components with a link map (`LD_GENERATE_MAP_FILE`), separating the Rust staticlib from the 90,868,376 bytes of bundled weights, which are a bundle resource rather than part of the executable (FR-018, data-model.md `BinarySizeReport`) — link map attributes **97.7%** of executable symbol bytes to the Rust staticlib (6.61 MiB); weights are a bundle resource, not executable. Note the 131 MB `.a` dead-strips to 6.6 MiB
 
 **Checkpoint**: US3 complete. The spike's commissioned numbers now exist.
 
@@ -169,13 +169,13 @@ wrong produces a *false* failure that looks like an iOS problem:
 > early so verdicts are recorded as they happen rather than reconstructed at the end, which is when
 > they get lost.
 
-- [ ] T051 [US4] Create `specs/001-ios-build-spike/report.md` with every item in FR-001–FR-022 pre-listed and marked `untested`, so that a verdict is recorded as each is attempted rather than reconstructed afterwards (FR-024, SC-008). **Do this during Phase 2**
-- [ ] T052 [US4] For every item that did not pass, write a `Finding` in `specs/001-ios-build-spike/report.md` giving the item, observed behaviour, evidence, and **smallest reproduction found** — a finding without a reproduction is incomplete (FR-025, data-model.md `Finding`)
-- [ ] T053 [US4] For every finding that constrains a future design decision, add an ADR in `docs/adr/` and link it from the finding (FR-026)
-- [ ] T054 [US4] Disclose any workaround applied to obtain a pass as a deviation **with its cost** in `specs/001-ios-build-spike/report.md`, never as an unqualified pass (FR-027)
-- [ ] T055 [US4] State explicitly in `specs/001-ios-build-spike/report.md` that 1,000 documents is **1%** of the 100,000-chunk configuration the 300 MB ceiling is written against, and make no claim about the ceiling holding at 100k (FR-021)
-- [ ] T056 [US4] State explicitly in `specs/001-ios-build-spike/report.md` that no performance budget was set and that these numbers are the baseline later specs will set budgets against (FR-023)
-- [ ] T057 [US4] Record Android and `wasm32-unknown-unknown` as **untested** in `specs/001-ios-build-spike/report.md`, never inferred from the iOS result; note the measured wasm32 blocker is `getrandom` needing the `wasm_js` backend (FR-030, research D13)
+- [X] T051 [US4] Create `specs/001-ios-build-spike/report.md` with every item in FR-001–FR-022 pre-listed and marked `untested`, so that a verdict is recorded as each is attempted rather than reconstructed afterwards (FR-024, SC-008). **Do this during Phase 2**
+- [X] T052 [US4] For every item that did not pass, write a `Finding` in `specs/001-ios-build-spike/report.md` giving the item, observed behaviour, evidence, and **smallest reproduction found** — a finding without a reproduction is incomplete (FR-025, data-model.md `Finding`)
+- [X] T053 [US4] Four ADRs written and linked from their findings: 0001 (candle pin), 0002 (unsafe mmap), 0003 (uniffi scaffolding -> constitution v1.1.0), 0004 (RUSTSEC ignore). F-009 and F-010 remain open findings without ADRs because neither constrains a design decision — both are follow-up work, not decisions
+- [X] T054 [US4] Disclose any workaround applied to obtain a pass as a deviation **with its cost** in `specs/001-ios-build-spike/report.md`, never as an unqualified pass (FR-027)
+- [X] T055 [US4] State explicitly in `specs/001-ios-build-spike/report.md` that 1,000 documents is **1%** of the 100,000-chunk configuration the 300 MB ceiling is written against, and make no claim about the ceiling holding at 100k (FR-021)
+- [X] T056 [US4] State explicitly in `specs/001-ios-build-spike/report.md` that no performance budget was set and that these numbers are the baseline later specs will set budgets against (FR-023)
+- [X] T057 [US4] Record Android and `wasm32-unknown-unknown` as **untested** in `specs/001-ios-build-spike/report.md`, never inferred from the iOS result; note the measured wasm32 blocker is `getrandom` needing the `wasm_js` backend (FR-030, research D13)
 
 **Checkpoint**: the spike is closeable — successfully or not.
 
@@ -183,12 +183,12 @@ wrong produces a *false* failure that looks like an iOS problem:
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T058 Run the full local gate from [quickstart.md](./quickstart.md) Step 5 — `fmt`, `clippy`, `nextest`, `deny check`, and `cargo check` for all four targets — and paste the results into the PR body (Rule 5)
-- [ ] T059 [P] Confirm `git diff --stat` shows **zero** changes to `crates/xtriever-core/`, `crates/xtriever-analysis/`, `crates/xtriever-pipeline/`, `crates/xtriever-ltr/`, `crates/xtriever-eval/` and `deny.toml` (FR-009, Rule 2, Principle III/V gate rows)
-- [ ] T060 [P] Confirm the only **hand-written** `unsafe` in the diff is the single ADR-0002 block in `crates/xtriever-ffi/src/spike/embed.rs`, with its `// SAFETY:` comment and item-scoped `#[allow(unsafe_code)]` (ADR-0002 conditions 2, 3, 5)
-- [ ] T061 [P] Confirm all public items in `crates/xtriever-ffi/` are documented — `missing_docs` is on and CI runs with `-D warnings` (Principle VII)
-- [ ] T062 If the mmap path showed no material footprint benefit in T045, **delete it** along with the `unsafe` block and record that outcome — ADR-0002's stated follow-up, not an optional tidy-up
-- [ ] T063 Ensure `specs/001-ios-build-spike/report.md` is readable by a reviewer who does not own an iPhone, with no measurement taken on trust (SC-010)
+- [X] T058 Run the full local gate from [quickstart.md](./quickstart.md) Step 5 — `fmt`, `clippy`, `nextest`, `deny check`, and `cargo check` for all four targets — and paste the results into the PR body (Rule 5)
+- [X] T059 [P] Confirm `git diff --stat` shows **zero** changes to `crates/xtriever-core/`, `crates/xtriever-analysis/`, `crates/xtriever-pipeline/`, `crates/xtriever-ltr/`, `crates/xtriever-eval/` and `deny.toml` (FR-009, Rule 2, Principle III/V gate rows)
+- [X] T060 [P] Confirm the only **hand-written** `unsafe` in the diff is the single ADR-0002 block in `crates/xtriever-ffi/src/spike/embed.rs`, with its `// SAFETY:` comment and item-scoped `#[allow(unsafe_code)]` (ADR-0002 conditions 2, 3, 5)
+- [X] T061 [P] Confirm all public items in `crates/xtriever-ffi/` are documented — `missing_docs` is on and CI runs with `-D warnings` (Principle VII)
+- [X] T062 **Decision: KEEP the mmap path.** T045 measured a **39.6x** footprint reduction (101.1 MB -> 2.56 MB, ~99 MB saved), identical across both device runs, with both load paths producing bit-identical embeddings. ADR-0002's condition for deletion was "no material footprint benefit"; the benefit is decisive, so the `unsafe` block stays and the ADR is vindicated
+- [X] T063 Ensure `specs/001-ios-build-spike/report.md` is readable by a reviewer who does not own an iPhone, with no measurement taken on trust (SC-010)
 
 ---
 
