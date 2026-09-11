@@ -104,6 +104,24 @@ pub fn tokenize(model_dir: &str, sentence: &str) -> Result<Tokenized, SpikeError
     })
 }
 
+/// Check that every artifact the model needs is present, before anything tries to use one.
+///
+/// # Errors
+///
+/// [`SpikeError::Model`] naming the first missing file.
+fn verify_model_dir(model_dir: &str) -> Result<(), SpikeError> {
+    for artifact in ["config.json", "tokenizer.json", "model.safetensors"] {
+        let path = Path::new(model_dir).join(artifact);
+        if !path.is_file() {
+            return Err(model_err(format!(
+                "{} is missing — is the model bundled with the app?",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Verify the weights are byte-for-byte the artifact this spec pinned, then build a `VarBuilder`.
 ///
 /// The size check is a hard error rather than a warning (FR-016): a different file means a
@@ -177,6 +195,12 @@ fn mmapped_var_builder<'a>(weights: &Path, device: &Device) -> Result<VarBuilder
 /// [`SpikeError::Model`] if an artifact is missing or fails verification, [`SpikeError::Tokenize`]
 /// if encoding fails, [`SpikeError::Inference`] if the forward pass fails.
 pub fn run(model_dir: &str, sentence: &str, load_path: LoadPath) -> Result<Vec<f32>, SpikeError> {
+    // Check the artifacts before doing anything with them. Without this the first thing to touch
+    // the directory is the tokenizer, so a missing or unbundled model reports `Tokenize` — which
+    // says the tokenizer failed when really nothing was there. On device, a model that did not make
+    // it into the app bundle is the single most likely failure, and it should say so.
+    verify_model_dir(model_dir)?;
+
     let tokens = tokenize(model_dir, sentence)?;
     let device = Device::Cpu;
 

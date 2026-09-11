@@ -20,3 +20,11 @@ xcuserdata/
 *.xcuserstate
 *.xcarchive
 *.ipa
+
+# iOS harness build inputs — regenerate with scripts/build-ios-harness.sh.
+# The XCFramework alone is ~262 MB and the Swift bindings are generated from the Rust.
+harness/ios/XtrieverSpike/Frameworks/
+harness/ios/XtrieverSpike/Sources/XtrieverSpike/Generated/
+harness/ios/XtrieverSpike/.build/
+harness/ios/XtrieverSpike/Sources/XtrieverSpike/XtrieverData/
+harness/ios/XtrieverSpikeApp/XtrieverSpikeApp.xcodeproj/

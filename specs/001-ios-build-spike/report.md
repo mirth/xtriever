@@ -1,6 +1,6 @@
 # Spike Report: 001 — iOS Build Spike
 
-**Status**: in progress — PR 1a, 1b and 2a complete. All 14 acceptance tests green. | **Started**: 2026-09-10 | **Updated**: 2026-09-11
+**Status**: measured on device. Peak footprint **238.1 MB against a 300 MB ceiling — PASS**, twice, on an iPhone 16e. | **Started**: 2026-09-10 | **Updated**: 2026-09-11
 
 Evaluated against constitution **v1.1.0** (Principle VII's unsafe clause expanded 2026-09-11).
 
@@ -215,6 +215,102 @@ thread count itself — a library mutating process-global environment is wrong, 
 loader. Instead the **caller** exports `RAYON_NUM_THREADS=1` and `spike::embed::thread_count()`
 reports what was actually in effect, for the device run to record.
 
+## User Story 2 — the boundary works (PR 2b)
+
+`xcodebuild test` on the **iOS 26.5 simulator**, 4 of 4 passing:
+
+| test | proves |
+|---|---|
+| `testIndexAndQueryCrossTheBoundary` | 1,000 documents indexed into **one segment**; a 10-hit ranking returns in strictly descending score order |
+| `testEmbeddingCrossesAsFloatArray` | candle runs BERT **on an iOS target** and a 384-dim L2-normalized vector crosses as `[Float]` |
+| `testRustErrorsArriveAsCaughtSwiftErrors` | a missing model directory throws a caught `SpikeError.Model` — **not** a process abort |
+| `testQueryErrorsAreTypedNotFatal` | an unopened index throws `IndexIo`; a query matching nothing throws `QueryParse` rather than passing vacuously |
+
+FR-006, FR-007 and FR-008 are therefore verified, not merely declared. The XCFramework carries both
+`ios-arm64` and `ios-arm64-simulator` slices and is reproducible from
+`scripts/build-ios-harness.sh`; nothing binary is committed.
+
+Fixtures and weights reach the Simulator by environment variable (`TEST_RUNNER_XTRIEVER_*`) rather
+than being bundled, so the Swift tests read exactly the same bytes the Rust tests do. A device run
+cannot do that and must bundle both — which is why installed binary size (FR-018) is a PR 3
+measurement.
+
+## Device measurement (User Story 3, FR-017 – FR-022)
+
+**iPhone 16e (`iPhone17,5`), iOS 26.6.1, Release, `RAYON_NUM_THREADS=1`, thermal state nominal.**
+Two runs on the same commit and device. Raw records committed verbatim in
+[`runs/`](./runs/) so no number here has to be taken on trust (SC-010).
+
+### The verdict (FR-020, SC-004)
+
+| | run 1 | run 2 |
+|---|---:|---:|
+| baseline footprint | 26.3 MiB | 26.4 MiB |
+| **peak footprint** | **238.1 MB** | **238.3 MB** |
+| ceiling | 300 MB | 300 MB |
+| headroom | 61.9 MB (21%) | 61.7 MB (21%) |
+| **verdict** | **PASS** | **PASS** |
+
+The two peaks differ by **0.055%**, so the memory result is solidly reproducible.
+
+The device's *own* per-app limit was **3.54 GB** — about 11.8× the constitutional ceiling. These are
+two different thresholds and the report keeps them apart deliberately: the spike passed the budget
+Xtriever imposes on itself, nowhere near the one the hardware imposes.
+
+### The headline: memory-mapped weights cut footprint ~40× (ADR-0002)
+
+This is what [ADR-0002](../../docs/adr/0002-unsafe-mmap-safetensors-measurement.md) was commissioned
+to find out, and the answer is unambiguous:
+
+| load path | Δfootprint run 1 | Δfootprint run 2 | wall run 1 | wall run 2 |
+|---|---:|---:|---:|---:|
+| `buffered` (safe) | 101.14 MB | 101.17 MB | 214.5 ms | 142.7 ms |
+| `mmapped` (`unsafe`) | **2.56 MB** | **2.56 MB** | 122.0 ms | 117.0 ms |
+
+**~99 MB saved, a 39.6× reduction**, identical to three significant figures across both runs. The
+90.9 MB of fp32 weights essentially do not count toward `phys_footprint` when mapped — exactly the
+hypothesis the `unsafe` exemption was granted to test. ADR-0002 condition 4 also holds: both paths
+produced **bit-identical** embeddings, so the mmap path stays.
+
+**One caveat, stated because it limits the claim.** Both paths run in the *same process*, buffered
+first. The mmap load is therefore measured against an allocator that has just freed ~101 MB, so
+`2.56 MB` is a marginal cost, not a from-cold one. The 40× gap is far too large for ordering to
+explain it away, but a rigorous comparison would run each path in a fresh process. Recorded as a
+follow-up rather than asserted away.
+
+Note also that peak stays at 238 MB in both runs *because* the buffered path ran first — peak is a
+process-lifetime high-water mark. A mmap-only configuration would very likely peak far lower, but
+that number was not measured and is not claimed.
+
+### Determinism holds across platforms (FR-014, Principle VI)
+
+The on-device ranking was **bit-identical** to the host-minted golden — compared as `f32` bit
+patterns, not decimals. tantivy produces the same BM25 scores on an iPhone as on an Apple-silicon
+Mac, down to the last bit, and the top hits match the independent Python BM25 as well:
+
+```
+doc-000394@7.622925   doc-000362@7.4664707   doc-000361@7.2195134
+```
+
+The embedding matched the Python/torch reference within the stated tolerance (cosine ≥ 0.9999,
+max abs diff ≤ 1e-3), and `segment_count == 1` in both runs, so the comparison was meaningful.
+
+### Wall times, and a reproducibility failure (FR-022, SC-007)
+
+| operation | run 1 | run 2 | spread |
+|---|---:|---:|---:|
+| index (1,000 docs) | 132.2 ms | 95.6 ms | **38.3%** |
+| query | 3.23 ms | 0.94 ms | **242%** |
+| embed (buffered) | 214.5 ms | 142.7 ms | **50.3%** |
+| embed (mmapped) | 122.0 ms | 117.0 ms | 4.3% |
+
+**Three of four operations exceed the ±20% reproducibility band this spec states** (spec
+Assumptions). That is a **FAIL** on SC-007 for wall time, and it is recorded as such rather than
+fixed by widening the band — the band is an oracle and FR-028 forbids relaxing one to obtain a pass.
+See finding F-009.
+
+Memory reproduced at 0.055%; only *timing* is affected.
+
 ## Item verdicts
 
 `untested` means not yet attempted — never inferred from a related result (FR-024, spec US4
@@ -230,11 +326,16 @@ scenario 4).
 | FR-005 | No vendoring, patching or forking | **pass** — none applied |
 | FR-006 | Exactly three operations exposed | **pass** — three, and no more |
 | FR-007 | Corpus in; ranked hits and a float vector out | **pass** — behaviour verified against the goldens |
-| FR-008 | Rust errors reach Swift as typed errors | **untested** — needs the simulator (PR 2) |
+| FR-008 | Rust errors reach Swift as typed errors | **pass** — verified on the simulator |
 | FR-009 | No `xtriever-core` trait modified | **pass** — `git diff` on the crate is empty |
 | FR-010 | No timing/async/threads/C in the pure crates | **pass** — all spike code is in `xtriever-ffi` |
 | FR-011 – FR-016 | Fixtures and oracles | **pass** — committed, verified, and tamper-evident (PR 1b) |
-| FR-017 – FR-022 | Device measurement | **untested** — PR 3, needs hardware |
+| FR-017 | Binary size, footprint, per-operation wall time recorded | **pass** — footprint and timing; binary size outstanding (F-010) |
+| FR-018 | Installed size broken down | **fail** — not measured; needs an archive + App Thinning Size Report (F-010) |
+| FR-019 | Device model, iOS version, build config, thermal state recorded | **pass** — iPhone17,5 / 26.6.1 / Release / nominal |
+| FR-020 | Peak footprint vs the 300 MB ceiling | **pass** — 238.1 MB, 21% headroom, twice |
+| FR-021 | 1% caveat stated | **pass** — see "What this does not tell us" |
+| FR-022 | Repeated runs, reproducibility measured | **pass** (runs done) / **fail** on the timing band — see F-009 |
 | FR-023 | No performance budgets set | **pass** — none set; see "Baseline, not budget" |
 | FR-024 – FR-027 | Findings discipline | **in progress** — this document |
 | FR-028 | No oracle weakened | **pass** — see F-002, reported rather than worked around |
@@ -263,6 +364,33 @@ Not yet applicable (no measurement taken), but binding on PR 3: **1,000 document
 100k may be made from a 1k measurement.
 
 ---
+
+## What this does *not* tell us (FR-021, FR-023)
+
+Three limits on the result above, stated because the numbers are attractive enough to be
+over-read.
+
+**1,000 documents is 1% of the configuration the ceiling is written against.** The 300 MB ceiling in
+Principle III is specified for a **100,000-chunk** index. Indexing cost **12.13 MB of footprint for
+1,000 documents**, averaged across runs. A naive ×100 extrapolation gives **≈1.2 GB** — four times
+the ceiling.
+
+That number is an **extrapolation, not a measurement**, and linear scaling is the wrong model for an
+inverted index: postings compress, the dictionary sublinearly, and the writer's arena is a fixed
+cost partly included in the 12.13 MB. But it is the right shape of the risk, and it points
+somewhere specific: **the model weights are a fixed cost the spike has now solved (2.56 MB mapped),
+while index memory is the term that grows.** FR-021 forbids claiming the ceiling holds at 100k on
+this evidence, and it does not hold on this evidence. Measuring the real curve is the obvious next
+spec.
+
+**No budget was set, and none is implied.** Per FR-023 these are baseline numbers for later specs to
+set budgets against — 132/96 ms to index 1,000 documents is a starting point, not a target anyone
+has agreed to.
+
+**One device, one OS, two runs.** iPhone 16e on iOS 26.6.1. Apple publishes no per-device memory
+limits, and this device reported a 3.54 GB per-app limit; a smaller device would report less. None
+of this generalises across device classes, and the report records the hardware precisely so nobody
+tries.
 
 ## Findings
 
@@ -395,6 +523,160 @@ Two things worth carrying forward:
 CRLF checkout, but the Windows runner is the only place the real checkout path executes. The next CI
 run is the confirmation.
 
+### F-004 — `xcodebuild` could not load its own simulator plug-in — **RESOLVED**
+
+`xcodebuild -create-xcframework` failed before doing any work:
+
+```
+The plug-in "com.apple.dt.IDESimulatorFoundation" ... could not be loaded.
+Symbol not found: _$s12DVTDownloads21DownloadableAssetTypeO...
+```
+
+`/Library/Developer/PrivateFrameworks/DVTDownloads.framework` was at bundle version **17.0** while
+Xcode is **26.6 (17F113)** — stale system components after an Xcode upgrade. `xcodebuild -showsdks`
+and `xcrun simctl` were unaffected, so only calls needing the simulator plug-in failed.
+
+**Resolution**: `xcodebuild -runFirstLaunch`, after which the XCFramework built first try.
+
+### F-005 — Xcode's iOS platform component was not installed — **RESOLVED**
+
+**Blocks**: T036, T037, and all of PR 3.
+
+```
+{ platform:iOS, name:Any iOS Device,
+  error:iOS 26.5 is not installed. Please download and install the platform from
+        Xcode > Settings > Components. }
+```
+
+`xcodebuild` offers **no iOS destination at all**, so nothing can be run on a simulator or a device.
+
+What makes this confusing, and worth writing down: the pieces that *look* like iOS support are all
+present. The SDKs are installed (`iphoneos26.5`, `iphonesimulator26.5` — which is exactly why
+`cargo check --target aarch64-apple-ios` and the release staticlib builds succeed), the
+`.platform` directories exist, and simulator runtimes for iOS 17.2, 17.5, 18.2 and 26.0 are
+installed. The missing piece is the separately-downloaded iOS *platform component* for 26.5.
+
+**Confirmed environmental, not ours**: a trivial SwiftPM package containing none of this project's
+configuration — no binary target, no XCFramework — reports the identical error.
+
+**Smallest reproduction**:
+
+```sh
+mkdir -p /tmp/p/Sources/P && cd /tmp/p
+printf 'public func f() {}' > Sources/P/F.swift
+cat > Package.swift <<'EOF'
+// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(name: "P", platforms: [.iOS(.v16)],
+    products: [.library(name: "P", targets: ["P"])], targets: [.target(name: "P")])
+EOF
+xcodebuild -showdestinations -scheme P     # no iOS destinations
+```
+
+**Resolution 2026-09-11**: the platform component was installed. `xcodebuild` now offers iOS destinations and the iOS 26.5 simulator runtime is present, and the harness runs.
+
+### F-006 — the XCFramework modulemap needs an explicit `--module-name` — **RESOLVED**
+
+Exactly the undocumented territory research risk R2 predicted, though not in the shape predicted.
+
+uniffi's generated Swift opens with `#if canImport(xtriever_ffiFFI)`. Generating the modulemap
+without `--module-name` declares the module as `xtriever_ffi`, so `canImport` is quietly **false**,
+the import is skipped, and every FFI type (`RustBuffer`, `ForeignBytes`, …) reports "cannot find
+type ... in scope" — a wall of errors a long way from the one-word cause.
+
+Nothing in the UniFFI guide connects those two names. Found by type-checking the generated bindings
+directly with `swiftc` rather than by reading documentation.
+
+There were **two** independent causes, and fixing only the first left the identical error:
+
+1. **Module name.** Without `--module-name xtriever_ffiFFI` the modulemap declares `xtriever_ffi`.
+2. **`--xcframework` is the wrong flag here, despite its name.** It emits `framework module`, which
+   requires a real `.framework` layout. Our slices are static libraries (`libxtriever_ffi.a`), so
+   Clang never matches the module — same wall of errors, different reason. The UniFFI guide
+   recommends `--xcframework` for XCFramework use without noting that it assumes a framework rather
+   than a static library.
+
+**Resolution**: generate a *plain* modulemap —
+`--modulemap --module-name xtriever_ffiFFI --modulemap-filename module.modulemap`, deliberately
+**without** `--xcframework`. `scripts/build-ios-harness.sh` carries a comment at the call site
+recording why each flag is there and why that one is not.
+
+**Also fixed while here**: `spike_embed` tokenized before verifying the model directory, so a missing
+or unbundled model reported `Tokenize` — "tokenization failed" when in fact nothing was there. It now
+checks `config.json`, `tokenizer.json` and `model.safetensors` up front and returns `Model` naming the
+first missing file. A model that did not make it into the app bundle is the likeliest device-side
+failure, and it should say so.
+
+### F-007 — a hostless XCTest bundle cannot run on a device — **RESOLVED**
+
+**My error, not the environment's.** PR 2b chose a SwiftPM package with an XCTest target over the
+"three buttons" app T036 specified, and `harness/ios/README.md` justified it partly with *"XCTest
+runs on a physical device too, so the same harness serves PR 3 unchanged."* That is wrong. The first
+device attempt failed:
+
+```
+Cannot test target "XtrieverSpikeAppTests" on iPhone:
+Tool-hosted testing is unavailable on device destinations.
+Select a host application for the test target, or use a simulator destination instead.
+```
+
+Hostless ("tool-hosted") test bundles run only on simulators and macOS. A device needs an app to
+host them — which is what T036 asked for, and the reason it asked is now clear.
+
+**Resolution**: `harness/ios/XtrieverSpikeApp/`, a minimal generated iOS app that exists solely to
+host the tests. Its test target's sources are the *same* files the SwiftPM package uses, referenced
+in place, so there is one copy of the tests running on both destinations. The `.xcodeproj` is
+generated by `xcodegen` from a 60-line `project.yml` and gitignored — derived, not authored.
+
+The deviation from "three buttons" stands and still earns its place: the app is inert, and the
+measurements run under `xcodebuild test` so the two runs FR-022 requires are one command each rather
+than a tapping ritual. What was wrong was the claim that no app was needed at all.
+
+### F-008 — arm64-only slices versus a Release build's default architectures — **RESOLVED**
+
+`ld: symbol(s) not found for architecture x86_64`, which reads like a missing symbol and is really a
+missing slice. The Rust staticlibs are arm64-only by design — Principle III names
+`aarch64-apple-ios` and `aarch64-apple-ios-sim`, and x86_64 was never in scope — but a Release build
+does not restrict itself to the active architecture.
+
+**Resolution**: `ARCHS=arm64` on the **command line**. Worth recording precisely, because the
+obvious fix does not work: the same setting in the generated project's build configuration does
+*not* reach the SwiftPM package target, and a clean build with only the project setting still fails.
+Verified both ways from a cleared DerivedData.
+
+### F-009 — wall-time reproducibility misses the stated ±20% band ⚠️ OPEN
+
+**Verdict: SC-007 FAILS for wall time.** Memory reproduced at 0.055%; timing did not.
+
+| operation | run 1 | run 2 | spread | within ±20%? |
+|---|---:|---:|---:|---|
+| index | 132.2 ms | 95.6 ms | 38.3% | **no** |
+| query | 3.23 ms | 0.94 ms | 242% | **no** |
+| embed (buffered) | 214.5 ms | 142.7 ms | 50.3% | **no** |
+| embed (mmapped) | 122.0 ms | 117.0 ms | 4.3% | yes |
+
+Run 1 was slower than run 2 in every case, which points at first-run effects — page cache, first
+touch of the mapped weights, lazily spawned thread pools — rather than random noise. Thermal state
+was `nominal` in both runs, so throttling is not the explanation.
+
+**Not fixed by widening the band.** The ±20% figure is an oracle stated in the spec, and FR-028 plus
+Agent Operating Rule 6 forbid relaxing an oracle to obtain a pass. It is recorded as a failure and
+carried forward.
+
+What a follow-up should do instead, in rough order of value:
+
+1. **More than two runs.** Two samples cannot separate a cold-start effect from variance; FR-022's
+   "at least twice" is a floor, and this is evidence it is too low a floor for timing.
+2. **Discard a warm-up run**, which is standard benchmarking practice and what Apple's own
+   performance-test tooling does.
+3. **Set the band from measured data** rather than from the plausible-looking ±20% guess this spec
+   made before any measurement existed. That is precisely what a baseline spike is for — and
+   note the *memory* numbers argue the spike's methodology is sound, so this is a band problem, not
+   a harness problem.
+
+Nothing here changes the memory verdict, which is what the spike was primarily commissioned to
+answer.
+
 ## Deviations (FR-027)
 
 ### D-001 — the BM25 golden cannot come from Python alone
@@ -443,7 +725,7 @@ rule, not a departure from it, and the Principle VII gate row passes cleanly.
 
 ## Open decisions
 
-None. Both blockers raised by PR 1a were decided on 2026-09-11: the advisory ignore (ADR-0004) and
+None. Every blocker raised so far is resolved: the advisory ignore (ADR-0004) and
 the Principle VII amendment (constitution v1.1.0, on ADR-0003's evidence).
 
 ## Untested, and why
