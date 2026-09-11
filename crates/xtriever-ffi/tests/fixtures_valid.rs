@@ -156,11 +156,33 @@ fn manifest_hashes_match_every_fixture() {
     assert!(!files.is_empty(), "manifest records no files");
     for (name, expected) in files {
         let bytes = std::fs::read(fixtures_dir().join(name)).expect("fixture readable");
-        assert_eq!(
-            sha256_hex(&bytes),
-            expected.as_str().expect("hash string"),
-            "{name} does not match its recorded hash — a fixture was hand-edited, \
-             or it was regenerated without updating the manifest"
+        let actual = sha256_hex(&bytes);
+        let expected = expected.as_str().expect("hash string");
+        if actual == expected {
+            continue;
+        }
+
+        // Before blaming the fixture, check the boring cause. Git on Windows rewrites LF to CRLF
+        // on checkout unless `.gitattributes` says otherwise, which changes the bytes without
+        // changing the content — and the first time this fired it sent the investigation looking
+        // for a hand-edited golden that did not exist.
+        let normalized = sha256_hex(
+            &bytes
+                .iter()
+                .copied()
+                .filter(|b| *b != b'\r')
+                .collect::<Vec<u8>>(),
+        );
+        assert_ne!(
+            normalized, expected,
+            "{name} differs from its recorded hash ONLY by line endings — the working copy has \
+             CRLF where the fixture is LF. This is Git translating on checkout, not a bad fixture. \
+             Check that .gitattributes marks `reference/fixtures/** -text`, then re-checkout."
+        );
+        panic!(
+            "{name} does not match its recorded hash (got {actual}, expected {expected}) and the \
+             difference is not line endings — a fixture was hand-edited, or it was regenerated \
+             without updating the manifest"
         );
     }
 }

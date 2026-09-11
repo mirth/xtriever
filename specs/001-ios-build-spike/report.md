@@ -338,6 +338,63 @@ Smallest reproduction: `cargo deny check advisories` at this commit.
 
 ---
 
+### F-003 — golden fixtures were not portable: Git rewrote them on Windows — **RESOLVED**
+
+**Verdict impact**: CI red on Windows, green on macOS and Linux. **Severity**: medium — the failure
+message accused the fixture of being hand-edited, which is the wrong place to look.
+
+`cargo nextest run --workspace` failed on the Windows runner:
+
+```
+manifest_hashes_match_every_fixture
+  bm25_reference.json does not match its recorded hash
+    left:  b32d61fda53349897758708d38e5232150afaf81108fcd65d324c3fce87b880b
+    right: a4dbc27daf0b71359c793a0dbaf7e1d3e8032b89e7777c7499b5a2d082eaf6ba
+```
+
+**Cause, proven rather than inferred.** The repository had no `.gitattributes`, so Git on Windows
+(`core.autocrlf=true` by default) rewrote LF to CRLF on checkout. Converting the local fixture to
+CRLF and hashing it reproduces the Windows value exactly:
+
+| bytes | SHA-256 |
+|---|---|
+| as committed (LF) | `a4dbc27d…` — matches the manifest |
+| same file, CRLF | `b32d61fd…` — **matches what Windows computed** |
+
+Only `bm25_reference.json` was named because `serde_json::Map` is a `BTreeMap` and it sorts first;
+**every** JSON fixture was affected.
+
+**Smallest reproduction** (on any platform):
+
+```sh
+python3 -c "d=open('reference/fixtures/001/bm25_reference.json','rb').read(); \
+            open('reference/fixtures/001/bm25_reference.json','wb').write(d.replace(b'\n', b'\r\n'))"
+cargo nextest run -p xtriever-ffi --test fixtures_valid manifest_hashes
+```
+
+**Resolution.** Added `.gitattributes`: a general `* text=auto eol=lf`, then
+`reference/fixtures/** -text` so the goldens are never translated at all. `-text` rather than
+`binary` keeps fixture diffs readable, which matters because a change to a golden is exactly what
+must be visible in review.
+
+Two things worth carrying forward:
+
+- **Order is load-bearing and was wrong on the first attempt.** In `.gitattributes` the *last*
+  matching pattern wins, so the specific rule must follow the general one. Written the other way
+  round — which is how it reads more naturally — the `*` line silently re-enables translation for
+  the fixtures. Caught only by checking `git check-attr`, not by reading the file.
+- **The oracle was not weakened to fix this.** Hashing normalized content would have made the test
+  pass everywhere while destroying its tamper-evidence (FR-028). The defect was in the repository
+  configuration, and that is where it was fixed. The test now *detects* the line-ending case and
+  says so, instead of blaming the fixture:
+
+  > `bm25_reference.json` differs from its recorded hash ONLY by line endings … This is Git
+  > translating on checkout, not a bad fixture.
+
+**Not yet confirmed on Windows.** The cause is proven and the fix verified locally by simulating a
+CRLF checkout, but the Windows runner is the only place the real checkout path executes. The next CI
+run is the confirmation.
+
 ## Deviations (FR-027)
 
 ### D-001 — the BM25 golden cannot come from Python alone
