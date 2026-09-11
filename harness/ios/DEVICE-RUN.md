@@ -29,19 +29,28 @@ is incomplete.
 
 ## 2. Run
 
+Copy the **whole** block — the paths are absolute so it works from any directory, and a partial copy
+was how the first attempt failed with `'XtrieverSpikeApp.xcodeproj' does not exist`:
+
 ```sh
-cd "$(git rev-parse --show-toplevel)/harness/ios/XtrieverSpikeApp"
+XT_ROOT="$(git rev-parse --show-toplevel)"
+XT_PROJ="$XT_ROOT/harness/ios/XtrieverSpikeApp/XtrieverSpikeApp.xcodeproj"
+
+# The project is generated and gitignored, so a fresh checkout has no copy of it.
+[ -d "$XT_PROJ" ] || { echo "missing $XT_PROJ — run scripts/build-ios-harness.sh --with-model first"; exit 1; }
 
 xcodebuild test \
-  -project XtrieverSpikeApp.xcodeproj \
+  -project "$XT_PROJ" \
   -scheme XtrieverSpikeApp \
   -configuration Release \
-  -destination 'platform=iOS,id=ABC123' \
+  -destination 'platform=iOS,id=<your-device-id>' \
   -skipMacroValidation \
   -allowProvisioningUpdates \
   ARCHS=arm64 \
   DEVELOPMENT_TEAM=<your-team-id>
 ```
+
+Find your device id with `xcrun devicectl list devices`.
 
 Every part of that is load-bearing:
 

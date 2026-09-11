@@ -69,8 +69,14 @@ their numbers recorded reproducibly. If a demo UI is wanted later, it can link t
 **Simulator: 4/4 green** on iOS 26.5 (`xcodebuild test`). Indexing, querying and embedding all cross
 the boundary, and Rust errors arrive as caught Swift errors rather than aborting the process.
 
-**Device: not yet runnable** — the measurement code (`Measure.swift`) and model bundling are PR 3.
-See `specs/001-ios-build-spike/tasks.md` T038–T050.
+**Device: measured.** `Measure.swift`, model staging, the app-hosted project
+(`../XtrieverSpikeApp/`) and the run instructions (`../DEVICE-RUN.md`) all exist, and two runs on an
+iPhone 16e are committed verbatim in `specs/001-ios-build-spike/runs/`. Peak footprint 238.1 MB
+against a 300 MB ceiling — PASS.
+
+To take a new measurement, follow `../DEVICE-RUN.md`. The harness refuses to report PASS unless every
+prerequisite holds — Release build, not the Simulator, `RAYON_NUM_THREADS=1`, model bundled, and
+valid `task_info` readings — and serializes `UNTESTED` otherwise.
 
 ## Gotchas already paid for
 

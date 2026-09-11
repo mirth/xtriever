@@ -127,12 +127,15 @@ One recorded number. FR-017 through FR-019.
 
 | field | type | rules |
 |---|---|---|
-| `operation` | enum | `index`, `model_load`, `query`, `embed` — model load is separate from embed, because Phase 0 expects it to dominate |
+| `operation` | enum | `index`, `query`, `embed`. **Originally specified with a separate `model_load`, which was never implemented** — `spike_embed` does tokenize + load + infer in one call and FR-006 caps the FFI at three operations, leaving no seam to time them apart. See finding F-012 |
 | `wall_nanos` | u64 | from `clock_gettime_nsec_np(CLOCK_UPTIME_RAW)` (research D11) |
-| `footprint_bytes` | u64 | `phys_footprint`, sampled after the operation |
-| `peak_footprint_bytes` | u64 | `ri_lifetime_max_phys_footprint`, process-lifetime peak |
-| `available_before` / `available_after` | u64 | `os_proc_available_memory()`, which lets the device's own limit be derived |
-| `load_path` | enum | `buffered` or `mmapped` — set only for `model_load`; the ADR-0002 comparison |
+| `footprint_bytes` | u64 | `phys_footprint` immediately after the operation |
+| `footprint_delta_bytes` | i64 | change across the operation — what this operation itself cost |
+| `cumulative_peak_bytes` | u64 | process-**lifetime** high-water mark as of this row. Not a per-operation peak: the value is monotonic, so only the maximum across a run is meaningful as a verdict input |
+| `peak_method` | enum | `ledger` or `sampled`, whichever produced `cumulative_peak_bytes`. `proc_pid_rusage`/`ri_lifetime_max_phys_footprint` is **not reachable from Swift on iOS** (research risk R1 confirmed), so the source is `task_vm_info.ledger_phys_footprint_peak` cross-checked against sampling |
+| `memory_is_valid` | bool | `false` if either `task_info` call failed. A run containing an invalid measurement yields `UNTESTED`, never a verdict — otherwise a failed syscall reads as 0 bytes and passes the ceiling |
+| `available_before` / `available_after` | u64 | `os_proc_available_memory()`, which lets the device's own limit be derived. **Zero on the Simulator**, which Apple documents as returning 0 for a non-app process |
+| `load_path` | enum | `buffered` or `mmapped` — set on the `embed` rows; the ADR-0002 comparison |
 
 ### `DeviceRun`
 
@@ -145,7 +148,7 @@ One execution of the whole harness on one device. FR-019, FR-022.
 | `ios_version` | string | |
 | `build_config` | string | MUST be `Release` with "Debug executable" off, coverage and sanitizers disabled (research D11) |
 | `thermal_state` | enum | `ProcessInfo.thermalState` at run start |
-| `candle_num_threads` | u32 | MUST be `1`; recorded because candle's rayon pool otherwise sizes itself to the device's core count, adding an uncontrolled term to both footprint and float summation order (research D15) |
+| `rayon_num_threads` | string | MUST be `"1"`; a run with anything else is `UNTESTED`. **The variable is `RAYON_NUM_THREADS`** — candle 0.9.2 reads that, *not* `CANDLE_NUM_THREADS`, which later versions read and which research D15 first recorded in error. Setting the wrong one leaves the pool sized by the device's cores while the record claims it was pinned |
 | `observed_memory_limit_bytes` | u64 | derived; **distinct from the 300 MB constitutional ceiling** and must not be conflated with it |
 | `measurements` | list of `Measurement` | |
 | `ranking` | list of `RankedHit` | compared against `ExpectedRanking` |

@@ -24,15 +24,30 @@ final class DeviceMeasurementTests: XCTestCase {
         var measurements: [Measure.Measurement] = []
         var notes: [String] = []
 
+        // Every condition a *valid device measurement* requires. Any unmet entry makes the run
+        // UNTESTED rather than PASS — a run that measured the wrong thing, or only part of it, must
+        // never serialize as a result (FR-028).
+        var unmet: [String] = []
+
         if Measure.isDebugBuild {
-            notes.append("DEBUG BUILD — these numbers must not be quoted; rerun with -configuration Release")
+            unmet.append("build is Debug — rerun with -configuration Release (research D11)")
         }
         #if targetEnvironment(simulator)
-        notes.append("SIMULATOR — no memory limit is enforced here; footprint is not a device result")
+        unmet.append("running on the Simulator — Apple enforces no memory limit here, so the "
+                     + "footprint is not a device result (research D9)")
         let isSimulator = true
         #else
         let isSimulator = false
         #endif
+
+        // We can validate the *input* but not candle's effective thread count: reading that would
+        // need a fourth exported function, and FR-006 caps the FFI at three. Note the variable —
+        // candle 0.9.2 reads RAYON_NUM_THREADS, not CANDLE_NUM_THREADS (research D15).
+        let rayonThreads = ProcessInfo.processInfo.environment["RAYON_NUM_THREADS"] ?? "<unset>"
+        if rayonThreads != "1" {
+            unmet.append("RAYON_NUM_THREADS is \(rayonThreads), expected 1 — candle would size its "
+                         + "pool from the core count, perturbing footprint and summation order")
+        }
 
         let baseline = Measure.snapshot()
 
@@ -76,7 +91,8 @@ final class DeviceMeasurementTests: XCTestCase {
                 }
             }
         } else {
-            notes.append("model not bundled — embedding unmeasured; rebuild with --with-model")
+            unmet.append("model not bundled — the embedding was not measured at all; rebuild with "
+                         + "scripts/build-ios-harness.sh --with-model")
         }
 
         // --- oracles, in the order that keeps causes distinguishable ------------------------
@@ -90,9 +106,13 @@ final class DeviceMeasurementTests: XCTestCase {
 
         // A failed task_info reports zero, and a maximum taken over zeros would PASS the ceiling
         // while measuring nothing. Refuse to produce a verdict at all in that case (FR-028).
-        let memoryValid = !measurements.isEmpty && measurements.allSatisfy(\.memoryIsValid)
+        // The baseline feeds `baselineFootprintBytes` and the derived device limit, so a failure
+        // there taints the record even if every measured operation succeeded.
+        let memoryValid = baseline.isValid
+            && !measurements.isEmpty
+            && measurements.allSatisfy(\.memoryIsValid)
         if !memoryValid {
-            notes.append("MEMORY READINGS INVALID — task_info failed; verdict is untested, not PASS")
+            unmet.append("task_info failed — footprint readings are not real values")
         }
         let record = DeviceRunRecord(
             runId: UUID().uuidString,
@@ -101,25 +121,39 @@ final class DeviceMeasurementTests: XCTestCase {
             isSimulator: isSimulator,
             buildConfiguration: Measure.isDebugBuild ? "Debug" : "Release",
             thermalState: Measure.thermalState,
-            rayonNumThreads: ProcessInfo.processInfo.environment["RAYON_NUM_THREADS"] ?? "<unset>",
+            rayonNumThreads: rayonThreads,
             baselineFootprintBytes: baseline.footprintBytes,
             observedMemoryLimitBytes: baseline.observedLimitBytes,
             peakFootprintBytes: peak,
             ceilingBytes: Self.ceilingBytes,
-            verdict: !memoryValid ? "UNTESTED" : (peak <= Self.ceilingBytes ? "PASS" : "FAIL"),
+            // PASS requires *every* prerequisite, not just a number under the ceiling. Without
+            // this a Simulator run, a Debug run, or a run with the thread pool unpinned would all
+            // serialize PASS while being explicitly non-results.
+            verdict: unmet.isEmpty ? (peak <= Self.ceilingBytes ? "PASS" : "FAIL") : "UNTESTED",
             measurements: measurements,
             hits: hits.prefix(3).map { "\($0.externalId)@\($0.score)" },
-            notes: notes
+            notes: notes + unmet.map { "UNMET PREREQUISITE: \($0)" }
         )
         try emit(record)
 
         // The verdict is recorded either way — a failure here is a *finding*, not a reason to
         // shrink the corpus and try again (FR-028).
-        XCTAssertTrue(memoryValid, "memory readings were invalid; the run yields no verdict")
-        XCTAssertLessThanOrEqual(
-            peak, Self.ceilingBytes,
-            "peak footprint \(record.peakMiB) MiB exceeds the \(Self.ceilingMiB) MiB ceiling"
-        )
+        // On the Simulator this test is validating the harness, and UNTESTED is the correct and
+        // expected outcome — so an unmet prerequisite is not a failure there. On a device the
+        // operator asked for a measurement, so anything short of one is a loud failure.
+        if isSimulator {
+            XCTAssertFalse(unmet.isEmpty, "a Simulator run must never claim to be a device result")
+        } else {
+            XCTAssertTrue(
+                unmet.isEmpty,
+                "device run did not meet its prerequisites, so it produced no measurement:\n  "
+                    + unmet.joined(separator: "\n  ")
+            )
+            XCTAssertLessThanOrEqual(
+                peak, Self.ceilingBytes,
+                "peak footprint \(record.peakMiB) MiB exceeds the \(Self.ceilingMiB) MiB ceiling"
+            )
+        }
     }
 
     // MARK: - Oracles

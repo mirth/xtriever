@@ -20,9 +20,13 @@ match the goldens.
 | Partial, accepted | SC-006 — Apple's canonical size figure not obtained (F-010); model-load timing not separated (F-012) |
 | **Fail, accepted** | SC-007 — wall-time band missed, recorded rather than widened (F-009) |
 
-SC-008 and SC-009 are the load-bearing ones, and they survived a hostile read: an automated review
-found two verdicts in this document that the code did not support, both now corrected (F-011). That
-is the mechanism working — a completeness claim is only worth what an independent check leaves of it.
+SC-008 and SC-009 are the load-bearing ones, and they survived two hostile reads. Automated review
+found **seventeen real defects across two rounds** (F-011, F-013) — including two verdicts this
+document asserted that the code did not support, and a verdict path that could pass a Simulator or
+Debug run as a result. All are fixed or corrected into honest verdicts.
+
+That is the mechanism working, and it is also the clearest lesson of the feature: self-audit found
+none of the seventeen. A completeness claim is worth only what an independent check leaves of it.
 
 74/74 tasks carry a verdict. 10 findings, 4 ADRs, 1 constitution amendment (v1.1.0).
 
@@ -305,15 +309,20 @@ Two runs on the same commit and device. Raw records committed verbatim in
 
 ### The verdict (FR-020, SC-004)
 
-| | run 1 | run 2 |
-|---|---:|---:|
-| baseline footprint | 26.3 MiB | 26.4 MiB |
-| **peak footprint** | **238.1 MB** | **238.3 MB** |
-| ceiling | 300 MB | 300 MB |
-| headroom | 61.9 MB (21%) | 61.7 MB (21%) |
-| **verdict** | **PASS** | **PASS** |
+| | run 1 | run 2 | run 3 | run 4 |
+|---|---:|---:|---:|---:|
+| **peak footprint** | **238.1 MB** | **238.3 MB** | **238.5 MB** | **238.3 MB** |
+| headroom vs 300 MB | 61.9 MB | 61.7 MB | 61.5 MB | 61.7 MB |
+| **verdict** | **PASS** | **PASS** | **PASS** | **PASS** |
 
-The two peaks differ by **0.055%**, so the memory result is solidly reproducible.
+**Four runs, spread 0.131%.** Runs 3 and 4 were taken after the review rounds, so they are also the
+first under the stricter verdict gate — `PASS` there means every prerequisite was met (Release, not
+the Simulator, `RAYON_NUM_THREADS=1`, model bundled, valid `task_info`), not merely a number under
+the ceiling. Their empty `notes` arrays are part of the evidence.
+
+Runs 3–4 additionally exercised the SHA-256 and dtype verification added in F-011, so they
+independently confirm the bundled weights are the pinned artifact rather than merely the right
+size.
 
 The device's *own* per-app limit was **3.54 GB** — about 11.8× the constitutional ceiling. These are
 two different thresholds and the report keeps them apart deliberately: the spike passed the budget
@@ -324,12 +333,15 @@ Xtriever imposes on itself, nowhere near the one the hardware imposes.
 This is what [ADR-0002](../../docs/adr/0002-unsafe-mmap-safetensors-measurement.md) was commissioned
 to find out, and the answer is unambiguous:
 
-| load path | Δfootprint run 1 | Δfootprint run 2 | wall run 1 | wall run 2 |
-|---|---:|---:|---:|---:|
-| `buffered` (safe) | 101.14 MB | 101.17 MB | 214.5 ms | 142.7 ms |
-| `mmapped` (`unsafe`) | **2.56 MB** | **2.56 MB** | 122.0 ms | 117.0 ms |
+| load path | Δfootprint (mean of 4 runs) | range |
+|---|---:|---|
+| `buffered` (safe) | 101.2 MB | 101.14 – 101.19 MB |
+| `mmapped` (`unsafe`) | **2.56 MB** | 2.556 – 2.572 MB |
 
-**~99 MB saved, a 39.6× reduction**, identical to three significant figures across both runs. The
+**~99 MB saved, a 39.5× reduction**, holding to three significant figures across all four runs.
+The 16 KB drift in the mmap column between run pairs is the 1 MiB chunked buffer the hash
+verification added — deliberately chunked so that verifying 90.9 MB does not itself inflate the
+footprint being measured. The
 90.9 MB of fp32 weights essentially do not count toward `phys_footprint` when mapped — exactly the
 hypothesis the `unsafe` exemption was granted to test. ADR-0002 condition 4 also holds: both paths
 produced **bit-identical** embeddings, so the mmap path stays.
@@ -357,75 +369,39 @@ doc-000394@7.622925   doc-000362@7.4664707   doc-000361@7.2195134
 The embedding matched the Python/torch reference within the stated tolerance (cosine ≥ 0.9999,
 max abs diff ≤ 1e-3), and `segment_count == 1` in both runs, so the comparison was meaningful.
 
-### Wall times, and a reproducibility failure (FR-022, SC-007)
+### Wall times, and what four runs say about reproducibility (FR-022, SC-007)
 
-| operation | run 1 | run 2 | spread |
-|---|---:|---:|---:|
-| index (1,000 docs) | 132.2 ms | 95.6 ms | **38.3%** |
-| query | 3.23 ms | 0.94 ms | **242%** |
-| embed (buffered) | 214.5 ms | 142.7 ms | **50.3%** |
-| embed (mmapped) | 122.0 ms | 117.0 ms | 4.3% |
+| operation | run 1 | run 2 | run 3 | run 4 | spread, runs 3↔4 |
+|---|---:|---:|---:|---:|---:|
+| index (1,000 docs) | 132.2 ms | 95.6 ms | 90.6 ms | 90.7 ms | **0.1%** |
+| query | 3.23 ms | 0.94 ms | 0.86 ms | 0.90 ms | **5.0%** |
+| embed (buffered) | 214.5 ms | 142.7 ms | 195.4 ms | 172.6 ms | **13.2%** |
+| embed (mmapped) | 122.0 ms | 117.0 ms | 153.5 ms | 154.3 ms | **0.5%** |
 
-**Three of four operations exceed the ±20% reproducibility band this spec states** (spec
-Assumptions). That is a **FAIL** on SC-007 for wall time, and it is recorded as such rather than
-fixed by widening the band — the band is an oracle and FR-028 forbids relaxing one to obtain a pass.
-See finding F-009.
+**Runs 3 and 4 meet the ±20% band on all four operations.** Runs 1 and 2 missed it on three. The
+band did not change; the runs did.
 
-Memory reproduced at 0.055%; only *timing* is affected.
+**Run 1 is the outlier**, and four samples make that visible where two could not: index took
+132.2 ms in run 1 against 90.6–95.6 ms in every later run, and query 3.23 ms against 0.86–0.94 ms.
+That is the cold-start effect F-009 hypothesised, now with evidence rather than a plausible story —
+the first run of a session pays for page cache, first touch of the mapped weights, and lazily
+spawned thread pools.
 
-## Item verdicts
+**A caveat that limits cross-pair comparison.** Runs 3–4 include the SHA-256 verification added after
+review (F-011 #5). Isolated on the mmap path, which is otherwise nearly free, it costs
+**+34 ms** (119.5 ms → 153.9 ms) to hash 90.9 MB. So wall times are comparable *within* a pair, not
+*between* pairs, and the apparent mmap "regression" in runs 3–4 is the cost of correctness, not a
+performance change. Recorded because it is a real trade-off: a production design would verify once
+at install rather than on every load.
 
-`untested` means not yet attempted — never inferred from a related result (FR-024, spec US4
-scenario 4).
+**SC-007 stays FAIL, and the diagnosis is now solid.** The criterion is that repeated runs reproduce
+within the band; across four runs one pair does and one does not. Declaring it resolved because the
+newer pair passed would be choosing the flattering half of the data. What has changed is that the
+fix is now evidence-backed rather than speculative: **discard the first run of a session**, and set
+the band from measured warm-run data. See F-009.
 
-| FR | Item | Verdict |
-|---|---|---|
-| FR-001 | Per-crate/per-target build verdicts | **pass** (8/8, plus 4 more) |
-| FR-002 | Feature sets and avoided native deps recorded | **pass** |
-| FR-003 | No C/C++ reachable from the pure crates; confined behind a non-default feature | **pass** |
-| FR-004 | Deps added via `cargo add`, resolved versions recorded | **pass** |
-| — | `cargo deny check` green (T006) | **pass** — all four sections ok, after ADR-0004 |
-| FR-005 | No vendoring, patching or forking | **pass** — none applied |
-| FR-006 | Exactly three operations exposed | **pass** — three, and no more |
-| FR-007 | Corpus in; ranked hits and a float vector out | **pass** — behaviour verified against the goldens |
-| FR-008 | Rust errors reach Swift as typed errors | **pass** — verified on the simulator |
-| FR-009 | No `xtriever-core` trait modified | **pass** — `git diff` on the crate is empty |
-| FR-010 | No timing/async/threads/C in the pure crates | **pass** — all spike code is in `xtriever-ffi` |
-| FR-011 – FR-016 | Fixtures and oracles | **pass** — committed, verified, and tamper-evident (PR 1b) |
-| FR-017 | Footprint and per-operation wall time recorded | **partial** — index/query/embed timed; **model load not separated from inference** (F-012). Binary size partial (F-010) |
-| FR-018 | Installed size broken down | **fail** — not measured; needs an archive + App Thinning Size Report (F-010) |
-| FR-019 | Device model, iOS version, build config, thermal state recorded | **pass** — iPhone17,5 / 26.6.1 / Release / nominal |
-| FR-020 | Peak footprint vs the 300 MB ceiling | **pass** — 238.1 MB, 21% headroom, twice |
-| FR-021 | 1% caveat stated | **pass** — see "What this does not tell us" |
-| FR-022 | Repeated runs, reproducibility measured | **pass** (runs done) / **fail** on the timing band — see F-009 |
-| FR-023 | No performance budgets set | **pass** — none set; see "Baseline, not budget" |
-| FR-024 – FR-027 | Findings discipline | **in progress** — this document |
-| FR-028 | No oracle weakened | **pass** — see F-002, reported rather than worked around |
-| FR-029 | No retrieval stage implemented beyond the minimum | **pass** — stubs contain no backend code |
-| FR-030 | Android and wasm32 recorded as untested | **pass** — see below |
-| FR-031 – FR-033 | Provisional binding; pinned fp32 weights | **pass** — size, SHA-256 and header dtype all verified in Rust (hash/dtype added after review, F-011 #5) |
-
-### Android and wasm32 (FR-030)
-
-**untested.** Neither was attempted, and neither is inferred from the iOS result. The one measured
-data point: `wasm32-unknown-unknown` fails at `getrandom` 0.3.4, which requires the `wasm_js` backend
-flag — a transitive-dependency configuration issue, not anything about tantivy, candle or tokenizers.
-Principle III makes wasm32 best-effort and tracked.
-
-### Baseline, not budget (FR-023)
-
-No performance budget was set for this spike, deliberately. The numbers it produces are the
-**baseline** that later specs set budgets against. The one figure available so far — a 16 MB
-skeleton staticlib — excludes the model weights, fixtures and harness, and must not be quoted as an
-app size.
-
-### The 1% caveat (FR-021)
-
-Not yet applicable (no measurement taken), but binding on PR 3: **1,000 documents is 1% of the
-100,000-chunk configuration the 300 MB ceiling is written against.** No claim about the ceiling at
-100k may be made from a 1k measurement.
-
----
+Memory, by contrast, reproduced at **0.131% across all four runs** — the harness is sound; the
+timing band was a pre-measurement guess.
 
 ## Binary size (FR-018)
 
@@ -754,41 +730,34 @@ obvious fix does not work: the same setting in the generated project's build con
 *not* reach the SwiftPM package target, and a clean build with only the project setting still fails.
 Verified both ways from a cleared DerivedData.
 
-### F-009 — wall-time reproducibility misses the stated ±20% band — **ACCEPTED, deferred**
+### F-009 — wall-time reproducibility misses the stated ±20% band — **ACCEPTED, deferred; diagnosis confirmed**
 
-**Verdict: SC-007 FAILS for wall time.** Memory reproduced at 0.055%; timing did not.
+**Verdict: SC-007 FAILS for wall time.** Memory reproduced at 0.131% across four runs; timing did
+not reproduce across all of them.
 
-| operation | run 1 | run 2 | spread | within ±20%? |
-|---|---:|---:|---:|---|
-| index | 132.2 ms | 95.6 ms | 38.3% | **no** |
-| query | 3.23 ms | 0.94 ms | 242% | **no** |
-| embed (buffered) | 214.5 ms | 142.7 ms | 50.3% | **no** |
-| embed (mmapped) | 122.0 ms | 117.0 ms | 4.3% | yes |
+| operation | run 1 | run 2 | run 3 | run 4 | 1↔2 | 3↔4 |
+|---|---:|---:|---:|---:|---:|---:|
+| index | 132.2 ms | 95.6 ms | 90.6 ms | 90.7 ms | 38.3% ✗ | **0.1% ✓** |
+| query | 3.23 ms | 0.94 ms | 0.86 ms | 0.90 ms | 242% ✗ | **5.0% ✓** |
+| embed (buffered) | 214.5 ms | 142.7 ms | 195.4 ms | 172.6 ms | 50.3% ✗ | **13.2% ✓** |
+| embed (mmapped) | 122.0 ms | 117.0 ms | 153.5 ms | 154.3 ms | 4.3% ✓ | **0.5% ✓** |
 
-Run 1 was slower than run 2 in every case, which points at first-run effects — page cache, first
-touch of the mapped weights, lazily spawned thread pools — rather than random noise. Thermal state
-was `nominal` in both runs, so throttling is not the explanation.
+Two more runs turned a hypothesis into a finding. The original write-up guessed cold-start effects
+from the fact that run 1 was slower than run 2 in every case; with four samples, run 1 is clearly the
+outlier and runs 2–4 cluster tightly. The ±20% band is achievable — just not from the first run of a
+session.
 
-**Not fixed by widening the band.** The ±20% figure is an oracle stated in the spec, and FR-028 plus
-Agent Operating Rule 6 forbid relaxing an oracle to obtain a pass. It is recorded as a failure and
-carried forward.
+**Still not fixed, and still not widened.** The criterion is that repeated runs reproduce within the
+band, and one of the two pairs does not. Calling it resolved because the later pair passed would be
+selecting the flattering half of the data, which is the same move FR-028 forbids elsewhere.
 
-What a follow-up should do instead, in rough order of value:
+The follow-up is now concrete rather than speculative:
 
-1. **More than two runs.** Two samples cannot separate a cold-start effect from variance; FR-022's
-   "at least twice" is a floor, and this is evidence it is too low a floor for timing.
-2. **Discard a warm-up run**, which is standard benchmarking practice and what Apple's own
-   performance-test tooling does.
-3. **Set the band from measured data** rather than from the plausible-looking ±20% guess this spec
-   made before any measurement existed. That is precisely what a baseline spike is for — and
-   note the *memory* numbers argue the spike's methodology is sound, so this is a band problem, not
-   a harness problem.
-
-Nothing here changes the memory verdict, which is what the spike was primarily commissioned to
-answer.
-
-**Accepted 2026-09-11** as a recorded failure rather than fixed. The band stays as written so the
-next spec inherits an honest number to improve on, not a widened one that hides the effect.
+1. **Discard the first run of a session** before recording. Evidence-backed now, not assumed.
+2. **Set the band from warm-run data** — runs 2–4 suggest something far tighter than ±20% is
+   achievable for index and query, and that `embed` is the loosest at ~13%.
+3. **Report the verification cost separately** from inference, so a change like F-011's +34 ms hash
+   does not look like a performance regression (this is also what F-012 asks for).
 
 ### F-010 — installed size is not Apple's documented figure — **ACCEPTED, deferred**
 
@@ -822,7 +791,7 @@ is the part worth dwelling on: this document asserted passes the code did not su
 | 5 | The Rust verified `model.safetensors` by **byte count only** — no hash, no dtype — so a same-sized substitution would pass, against FR-016/FR-033 | **verdict overclaim** |
 | 6 | `hits[0]` after a non-throwing `XCTAssertEqual` traps on an empty result instead of reporting the boundary failure | real |
 | 7 | `build-ios-harness.sh` printed `PASS` after skipping the app project when `xcodegen` was absent | real |
-| 8 | `DEVICE-RUN.md` hardcoded `/Users/tolik/dev/xtriever` | real |
+| 8 | `DEVICE-RUN.md` hardcoded `/Users/xxxx/dev/xtriever` | real |
 | 9, 10 | `contracts/ffi-surface.md` and `quickstart.md` still said `CANDLE_NUM_THREADS`, which candle 0.9.2 does not read | real |
 
 **On #1 — a misdiagnosis of mine.** When the first device attempt printed
@@ -868,6 +837,44 @@ What can be said from the data as it stands: the `mmapped` row (117–122 ms) is
 inference, because mapping is nearly free, while the `buffered` row (143–215 ms) additionally
 carries a 90.9 MB read. The ~25–95 ms difference is an *indication* of load cost, not a measurement
 of it, and is not recorded as one.
+
+### F-013 — second review round: the verdict could pass on a non-result
+
+A second automated review pass found seven more issues. **All seven were real**, and four of them
+shared a root cause worth naming: `PASS` was computed from memory numbers alone, so a run that
+measured the wrong thing — or only part of it — could still serialize as a result.
+
+| # | defect | fixed |
+|---|---|---|
+| 1 | A missing bundled model only added a *note*: the run measured index/query, skipped the embedding entirely, and still emitted `PASS` | yes |
+| 2 | The **baseline** snapshot's `isValid` was excluded from the validity gate, though it feeds `baselineFootprintBytes` and the derived device limit | yes |
+| 3 | `rayonNumThreads` recorded the environment string without validating it, so an ineffective value was stored verbatim while candle used the core count | yes |
+| 4 | `PASS` did not depend on **Simulator / Debug / thread-pinning** at all — every explicitly-non-result could serialize as a result | yes |
+| 5 | `harness/ios/README.md` still said "Device: not yet runnable" after the device runs were committed | yes |
+| 6 | `data-model.md` still named `candle_num_threads`, the variable candle 0.9.2 does **not** read | yes |
+| 7 | `quickstart.md` documented bindgen flags that do not work (`--xcframework`, wrong module name) — the exact failure F-006 recorded | yes |
+
+**The shape of the mistake.** Round one hardened the *measurement* (F-011 #2: a failed `task_info`
+must not read as zero). Round two found that hardening one input is not the same as gating the
+verdict: the other four prerequisites were checked, noted, and then ignored when computing `PASS`.
+
+Now `PASS` requires **every** prerequisite — Release build, not the Simulator, `RAYON_NUM_THREADS=1`,
+model bundled, valid `task_info` readings — and anything else serializes `UNTESTED` with the unmet
+conditions listed in `notes`. On a device an unmet prerequisite fails the test loudly, because the
+operator asked for a measurement; on the Simulator the test instead asserts the harness *refuses* to
+claim a device result.
+
+Verified after the change: a Simulator run now emits `"verdict": "UNTESTED"` with
+`UNMET PREREQUISITE: running on the Simulator`.
+
+**The two committed device runs re-checked against the stricter gate: all five prerequisites met in
+both, so `PASS` stands unchanged.** The verdict is now provable from the record rather than implied
+by it.
+
+**#3, honestly scoped**: the harness validates `RAYON_NUM_THREADS` is `"1"`, which is the *input*,
+not candle's effective count. Reading the effective count means exposing
+`spike::embed::thread_count()` across the FFI, and FR-006 caps the surface at three operations. The
+limitation is recorded rather than papered over.
 
 ## Deviations (FR-027)
 

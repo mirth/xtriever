@@ -115,16 +115,21 @@ cargo run -p xtriever-ffi --features cli --bin uniffi-bindgen -- \
   target/aarch64-apple-ios/release/libxtriever_ffi.a build/swift/Headers --headers
 cargo run -p xtriever-ffi --features cli --bin uniffi-bindgen -- \
   target/aarch64-apple-ios/release/libxtriever_ffi.a build/swift/Modules \
-  --xcframework --modulemap --modulemap-filename xtriever.modulemap
+  --modulemap --module-name xtriever_ffiFFI --modulemap-filename module.modulemap
 ```
 
-Then assemble the XCFramework across device and simulator slices and open the harness.
+In practice, run `scripts/build-ios-harness.sh`, which performs all three invocations plus the
+XCFramework assembly. Two flag details are load-bearing and cost real time to find (report F-006):
 
-**Expect friction here.** UniFFI documents `--xcframework` and the requirement that the modulemap be
-renamed to `module.modulemap`, but the guide does **not** document end-to-end device+simulator
-XCFramework assembly — `xcodebuild -create-xcframework` appears nowhere in the v0.32.1 tree
-(research risk R2). Budget for it, and if it costs more than expected, that is a finding worth
-recording, not a private struggle.
+- **`--module-name xtriever_ffiFFI`** — the generated Swift opens with
+  `#if canImport(xtriever_ffiFFI)`. Without it the modulemap declares `xtriever_ffi`, `canImport`
+  is quietly false, and every FFI type reports "cannot find type ... in scope".
+- **No `--xcframework`**, despite the name. It emits `framework module`, which needs a real
+  `.framework` layout; our slices are static libraries, so Clang never matches the module — the same
+  wall of errors, a different cause.
+
+**Expect friction here.** The UniFFI guide does not document end-to-end device+simulator XCFramework
+assembly — `xcodebuild -create-xcframework` appears nowhere in the v0.32.1 tree (research risk R2).
 
 Simulator success criteria (FR-006 to FR-008): the app launches, all three operations return, and a
 deliberately induced Rust error arrives in Swift as a caught `SpikeError` — **not** as a crash. Test
