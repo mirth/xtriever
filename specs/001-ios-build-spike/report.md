@@ -921,9 +921,19 @@ exemption is vindicated by the measurement it was granted to take.
 | FR-017 – FR-022 (all measurements) | PR 3 — needs a physical iPhone and provisioning |
 | Android, wasm32 | out of scope (FR-030) |
 
-## Known issue not fixed here
+## Loose ends carried out of the spike — all closed 2026-09-11
 
-`crates/xtriever-core/src/traits.rs:21` cites "ADR-0001" for the deferred writer/reader split, but
-`docs/adr/0001` is the candle pin — a dangling reference created when that ADR was numbered. Fixing
-it means editing `xtriever-core`, which FR-009 and Rule 2 forbid uninvited. Recommend either
-renumbering or writing the missing ADR under a separate change.
+FR-009 scoped "do not touch `xtriever-core`" to the spike itself, so these were deliberately left
+until it closed rather than smuggled in.
+
+| item | resolution |
+|---|---|
+| `traits.rs:21` cited a non-existent "ADR-0001" for the deferred writer/reader split (ADR-0001 is the candle pin) | Dangling number removed; the comment now says the split is deferred to the lexical stage's own spec. No ADR invented to justify a citation |
+| **R4** — the core traits promise ties broken by ascending `DocId`; tantivy uses ascending `DocAddress` | [ADR-0005](../../docs/adr/0005-tie-breaking-contract.md) (**accepted 2026-09-11**): stage implementations re-sort ties into ascending `DocId`; `xtriever-core`'s trait docs now point implementers at it. Binds Feature 002, no code change today |
+| ADR-0001's upstream follow-up | Issue drafted at [`docs/upstream/candle-onig-dependency.md`](../../docs/upstream/candle-onig-dependency.md), **not filed** — `gh` is unavailable and filing to a third-party repo is a human's call |
+
+The ADR numbering collision is worth noting rather than hiding: `traits.rs` had reserved "ADR-0001"
+as a forward reference before any ADR existed, and Feature 001 took that number for the candle pin.
+Renumbering now would touch 11–15 files per ADR plus the constitution's Principle VII, which cites
+ADR-0003 by number — so the reference was corrected instead. If the numbering matters more than the
+churn, the renumber is still available.

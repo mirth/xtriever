@@ -124,8 +124,9 @@ VII gate row at FAIL until this ADR was accepted on 2026-09-10; that row now rea
 
 - File an upstream issue against `huggingface/candle` for the non-optional `tokenizers`/`onig`
   dependency (defect (a)), noting that it forces a C toolchain on consumers who never touch GGUF.
-  Defect (b) needs no issue — PR #3845 already covers it; track the release instead. Record URLs
-  here.
+  **Drafted, not filed**: [`docs/upstream/candle-onig-dependency.md`](../upstream/candle-onig-dependency.md).
+  Defect (b) needs no issue — PR #3845 already covers it; track the release instead. Record the
+  issue URL here once filed.
 - Add a comment at the dependency declaration pointing to this ADR, so `cargo add`-driven upgrades
   are caught in review.
 - **Do not enable candle's `ug` feature on 0.9.2.** The `not(target_os = "ios")` guard that avoids
