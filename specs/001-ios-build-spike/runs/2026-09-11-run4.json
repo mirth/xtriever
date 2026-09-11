@@ -1,0 +1,22 @@
+{
+  "baselineFootprintBytes" : 27706168, "buildConfiguration" : "Release", "ceilingBytes" : 300000000,
+  "deviceModel" : "iPhone17,5", "isSimulator" : false,
+  "hits" : [ "doc-000394@7.622925", "doc-000362@7.4664707", "doc-000361@7.2195134" ],
+  "measurements" : [
+    { "availableAfter":3500096664,"availableBefore":3512270024,"cumulativePeakBytes":40190824,
+      "footprintBytes":39895912,"footprintDeltaBytes":12173360,"ledgerPeakBytes":40190824,
+      "memoryIsValid":true,"operation":"index","peakMethod":"ledger","sampledPeakBytes":39895912,"wallNanos":90720084 },
+    { "availableAfter":3500080280,"availableBefore":3500096664,"cumulativePeakBytes":40190824,
+      "footprintBytes":39912296,"footprintDeltaBytes":16384,"ledgerPeakBytes":40190824,
+      "memoryIsValid":true,"operation":"query","peakMethod":"ledger","sampledPeakBytes":39912296,"wallNanos":903542 },
+    { "availableAfter":3398925368,"availableBefore":3500080280,"cumulativePeakBytes":238322680,
+      "footprintBytes":141067208,"footprintDeltaBytes":101154912,"ledgerPeakBytes":238322680,"loadPath":"buffered",
+      "memoryIsValid":true,"operation":"embed","peakMethod":"ledger","sampledPeakBytes":141067208,"wallNanos":172592458 },
+    { "availableAfter":3396353080,"availableBefore":3398925368,"cumulativePeakBytes":238322680,
+      "footprintBytes":143639496,"footprintDeltaBytes":2572288,"ledgerPeakBytes":238322680,"loadPath":"mmapped",
+      "memoryIsValid":true,"operation":"embed","peakMethod":"ledger","sampledPeakBytes":143639496,"wallNanos":154254042 }
+  ],
+  "notes" : [], "observedMemoryLimitBytes" : 3539992576, "peakFootprintBytes" : 238322680,
+  "rayonNumThreads" : "1", "runId" : "E423643A-A60F-45B7-87A6-6BF0E05D3040",
+  "systemVersion" : "Version 26.6.1 (Build 23G83)", "thermalState" : "nominal", "verdict" : "PASS"
+}

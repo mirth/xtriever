@@ -25,3 +25,7 @@ jobs:
       - run: cargo check --workspace --target aarch64-linux-android
       - run: cargo check --workspace --target wasm32-unknown-unknown
         continue-on-error: true                   # best-effort target
+      # Feature 001: without --features spike the jobs above give ZERO coverage of the spike's
+      # iOS build, so SC-001's verdicts would silently rot after the PR merges.
+      - run: cargo check -p xtriever-ffi --features spike --target aarch64-apple-ios
+      - run: cargo check -p xtriever-ffi --features spike --target aarch64-apple-ios-sim

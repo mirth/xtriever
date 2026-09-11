@@ -1,0 +1,24 @@
+# Line-ending policy.
+#
+# Without this file, Git on Windows (core.autocrlf=true by default) rewrites LF to CRLF on
+# checkout for anything it sniffs as text. That silently changes file *bytes*, which is fatal for
+# artifacts whose SHA-256 is recorded and asserted.
+#
+# NOTE ON ORDER: in .gitattributes the **last** matching pattern wins, so the general rule must
+# come first and the specific exemptions after it. (Written the other way round, the `*` line
+# silently re-enables translation for the fixtures — verify any change with
+# `git check-attr text eol -- reference/fixtures/001/corpus.json`, which must report `text: unset`.)
+
+# General: normalize to LF in the repository and check out LF on every platform. Shell scripts
+# under scripts/ are the other thing that breaks silently with CRLF.
+* text=auto eol=lf
+
+# Golden fixtures are byte-exact artifacts. `reference/fixtures/001/manifest.json` records a
+# SHA-256 per file and `crates/xtriever-ffi/tests/fixtures_valid.rs` asserts it, so a single
+# translated byte turns CI red on Windows while passing on macOS and Linux.
+#
+# `-text` (rather than `binary`) disables translation but keeps textual diffs, so fixture changes
+# stay reviewable — which matters, because a change to a golden is exactly the kind of thing that
+# must be visible in review. It is also stronger than relying on `eol=lf` above: it says "never
+# rewrite these bytes", which survives a future change to the general policy.
+reference/fixtures/** -text
