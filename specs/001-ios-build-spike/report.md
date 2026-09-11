@@ -1,6 +1,6 @@
 # Spike Report: 001 — iOS Build Spike
 
-**Status**: in progress — PR 1a and PR 1b complete, all gates green. | **Started**: 2026-09-10 | **Updated**: 2026-09-11
+**Status**: in progress — PR 1a, 1b and 2a complete. All 14 acceptance tests green. | **Started**: 2026-09-10 | **Updated**: 2026-09-11
 
 Evaluated against constitution **v1.1.0** (Principle VII's unsafe clause expanded 2026-09-11).
 
@@ -182,6 +182,39 @@ diff rather than taken on trust.
 CI stays green throughout: it runs `cargo nextest run --workspace` **without** `--all-features`, so
 the spike tests compile to nothing there (9 passed, 0 skipped).
 
+## The three operations run, and the oracles hold (PR 2a)
+
+`spike_index`, `spike_query` and `spike_embed` are implemented. The suite that was committed red in
+PR 1b is now **14 of 14 green**, which is what actually validates the oracle apparatus — until
+something ran against them, the fixtures were only an assertion.
+
+Three risks named in the plan are retired, each by a passing test rather than an argument:
+
+| risk | result |
+|---|---|
+| Does the 256-token override reproduce `tokens.json` **exactly**? (research D6) | **yes** — `tokenize` passes on exact equality |
+| Does candle 0.9.2's BERT match torch 2.14 within cosine 0.9999 / 1e-3? | **yes** — `embed` passes |
+| Does the single-threaded writer give `segment_count == 1`, and do tantivy's f32 scores match the Python transcription within 1e-5? | **yes** — one segment; worst relative difference **8.3e-08**, ~120× inside tolerance |
+
+`ranking.json` is now **minted** from a real host tantivy run
+(`documents_indexed: 1000`, `segment_count: 1`), and the
+generator refused to write it until its own independent BM25 agreed on both order and scores. The
+fixture records each score's **f32 bit pattern** as well as its decimal, so the host↔device oracle
+compares bits rather than a JSON round-trip that can silently lose a ULP.
+
+**ADR-0002 condition 4 is satisfied**: `load_paths` shows the safe buffered loader and the `unsafe`
+mmap loader produce bit-identical embeddings. The mmap path therefore survives to be measured on
+device, which is the whole reason the exemption was granted.
+
+### Correction to research D15
+
+D15 said candle reads `CANDLE_NUM_THREADS`. In the pinned **0.9.2**, `candle_core::utils::get_num_threads`
+reads **`RAYON_NUM_THREADS`** only, and there is no setter. The crate therefore does not pin the
+thread count itself — a library mutating process-global environment is wrong, and in edition 2024
+`std::env::set_var` is `unsafe`, which would have spent an exemption ADR-0002 reserves for the mmap
+loader. Instead the **caller** exports `RAYON_NUM_THREADS=1` and `spike::embed::thread_count()`
+reports what was actually in effect, for the device run to record.
+
 ## Item verdicts
 
 `untested` means not yet attempted — never inferred from a related result (FR-024, spec US4
@@ -196,7 +229,7 @@ scenario 4).
 | — | `cargo deny check` green (T006) | **pass** — all four sections ok, after ADR-0004 |
 | FR-005 | No vendoring, patching or forking | **pass** — none applied |
 | FR-006 | Exactly three operations exposed | **pass** — three, and no more |
-| FR-007 | Corpus in; ranked hits and a float vector out | **pass** (signatures + symbols); behaviour **untested** until PR 2 |
+| FR-007 | Corpus in; ranked hits and a float vector out | **pass** — behaviour verified against the goldens |
 | FR-008 | Rust errors reach Swift as typed errors | **untested** — needs the simulator (PR 2) |
 | FR-009 | No `xtriever-core` trait modified | **pass** — `git diff` on the crate is empty |
 | FR-010 | No timing/async/threads/C in the pure crates | **pass** — all spike code is in `xtriever-ffi` |

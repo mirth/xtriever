@@ -27,6 +27,7 @@ import json
 import math
 import os
 import random
+import subprocess
 import sys
 from bisect import bisect_left
 from pathlib import Path
@@ -494,6 +495,57 @@ def ranking_placeholder(k: int = 10) -> dict:
     }
 
 
+def mint_ranking(corpus: dict, out: Path, k: int) -> dict:
+    """Mint ``ranking.json`` from a real host tantivy run, and refuse if it disagrees with us.
+
+    This is where Principle II's Python verification actually lands for BM25: rather than
+    hand-copying numbers, we run the real engine and check its output against this script's
+    independent transcription before accepting it. If they disagree, nothing is written.
+    """
+    corpus_path = out / "corpus.json"
+    cmd = [
+        "cargo", "run", "-q", "-p", "xtriever-ffi", "--features", "spike",
+        "--example", "gen_ranking", "--", str(corpus_path), str(k),
+    ]
+    print(f"  minting via: {' '.join(cmd[:8])} ...")
+    env = dict(os.environ, RAYON_NUM_THREADS="1")
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT, env=env, check=False)
+    if proc.returncode != 0:
+        raise SystemExit(f"gen_ranking failed:\n{proc.stderr.strip()}")
+    minted = json.loads(proc.stdout)
+
+    if minted["segment_count"] != 1:
+        raise SystemExit(f"host index produced {minted['segment_count']} segments, expected 1")
+
+    reference = gen_bm25_reference(corpus, k=k)
+    ref_hits, got_hits = reference["hits"], minted["hits"]
+    if len(ref_hits) != len(got_hits):
+        raise SystemExit(f"host returned {len(got_hits)} hits, reference has {len(ref_hits)}")
+
+    for rank, (ref, got) in enumerate(zip(ref_hits, got_hits)):
+        if ref["external_id"] != got["external_id"]:
+            raise SystemExit(
+                f"rank {rank}: host says {got['external_id']}, "
+                f"independent reference says {ref['external_id']} -- NOT minting"
+            )
+        rel = abs(got["score"] - ref["score"]) / abs(ref["score"])
+        if rel > SCORE_REL_TOL:
+            raise SystemExit(
+                f"rank {rank} ({got['external_id']}): host scored {got['score']}, reference "
+                f"{ref['score']} (relative {rel:.3e} > {SCORE_REL_TOL:.0e}) -- NOT minting"
+            )
+
+    worst = max(
+        abs(g["score"] - r["score"]) / abs(r["score"])
+        for r, g in zip(ref_hits, got_hits)
+    )
+    print(f"  cross-check OK: {len(got_hits)} hits, order identical, worst relative score "
+          f"difference {worst:.3e} (tolerance {SCORE_REL_TOL:.0e})")
+    minted["cross_checked_against"] = "bm25_reference.json"
+    minted["worst_relative_score_difference"] = worst
+    return minted
+
+
 SECTIONS = ("model", "corpus", "bm25", "tokens", "embedding", "ranking")
 
 
@@ -506,6 +558,8 @@ def main() -> int:
     ap.add_argument("--only", action="append", choices=SECTIONS,
                     help="generate only these sections (repeatable); default is all")
     ap.add_argument("--k", type=int, default=10, help="top-k for the BM25 fixtures")
+    ap.add_argument("--emit-ranking", action="store_true",
+                    help="run the host tantivy minter, cross-check it, and write ranking.json")
     args = ap.parse_args()
 
     wanted = set(args.only) if args.only else set(SECTIONS)
@@ -535,7 +589,11 @@ def main() -> int:
     if "embedding" in wanted:
         write_json(out / "embedding.json", gen_embedding(args.model_cache, tokens, args.seed))
 
-    if "ranking" in wanted and not (out / "ranking.json").exists():
+    if args.emit_ranking:
+        if corpus is None:
+            corpus = gen_corpus(args.seed)
+        write_json(out / "ranking.json", mint_ranking(corpus, out, args.k))
+    elif "ranking" in wanted and not (out / "ranking.json").exists():
         write_json(out / "ranking.json", ranking_placeholder(k=args.k))
 
     # Manifest last: it hashes everything else, so a hand-edit to make a test pass goes red and

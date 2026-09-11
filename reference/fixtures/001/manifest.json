@@ -4,10 +4,10 @@
     "corpus.json": "a87c5a80977df10e62ddbe28493dd7f210f6e643bf965d248ec9d9b91cb93790",
     "embedding.json": "6ca11c7395d6a5a4e03e64f0f240d457b268c288d77a36a7cf9d2b520ebfa088",
     "model.json": "da10f570f26503acd1d700e922f05f15545f1a8e2c211105b66f824e52bbc620",
-    "ranking.json": "f151af51633ff39286a20352323c04e322f47b5d5c65587ad81e3efcaf7c05fb",
+    "ranking.json": "aae9f04d7ed48a4a39fc11545f03570bf441c2007465902f7d04e08d3260a11e",
     "tokens.json": "aff0e4a5cf7d80657ebb14bcc6aa0f8976e3d778048ef750d70e44e5a29d4732"
   },
-  "generator_sha256": "3345ca335ecbe9e7d9d2b8696fbb0ae19dc90bfea6d9dd5d95d8e29fda717a60",
+  "generator_sha256": "a99d5db67ee9def450109a92a9885870f0f6a19321965b9e3821edcefec6e6e6",
   "python_version": "3.12.12",
   "schema_version": 1,
   "seed": 1
