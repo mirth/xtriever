@@ -298,9 +298,15 @@ assert on what the readers see. Separately, open the same directory twice and as
   requires, which changes no signature, type or behaviour and is itself ADR-gated.
 - **FR-003**: All errors MUST be `xtriever-core`'s existing `Error` variants. A failure mode with no
   suitable variant is a contract question, not a licence to invent one locally.
-- **FR-004**: The crate MUST remain pure Rust and `std`-only — no C/C++ build dependencies, no
-  `async`, no `tokio`, no unconditional threads, and no `std::time::Instant` — and this MUST be
-  verified per target, not assumed.
+- **FR-004**: The crate MUST remain pure Rust with no C/C++ build dependencies, no `async`, no
+  `tokio`, and no `std::time::Instant` in library code, verified per target rather than assumed.
+  Threads are **not** forbidden: the constitution's "no unconditional threads" rule names five pure
+  crates and `xtriever-lexical` is deliberately not among them, because the backend's writer is
+  thread-based by design. The stage MUST instead fix every thread count the backend exposes to its
+  minimum (one indexing worker, one merge worker) so the count is a constant of the crate rather
+  than a function of the host, and MUST NOT spawn threads of its own. *(An earlier draft of this
+  requirement forbade threads outright; that was stricter than the constitution and unsatisfiable
+  by the chosen backend, and was corrected during planning.)*
 
 **Schema and documents**
 

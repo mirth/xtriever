@@ -1,6 +1,6 @@
 # ADR-0005: Stages re-sort score ties into ascending `DocId`
 
-- **Status**: Accepted — 2026-09-11
+- **Status**: Accepted — 2026-09-11; **amended** 2026-09-12 (k-boundary, see below)
 - **Date**: 2026-09-11
 - **Deciders**: mirth (repository owner), 2026-09-11
 - **Origin**: [research.md](../../specs/001-ios-build-spike/research.md) risk R4, raised by Feature 001
@@ -95,3 +95,35 @@ tie.
 | Weaken the contract to "deterministic, backend-defined" | Cheapest, and it makes the promise nearly useless: a caller could no longer compare two backends' output, and fusion would have to special-case each. It also silently widens Principle VI, which is a constitution amendment wearing a disguise. |
 | Force a single segment forever | What Feature 001 did as a *measurement control*, not a design. It would cap index size and forbid background merges — a severe constraint accepted to avoid a stable sort of 10 elements. |
 | Leave it, since it only shows up on ties | Ties are not rare. BM25 scores collide readily on short documents with equal term frequency and equal quantized field length — Feature 001's first fixture attempt produced a top-10 that was *entirely* tied, which is what surfaced this in the first place. |
+
+---
+
+## Amendment — the k-boundary (accepted 2026-09-12)
+
+- **Status of this amendment**: Accepted — 2026-09-12, mirth (repository owner)
+- **Origin**: Feature 002 clarification Q1 ([spec.md](../../specs/002-lexical-stage/spec.md),
+  Clarifications › Session 2026-09-11; FR-014)
+
+The gap this ADR recorded under *"What this does not cover"* is now decided.
+
+**Decision**: A score tie spanning the `k`-th and `(k+1)`-th positions is resolved by the backend's
+own ordering. Stages **do not over-fetch** to close it. The `DocId` tie-break therefore governs the
+**order** of the returned hits, not their **membership**: given a tie group straddling the boundary,
+the members that appear are whichever the backend selected — stably, since its order is
+deterministic — and those that appear are ordered by ascending `DocId`.
+
+**Rationale**: Over-fetching by a fixed margin is correct only for tie groups smaller than the
+margin and needs a second rule for larger ones; adaptive over-fetching degenerates to reading the
+whole posting list on a `Term` query over a keyword field where every document ties. Accepting the
+boundary costs nothing, is deterministic, and is honest about what the backend decides. Chosen for
+simplicity by the repository owner.
+
+**Contract change**: `LexicalIndex::search`'s doc comment in `xtriever-core` gains the sentence in
+[contracts/lexical-index.md](../../specs/002-lexical-stage/contracts/lexical-index.md) ("Contract
+caveat"). `VectorIndex::search` gains the same sentence, since the reasoning is backend-independent.
+This is documentation only — no signature, type or behaviour changes — and it is the only
+`xtriever-core` edit Feature 002 makes (spec FR-002, FR-014).
+
+**Test obligation**: Feature 002 plants a k-boundary tie in its fixture corpus and asserts the
+returned membership and order exactly, so the accepted behaviour is executable rather than
+described (spec Story 2 scenario 5).
