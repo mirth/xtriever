@@ -1,0 +1,22 @@
+{
+  "config": {
+    "hidden_size": 384,
+    "max_position_embeddings": 512,
+    "num_attention_heads": 12,
+    "num_hidden_layers": 6,
+    "vocab_size": 30522
+  },
+  "dtype": "f32",
+  "embedding_dim": 384,
+  "f32_tensor_count": 103,
+  "license": "apache-2.0",
+  "max_sequence_length": 256,
+  "normalize": true,
+  "pooling": "mean",
+  "repo": "sentence-transformers/all-MiniLM-L6-v2",
+  "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "schema_version": 1,
+  "weights_bytes": 90868376,
+  "weights_file": "model.safetensors",
+  "weights_sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+}

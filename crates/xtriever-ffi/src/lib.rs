@@ -32,5 +32,8 @@ pub mod ffi;
 // `#[uniffi::export]` items even when a `#[cfg]` inside the block is false, so a `#[cfg]` next to an
 // export is a compile error waiting to happen (research risk R3). With the gate at the module
 // declaration, that situation cannot arise.
+// `pub` so the acceptance tests in `tests/` can drive internals that are deliberately NOT exposed
+// to Swift. FR-006 caps the *FFI* surface at three operations; a crate-internal seam is not an FFI
+// operation and carries no `#[uniffi::export]`.
 #[cfg(feature = "spike")]
-mod spike;
+pub mod spike;

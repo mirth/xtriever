@@ -1,0 +1,128 @@
+{
+  "analyzer": "default = SimpleTokenizer -> RemoveLongFilter(40 bytes, pre-lowercase) -> LowerCaser",
+  "b": 0.75,
+  "corpus_stats": {
+    "avg_fieldnorm": 26.457,
+    "docs_with_lossy_fieldnorm": 72,
+    "n_docs": 1000,
+    "total_num_tokens": 26457
+  },
+  "hits": [
+    {
+      "external_id": "doc-000394",
+      "field_len": 21,
+      "field_len_dequantized": 21,
+      "rank": 0,
+      "score": 7.622924329913264,
+      "term_freq": {
+        "zephyrine": 5
+      }
+    },
+    {
+      "external_id": "doc-000362",
+      "field_len": 18,
+      "field_len_dequantized": 18,
+      "rank": 1,
+      "score": 7.46647047563933,
+      "term_freq": {
+        "zephyrine": 4
+      }
+    },
+    {
+      "external_id": "doc-000361",
+      "field_len": 15,
+      "field_len_dequantized": 15,
+      "rank": 2,
+      "score": 7.219513476696167,
+      "term_freq": {
+        "zephyrine": 3
+      }
+    },
+    {
+      "external_id": "doc-000529",
+      "field_len": 31,
+      "field_len_dequantized": 31,
+      "rank": 3,
+      "score": 7.214849966285762,
+      "term_freq": {
+        "zephyrine": 5
+      }
+    },
+    {
+      "external_id": "doc-000525",
+      "field_len": 28,
+      "field_len_dequantized": 28,
+      "rank": 4,
+      "score": 6.9829085289293005,
+      "term_freq": {
+        "zephyrine": 4
+      }
+    },
+    {
+      "external_id": "doc-000977",
+      "field_len": 41,
+      "field_len_dequantized": 40,
+      "rank": 5,
+      "score": 6.8832213866302325,
+      "term_freq": {
+        "zephyrine": 5
+      }
+    },
+    {
+      "external_id": "doc-000316",
+      "field_len": 12,
+      "field_len_dequantized": 12,
+      "rank": 6,
+      "score": 6.77156793136123,
+      "term_freq": {
+        "zephyrine": 2
+      }
+    },
+    {
+      "external_id": "doc-000475",
+      "field_len": 25,
+      "field_len_dequantized": 25,
+      "rank": 7,
+      "score": 6.627793728423812,
+      "term_freq": {
+        "zephyrine": 3
+      }
+    },
+    {
+      "external_id": "doc-000779",
+      "field_len": 38,
+      "field_len_dequantized": 38,
+      "rank": 8,
+      "score": 6.558172042012022,
+      "term_freq": {
+        "zephyrine": 4
+      }
+    },
+    {
+      "external_id": "doc-000762",
+      "field_len": 35,
+      "field_len_dequantized": 35,
+      "rank": 9,
+      "score": 6.125722375074889,
+      "term_freq": {
+        "zephyrine": 3
+      }
+    }
+  ],
+  "k": 10,
+  "k1": 1.2,
+  "min_top_k_score_gap": 0.004663510410405358,
+  "provenance": "python-independent-bm25",
+  "query": "zephyrine",
+  "query_terms": [
+    {
+      "doc_freq": 15,
+      "idf": 4.1679147553900195,
+      "term": "zephyrine",
+      "weight": 9.169412461858045
+    }
+  ],
+  "schema_version": 1,
+  "score_rel_tol": 1e-05,
+  "transcribed_from": "tantivy 0.26.2: src/query/bm25.rs (K1/B/idf/tf), src/fieldnorm/code.rs (FIELD_NORMS_TABLE), src/tokenizer/{simple_tokenizer,remove_long,tokenizer_manager}.rs"
+}

@@ -1,0 +1,10 @@
+{
+  "blocked_by": "T027/T028 (PR 2) -- spike_index/spike_query must exist first",
+  "hits": [],
+  "k": 10,
+  "mint_command": "reference/gen_001_fixtures.py --emit-ranking",
+  "schema_version": 1,
+  "status": "pending_host_mint",
+  "writer_memory_budget_bytes": 15000000,
+  "writer_threads": 1
+}

@@ -18,6 +18,33 @@
 
 use crate::ffi::{LoadPath, SpikeError};
 
+/// A tokenized sentence, padded and truncated to the model's sequence length.
+///
+/// Internal to the crate: not a uniffi type and not exposed to Swift. It exists so the
+/// tokenization-parity oracle can be checked on its own, *before* the embedding comparison —
+/// which is what stops a tokenizer disagreement being misfiled as an iOS embedding failure
+/// (research D6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tokenized {
+    /// Token ids, length `max_sequence_length`.
+    pub input_ids: Vec<u32>,
+    /// 1 for real tokens, 0 for padding.
+    pub attention_mask: Vec<u32>,
+    /// All zero for a single-segment sentence; required positionally by candle's `forward`.
+    pub token_type_ids: Vec<u32>,
+}
+
+/// Tokenize `sentence` with the model's tokenizer, overriding truncation and padding to 256.
+///
+/// # Errors
+///
+/// Currently always [`SpikeError::NotImplemented`].
+pub fn tokenize(_model_dir: &str, _sentence: &str) -> Result<Tokenized, SpikeError> {
+    Err(SpikeError::NotImplemented {
+        operation: "tokenize".to_owned(),
+    })
+}
+
 /// Embed `sentence`, returning 384 L2-normalized floats.
 ///
 /// # Errors
