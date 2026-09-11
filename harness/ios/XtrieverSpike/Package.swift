@@ -33,14 +33,12 @@ let package = Package(
         ),
         .testTarget(
             name: "XtrieverSpikeTests",
-            dependencies: ["XtrieverSpike"],
-            // A device has no host filesystem to read from, so fixtures (and, for the embedding
-            // measurement, the 87.1 MiB of weights) must ride along in the bundle. Staged by
-            // scripts/build-ios-harness.sh and gitignored.
-            // NOT named "Resources": a directory with that name inside a generated .bundle makes
-            // codesign reject the whole thing as "bundle format unrecognized, invalid, or
-            // unsuitable", because it reads as a malformed bundle layout.
-            resources: [.copy("XtrieverData")]
+            // No `resources:` here on purpose. A test-target resource path resolves relative to
+            // Tests/XtrieverSpikeTests/, which nothing stages — declaring it produced
+            // "Invalid Resource 'XtrieverData': File not found" during package validation. The
+            // fixtures and weights belong to the LIBRARY target, whose `Bundle.module` is what
+            // SpikeHarness actually reads.
+            dependencies: ["XtrieverSpike"]
         ),
     ]
 )

@@ -17,8 +17,12 @@ match the goldens.
 | | |
 |---|---|
 | PASS | SC-001, SC-002, SC-003, SC-004, SC-005, SC-008, SC-009, SC-010, SC-011 |
-| Partial, accepted | SC-006 — component breakdown measured, Apple's canonical figure not (F-010) |
+| Partial, accepted | SC-006 — Apple's canonical size figure not obtained (F-010); model-load timing not separated (F-012) |
 | **Fail, accepted** | SC-007 — wall-time band missed, recorded rather than widened (F-009) |
+
+SC-008 and SC-009 are the load-bearing ones, and they survived a hostile read: an automated review
+found two verdicts in this document that the code did not support, both now corrected (F-011). That
+is the mechanism working — a completeness claim is only worth what an independent check leaves of it.
 
 74/74 tasks carry a verdict. 10 findings, 4 ADRs, 1 constitution amendment (v1.1.0).
 
@@ -44,16 +48,21 @@ Three results that change what comes next:
    against a 300 MB ceiling — an extrapolation, not a measurement, but the clearest signpost the
    spike produced.
 
-Two things did **not** pass, both recorded rather than worked around:
+Three things did **not** pass, all recorded rather than worked around:
 
 - **F-009** — wall-time reproducibility missed the ±20% band this spec stated (index 38%, query
   242%, embed 50%). The band was not widened. Memory reproduced at 0.055%.
 - **F-010** — installed size is the unsigned `.app`, not Apple's App Thinning figure, which needs a
   distribution profile a free Apple ID cannot mint.
+- **F-012** — FR-017 wanted model-load timed separately from inference; with FR-006 capping the FFI
+  at three operations there was no seam to do it, so both rows are labelled `embed`. Found by
+  automated review *after* this report had already claimed FR-017 passed.
 
 Everything else that failed along the way — a candle version that would not compile, Windows
 rewriting the fixtures, a hostless test bundle that cannot run on device — was fixed and is written
-up below.
+up below. An automated review pass at the end found ten further defects, **all ten real**, two of
+which were overclaimed verdicts in this very document (F-011). Eight are fixed; the other two are
+F-010 and F-012.
 
 ---
 
@@ -383,7 +392,7 @@ scenario 4).
 | FR-009 | No `xtriever-core` trait modified | **pass** — `git diff` on the crate is empty |
 | FR-010 | No timing/async/threads/C in the pure crates | **pass** — all spike code is in `xtriever-ffi` |
 | FR-011 – FR-016 | Fixtures and oracles | **pass** — committed, verified, and tamper-evident (PR 1b) |
-| FR-017 | Binary size, footprint, per-operation wall time recorded | **pass** — footprint and timing; binary size outstanding (F-010) |
+| FR-017 | Footprint and per-operation wall time recorded | **partial** — index/query/embed timed; **model load not separated from inference** (F-012). Binary size partial (F-010) |
 | FR-018 | Installed size broken down | **fail** — not measured; needs an archive + App Thinning Size Report (F-010) |
 | FR-019 | Device model, iOS version, build config, thermal state recorded | **pass** — iPhone17,5 / 26.6.1 / Release / nominal |
 | FR-020 | Peak footprint vs the 300 MB ceiling | **pass** — 238.1 MB, 21% headroom, twice |
@@ -394,7 +403,7 @@ scenario 4).
 | FR-028 | No oracle weakened | **pass** — see F-002, reported rather than worked around |
 | FR-029 | No retrieval stage implemented beyond the minimum | **pass** — stubs contain no backend code |
 | FR-030 | Android and wasm32 recorded as untested | **pass** — see below |
-| FR-031 – FR-033 | Provisional binding; pinned fp32 weights | **pass** — weights verified by size, hash and header dtype |
+| FR-031 – FR-033 | Provisional binding; pinned fp32 weights | **pass** — size, SHA-256 and header dtype all verified in Rust (hash/dtype added after review, F-011 #5) |
 
 ### Android and wasm32 (FR-030)
 
@@ -797,6 +806,68 @@ trustworthy; only the canonical headline number is missing, and it would not cha
 the model is 90% of the bundle either way. Reopen with a paid developer account:
 `xcodebuild -exportArchive` with `thinning = <thin-for-all-variants>`, then read the uncompressed
 figure. Roughly fifteen minutes.
+
+### F-011 — automated review found ten defects, two of them overclaims in this report
+
+An automated review pass (GitHub Copilot) over the merged branch found ten issues. All ten were
+verified against the code and **all ten were real**. Two invalidated verdicts recorded above, which
+is the part worth dwelling on: this document asserted passes the code did not support.
+
+| # | defect | severity |
+|---|---|---|
+| 1 | `Package.swift` declared `resources: [.copy("XtrieverData")]` on the **test** target, resolved against `Tests/XtrieverSpikeTests/` — a directory nothing ever staged | real, and **misdiagnosed once already** |
+| 2 | `Measure.snapshot()` returned zero footprint when `task_info` failed; `measure()` then treated zero as a reading, so a failed syscall could produce a **false PASS** against the ceiling | serious |
+| 3 | `spike_embed` does tokenize + load + infer in one call, so both measured rows are labelled `embed` and **FR-017's separate model-load timing does not exist** | **verdict overclaim** |
+| 4 | `error.rs` carried `#[uniffi(flat_error)]` directly beneath a doc comment claiming fields were kept *"rather than being flattened with `#[uniffi(flat_error)]`"` | doc contradicted code |
+| 5 | The Rust verified `model.safetensors` by **byte count only** — no hash, no dtype — so a same-sized substitution would pass, against FR-016/FR-033 | **verdict overclaim** |
+| 6 | `hits[0]` after a non-throwing `XCTAssertEqual` traps on an empty result instead of reporting the boundary failure | real |
+| 7 | `build-ios-harness.sh` printed `PASS` after skipping the app project when `xcodegen` was absent | real |
+| 8 | `DEVICE-RUN.md` hardcoded `/Users/tolik/dev/xtriever` | real |
+| 9, 10 | `contracts/ffi-surface.md` and `quickstart.md` still said `CANDLE_NUM_THREADS`, which candle 0.9.2 does not read | real |
+
+**On #1 — a misdiagnosis of mine.** When the first device attempt printed
+`Invalid Resource 'XtrieverData': File not found`, this report and my explanation at the time
+dismissed it as stale cache, on the grounds that the directory existed. It did — under
+`Sources/`, which is a *different target's* resource root. The warning was accurate and the
+declaration was wrong. The tool-hosting error (F-007) happened to dominate the same output, which is
+how a true signal got written off.
+
+**On #5 — now genuinely closed.** The Rust verifies size, **SHA-256**, and the safetensors header
+dtype (103 F32 tensors, with `embeddings.position_ids` correctly permitted as `I64` — a buffer, not
+a weight). The first strict version of this check *rejected the real model*, which is how that
+detail surfaced. The two committed device runs remain valid: the hash now verified is the hash of
+the artifact they used.
+
+While fixing #5 I also caught a fabrication of my own: the hash constant was initially written from
+a truncated 16-character console echo with the remaining 48 characters invented. It diverged from the
+real value after `53aa51172d142c89d9012cce`. Caught only because the value was checked against the
+recorded fixture before being trusted.
+
+**On #3 — not fixed, verdict corrected.** See F-012.
+
+### F-012 — FR-017's separate model-load timing was never measured ⚠️ OPEN
+
+FR-017 requires wall time "for each of indexing, model load, and embedding, **separately**". The
+recorded runs contain two rows both labelled `embed`, distinguished only by `loadPath`. Each row
+times the *whole* of `spike_embed`: tokenization, weight loading, model construction, inference,
+pooling and normalization. Model load cannot be separated from inference in the recorded data.
+
+This report previously marked FR-017 **pass**. That was wrong; it is **partial**.
+
+The cause is a genuine tension between two requirements, not an oversight in isolation: **FR-006
+caps the FFI at exactly three operations**, and with three operations there is no seam for Swift to
+time model loading independently. Adding `spike_load_model` would break FR-006.
+
+Two ways to close it, both for the next harness rather than this one:
+
+1. Have `spike_embed` return a record carrying the vector *and* internal phase timings. No new
+   operation, so FR-006 holds. Requires re-running the device measurements.
+2. Time it in Rust and expose the split through the durable harness rather than the provisional FFI.
+
+What can be said from the data as it stands: the `mmapped` row (117–122 ms) is dominated by
+inference, because mapping is nearly free, while the `buffered` row (143–215 ms) additionally
+carries a 90.9 MB read. The ~25–95 ms difference is an *indication* of load cost, not a measurement
+of it, and is not recorded as one.
 
 ## Deviations (FR-027)
 

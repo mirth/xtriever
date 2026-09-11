@@ -34,8 +34,11 @@ final class SpikeTests: XCTestCase {
 
         let hits = try spikeQuery(indexDir: indexDir.path, query: corpus.query, k: 10)
         XCTAssertEqual(hits.count, 10)
-        XCTAssertFalse(hits[0].externalId.isEmpty)
-        XCTAssertGreaterThan(hits[0].score, 0)
+        // XCTAssert* do not stop execution, so indexing straight into `hits` would trap on an empty
+        // result and abort the test instead of reporting the boundary failure. Unwrap first.
+        let top = try XCTUnwrap(hits.first, "query returned no hits")
+        XCTAssertFalse(top.externalId.isEmpty)
+        XCTAssertGreaterThan(top.score, 0)
         // Strictly descending: proves the ordering survived the crossing, not just the values.
         for (a, b) in zip(hits, hits.dropFirst()) {
             XCTAssertGreaterThan(a.score, b.score, "hits must come back in descending score order")

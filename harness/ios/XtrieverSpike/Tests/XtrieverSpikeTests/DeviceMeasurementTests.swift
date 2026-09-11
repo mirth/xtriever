@@ -87,6 +87,13 @@ final class DeviceMeasurementTests: XCTestCase {
         // The run's peak is the largest lifetime high-water mark observed. Per-row values are
         // cumulative, so only their maximum is meaningful as a verdict input.
         let peak = measurements.map(\.cumulativePeakBytes).max() ?? 0
+
+        // A failed task_info reports zero, and a maximum taken over zeros would PASS the ceiling
+        // while measuring nothing. Refuse to produce a verdict at all in that case (FR-028).
+        let memoryValid = !measurements.isEmpty && measurements.allSatisfy(\.memoryIsValid)
+        if !memoryValid {
+            notes.append("MEMORY READINGS INVALID — task_info failed; verdict is untested, not PASS")
+        }
         let record = DeviceRunRecord(
             runId: UUID().uuidString,
             deviceModel: Measure.deviceModel,
@@ -99,7 +106,7 @@ final class DeviceMeasurementTests: XCTestCase {
             observedMemoryLimitBytes: baseline.observedLimitBytes,
             peakFootprintBytes: peak,
             ceilingBytes: Self.ceilingBytes,
-            verdict: peak <= Self.ceilingBytes ? "PASS" : "FAIL",
+            verdict: !memoryValid ? "UNTESTED" : (peak <= Self.ceilingBytes ? "PASS" : "FAIL"),
             measurements: measurements,
             hits: hits.prefix(3).map { "\($0.externalId)@\($0.score)" },
             notes: notes
@@ -108,6 +115,7 @@ final class DeviceMeasurementTests: XCTestCase {
 
         // The verdict is recorded either way — a failure here is a *finding*, not a reason to
         // shrink the corpus and try again (FR-028).
+        XCTAssertTrue(memoryValid, "memory readings were invalid; the run yields no verdict")
         XCTAssertLessThanOrEqual(
             peak, Self.ceilingBytes,
             "peak footprint \(record.peakMiB) MiB exceeds the \(Self.ceilingMiB) MiB ceiling"

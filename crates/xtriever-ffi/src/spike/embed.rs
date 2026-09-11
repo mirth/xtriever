@@ -27,6 +27,19 @@ pub const EMBEDDING_DIM: usize = 384;
 /// Exact size of the pinned `model.safetensors` (FR-016).
 const WEIGHTS_BYTES: u64 = 90_868_376;
 
+/// SHA-256 of the pinned `model.safetensors` at revision
+/// `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` (FR-016).
+///
+/// Byte count alone is not a content pin: a same-sized substitution would pass it and silently
+/// become the oracle for every embedding comparison.
+/// Number of F32 tensors in the pinned weights (FR-033).
+///
+/// Counted rather than merely spot-checked: a quantised or reduced-precision variant of the same
+/// model would differ here even if it somehow matched on size.
+const WEIGHTS_F32_TENSORS: usize = 103;
+
+const WEIGHTS_SHA256: &str = "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db";
+
 /// A tokenized sentence, padded and truncated to the model's sequence length.
 ///
 /// Internal to the crate: not a uniffi type and not exposed to Swift. It exists so the
@@ -122,6 +135,98 @@ fn verify_model_dir(model_dir: &str) -> Result<(), SpikeError> {
     Ok(())
 }
 
+/// Verify the weights are the exact artifact this spec pinned: size, content hash, and dtype.
+///
+/// All three, because each alone is insufficient. Size is cheap but a same-sized substitution
+/// passes it. The hash pins the content (FR-016). The dtype is read from the safetensors header
+/// rather than assumed, because FR-033 pins *as-published 32-bit* weights and a quantised
+/// replacement would otherwise silently loosen the embedding oracle.
+///
+/// # Errors
+///
+/// [`SpikeError::Model`] on any mismatch — a hard error, never a warning.
+fn verify_weights(weights: &Path) -> Result<(), SpikeError> {
+    use sha2::{Digest, Sha256};
+
+    let size = std::fs::metadata(weights)
+        .map_err(|e| model_err(format!("cannot stat {}: {e}", weights.display())))?
+        .len();
+    if size != WEIGHTS_BYTES {
+        return Err(model_err(format!(
+            "{} is {size} bytes, expected exactly {WEIGHTS_BYTES}",
+            weights.display()
+        )));
+    }
+
+    let mut file = std::fs::File::open(weights)
+        .map_err(|e| model_err(format!("cannot open {}: {e}", weights.display())))?;
+
+    // safetensors layout: 8-byte little-endian header length, then that many bytes of JSON.
+    let mut len_bytes = [0u8; 8];
+    std::io::Read::read_exact(&mut file, &mut len_bytes)
+        .map_err(|e| model_err(format!("cannot read safetensors header length: {e}")))?;
+    let header_len = usize::try_from(u64::from_le_bytes(len_bytes))
+        .map_err(|e| model_err(format!("implausible safetensors header length: {e}")))?;
+    let mut header_bytes = vec![0u8; header_len];
+    std::io::Read::read_exact(&mut file, &mut header_bytes)
+        .map_err(|e| model_err(format!("cannot read safetensors header: {e}")))?;
+    let header: serde_json::Value = serde_json::from_slice(&header_bytes)
+        .map_err(|e| model_err(format!("safetensors header is not JSON: {e}")))?;
+    let tensors = header
+        .as_object()
+        .ok_or_else(|| model_err("safetensors header is not an object"))?;
+    let mut f32_tensors = 0usize;
+    for (name, meta) in tensors {
+        if name == "__metadata__" {
+            continue;
+        }
+        match meta.get("dtype").and_then(serde_json::Value::as_str) {
+            Some("F32") => f32_tensors += 1,
+            // `embeddings.position_ids` is an integer index buffer, not a weight, and is `I64` in
+            // the published fp32 model. Rejecting it would reject the very artifact FR-033 pins.
+            Some("I64") if name == "embeddings.position_ids" => {}
+            other => {
+                return Err(model_err(format!(
+                    "tensor {name} has dtype {other:?}; FR-033 pins as-published fp32 weights"
+                )));
+            }
+        }
+    }
+    if f32_tensors != WEIGHTS_F32_TENSORS {
+        return Err(model_err(format!(
+            "{f32_tensors} F32 tensors, expected {WEIGHTS_F32_TENSORS} — \
+             this is not the pinned fp32 model (a quantised variant would differ here)"
+        )));
+    }
+
+    // Hash the whole file in 1 MiB chunks, so verification does not itself allocate 87 MiB and
+    // inflate the very footprint this spike measures.
+    let mut file = std::fs::File::open(weights)
+        .map_err(|e| model_err(format!("cannot reopen {}: {e}", weights.display())))?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let read = std::io::Read::read(&mut file, &mut buf)
+            .map_err(|e| model_err(format!("cannot hash {}: {e}", weights.display())))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buf[..read]);
+    }
+    let digest: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    if digest != WEIGHTS_SHA256 {
+        return Err(model_err(format!(
+            "{} has sha256 {digest}, expected {WEIGHTS_SHA256}",
+            weights.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Verify the weights are byte-for-byte the artifact this spec pinned, then build a `VarBuilder`.
 ///
 /// The size check is a hard error rather than a warning (FR-016): a different file means a
@@ -132,15 +237,7 @@ fn var_builder<'a>(
     device: &Device,
 ) -> Result<VarBuilder<'a>, SpikeError> {
     let weights = Path::new(model_dir).join("model.safetensors");
-    let size = std::fs::metadata(&weights)
-        .map_err(|e| model_err(format!("cannot stat {}: {e}", weights.display())))?
-        .len();
-    if size != WEIGHTS_BYTES {
-        return Err(model_err(format!(
-            "{} is {size} bytes, expected exactly {WEIGHTS_BYTES}",
-            weights.display()
-        )));
-    }
+    verify_weights(&weights)?;
 
     match load_path {
         LoadPath::Buffered => {

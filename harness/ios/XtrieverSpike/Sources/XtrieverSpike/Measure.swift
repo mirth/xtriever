@@ -28,6 +28,13 @@ public enum Measure {
         /// Bytes remaining before this process hits its dirty-memory limit.
         public let availableBytes: UInt64
 
+        /// `false` when `task_info` failed, so the footprint fields are not real readings.
+        ///
+        /// Load-bearing: without it a failed syscall reports 0 bytes, and a run maximum computed
+        /// over zeros is a **false PASS** against the 300 MB ceiling — the single worst thing this
+        /// harness could do (FR-028).
+        public let isValid: Bool
+
         /// The process's own limit, derived as footprint + remaining.
         ///
         /// Apple publishes no per-device limits and does not document this sum as a supported way
@@ -67,12 +74,13 @@ public enum Measure {
         // threshold is computed from the field's own offset.
         guard result == KERN_SUCCESS, count >= Self.rev1Count else {
             return Snapshot(footprintBytes: 0, ledgerPeakBytes: 0,
-                            availableBytes: UInt64(os_proc_available_memory()))
+                            availableBytes: UInt64(os_proc_available_memory()), isValid: false)
         }
         return Snapshot(
             footprintBytes: UInt64(info.phys_footprint),
             ledgerPeakBytes: UInt64(max(0, info.ledger_phys_footprint_peak)),
-            availableBytes: UInt64(os_proc_available_memory())
+            availableBytes: UInt64(os_proc_available_memory()),
+            isValid: true
         )
     }
 
@@ -117,6 +125,9 @@ public enum Measure {
         public let availableAfter: UInt64
         /// `buffered` or `mmapped`, set only for weight-loading operations (ADR-0002).
         public let loadPath: String?
+        /// `false` if either memory snapshot failed. A run containing an invalid measurement has no
+        /// usable peak and must be reported `untested`, never as a passing verdict.
+        public let memoryIsValid: Bool
 
         /// Milliseconds, for humans reading the report.
         public var wallMillis: Double { Double(wallNanos) / 1_000_000 }
@@ -158,7 +169,8 @@ public enum Measure {
             sampledPeakBytes: sampledPeak,
             availableBefore: before.availableBytes,
             availableAfter: after.availableBytes,
-            loadPath: loadPath
+            loadPath: loadPath,
+            memoryIsValid: before.isValid && after.isValid
         ))
     }
 

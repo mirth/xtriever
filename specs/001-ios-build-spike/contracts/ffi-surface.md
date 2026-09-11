@@ -193,9 +193,13 @@ Swift: `func spikeEmbed(modelDir: String, sentence: String, loadPath: LoadPath) 
   `DType::F32`. Root prefix is `""`: the safetensors keys have no `bert.` prefix, and
   `BertModel::load` applies `vb.pp("embeddings")` / `vb.pp("encoder")` itself, falling back to
   `{model_type}.*` if those are absent.
-- **Pins `CANDLE_NUM_THREADS=1`.** candle's CPU path uses `rayon` unconditionally and also spawns
-  raw `std::thread`s; leaving the pool sized to the device's core count adds an uncontrolled term to
-  both the footprint measurement and the float summation order (research D15).
+- **The caller must export `RAYON_NUM_THREADS=1`.** candle's CPU path uses `rayon` unconditionally
+  and also spawns raw `std::thread`s; leaving the pool sized to the device's core count adds an
+  uncontrolled term to both the footprint measurement and the float summation order (research D15).
+  Note the variable name: candle **0.9.2** reads `RAYON_NUM_THREADS`, *not* `CANDLE_NUM_THREADS`
+  (which later versions read, and which research D15 originally recorded in error). The crate does
+  not set it — a library has no business mutating process-global environment, and in edition 2024
+  `std::env::set_var` is `unsafe`. `spike::embed::thread_count()` reports what was in effect.
 - `BertModel::forward(&input_ids, &token_type_ids, Some(&attention_mask))` — `token_type_ids` is a
   required positional argument in candle 0.9.2, so a zeros tensor is passed for a single-segment
   sentence.

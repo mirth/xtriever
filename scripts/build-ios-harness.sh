@@ -101,8 +101,18 @@ echo "==> generating the host app project"
 if command -v xcodegen >/dev/null 2>&1; then
     (cd "$repo_root/harness/ios/XtrieverSpikeApp" && xcodegen generate >/dev/null)
     printf '    XtrieverSpikeApp.xcodeproj regenerated\n'
+    app_project=true
 else
-    printf '    SKIPPED: xcodegen not installed (brew install xcodegen) — device runs need it\n' >&2
+    app_project=false
+fi
+
+if [ "$app_project" = false ]; then
+    # Reporting PASS here would let a caller believe the harness is ready and only discover the
+    # missing host project during the device run itself.
+    printf 'build-ios-harness: INCOMPLETE — xcodegen is not installed, so the host app project was\n' >&2
+    printf '  not generated. The SIMULATOR path works; a DEVICE run cannot (a device rejects a\n' >&2
+    printf '  hostless XCTest bundle). Install it with `brew install xcodegen` and re-run.\n' >&2
+    exit 2
 fi
 
 echo "build-ios-harness: PASS"

@@ -142,7 +142,12 @@ Build settings, which are part of the measurement and must be recorded (FR-019, 
 - code coverage and all runtime sanitizers **off**
 
 Run the harness twice on the same commit and device (FR-022), recording for each run: device model,
-iOS version, build configuration, `ProcessInfo.thermalState`, and `CANDLE_NUM_THREADS` (must be 1).
+iOS version, build configuration, `ProcessInfo.thermalState`, and the thread count (must be 1).
+
+**Note the variable name.** candle **0.9.2** reads `RAYON_NUM_THREADS`, *not* `CANDLE_NUM_THREADS` —
+which later versions read, and which research D15 originally recorded in error. Exporting the wrong
+one leaves the pool sized by the device's cores while the report claims it was pinned, quietly
+invalidating both the footprint and the reproducibility comparison.
 
 Per operation — index, model load, query, embed — record wall time from
 `clock_gettime_nsec_np(CLOCK_UPTIME_RAW)`, `phys_footprint` from `task_info(TASK_VM_INFO)`, and the

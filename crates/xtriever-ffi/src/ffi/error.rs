@@ -19,7 +19,6 @@
 // FR-029), so it never produces one. Defining that mapping is the lexical/dense specs' work and
 // changes error semantics, which needs an ADR under Principle V. Do not add it here.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
-#[uniffi(flat_error)]
 #[non_exhaustive]
 pub enum SpikeError {
     /// Creating, opening, or writing the on-disk index failed.

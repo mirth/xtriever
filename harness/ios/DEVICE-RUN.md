@@ -19,7 +19,7 @@ FR-022 requires **at least two runs** on the same commit and device. Do the whol
 ## 1. Build the harness with the model bundled
 
 ```sh
-cd /Users/tolik/dev/xtriever
+cd "$(git rev-parse --show-toplevel)"
 scripts/build-ios-harness.sh --with-model
 ```
 
@@ -30,7 +30,7 @@ is incomplete.
 ## 2. Run
 
 ```sh
-cd harness/ios/XtrieverSpikeApp
+cd "$(git rev-parse --show-toplevel)/harness/ios/XtrieverSpikeApp"
 
 xcodebuild test \
   -project XtrieverSpikeApp.xcodeproj \
