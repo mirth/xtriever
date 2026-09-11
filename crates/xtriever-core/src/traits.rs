@@ -18,7 +18,7 @@ pub trait Analyzer: Send + Sync {
 /// Stage 1a — lexical retrieval (BM25). Also owns metadata and filter evaluation in v0.
 ///
 /// Mutation takes `&mut self`; a pipeline needing concurrent readers wraps the index in a
-/// lock. A writer/reader split is deferred (ADR-0001).
+/// lock. A writer/reader split is deferred to the lexical stage's own spec.
 pub trait LexicalIndex: Send + Sync {
     /// The schema this index was created with.
     fn schema(&self) -> &Schema;
@@ -29,6 +29,11 @@ pub trait LexicalIndex: Send + Sync {
     /// Make prior mutations durable and visible to `search`.
     fn commit(&mut self) -> Result<()>;
     /// Top-`k` hits, highest score first, ties broken by ascending `DocId`.
+    ///
+    /// The tie-break is the implementation's responsibility, not the backend's: tantivy orders ties
+    /// by ascending `DocAddress` (segment-ordinal-major), which agrees with this contract only
+    /// while the index has one segment. Implementations re-sort into `(score DESC, DocId ASC)`
+    /// before returning. See `docs/adr/0005-tie-breaking-contract.md`.
     fn search(&self, query: &LexicalQuery, filter: Option<&Filter>, k: usize) -> Result<Vec<Hit>>;
     /// Resolve a filter into an allow-list for other stages.
     fn resolve_filter(&self, filter: &Filter) -> Result<DocSet>;
@@ -70,6 +75,10 @@ pub trait VectorIndex: Send + Sync {
     fn commit(&mut self) -> Result<()>;
     /// Top-`k` by similarity restricted to `allowed` (if given), highest score first, ties
     /// broken by ascending `DocId`.
+    ///
+    /// As with [`LexicalIndex::search`], the implementation owns the tie-break — re-sort into
+    /// `(score DESC, DocId ASC)` if the backend orders ties differently
+    /// (`docs/adr/0005-tie-breaking-contract.md`).
     fn search(&self, query: &[f32], allowed: Option<&DocSet>, k: usize) -> Result<Vec<Hit>>;
     /// Number of live vectors.
     fn len(&self) -> u64;

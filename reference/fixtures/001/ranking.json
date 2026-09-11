@@ -1,0 +1,85 @@
+{
+  "cross_checked_against": "bm25_reference.json",
+  "documents_indexed": 1000,
+  "hits": [
+    {
+      "doc_id": 394,
+      "external_id": "doc-000394",
+      "score": 7.6229248046875,
+      "score_bits": 1089728256,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 362,
+      "external_id": "doc-000362",
+      "score": 7.466470718383789,
+      "score_bits": 1089400148,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 361,
+      "external_id": "doc-000361",
+      "score": 7.219513416290283,
+      "score_bits": 1088882241,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 529,
+      "external_id": "doc-000529",
+      "score": 7.214849948883057,
+      "score_bits": 1088872461,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 525,
+      "external_id": "doc-000525",
+      "score": 6.982908248901367,
+      "score_bits": 1088386044,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 977,
+      "external_id": "doc-000977",
+      "score": 6.883221626281738,
+      "score_bits": 1088176986,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 316,
+      "external_id": "doc-000316",
+      "score": 6.7715678215026855,
+      "score_bits": 1087942831,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 475,
+      "external_id": "doc-000475",
+      "score": 6.62779426574707,
+      "score_bits": 1087641316,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 779,
+      "external_id": "doc-000779",
+      "score": 6.55817174911499,
+      "score_bits": 1087495307,
+      "segment_ord": 0
+    },
+    {
+      "doc_id": 762,
+      "external_id": "doc-000762",
+      "score": 6.125722885131836,
+      "score_bits": 1086588396,
+      "segment_ord": 0
+    }
+  ],
+  "k": 10,
+  "provenance": "host-tantivy-run",
+  "query": "zephyrine",
+  "schema_version": 1,
+  "segment_count": 1,
+  "status": "minted",
+  "worst_relative_score_difference": 8.326478342801576e-08,
+  "writer_memory_budget_bytes": 15000000,
+  "writer_threads": 1
+}

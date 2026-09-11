@@ -1,0 +1,15 @@
+# Direct dependencies for reference/gen_001_fixtures.py (Feature 001 golden fixtures).
+#
+# Pinned exactly, and compiled to requirements-001.txt with hashes, because these fixtures
+# ARE the oracle: a different torch or transformers build silently produces a different
+# golden and every downstream comparison inherits it (Principle IV, reproducibility).
+#
+# tokenizers is pinned to the SAME version as the Rust crate in crates/xtriever-ffi/Cargo.toml.
+# That is what makes the tokenization-parity oracle meaningful rather than a comparison of two
+# unrelated tokenizer implementations.
+torch==2.14.0
+transformers==5.17.0
+tokenizers==0.23.2
+safetensors==0.8.0
+huggingface-hub==1.31.0
+numpy==2.5.3
