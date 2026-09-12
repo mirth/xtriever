@@ -29,7 +29,7 @@ Spec: `specs/003-eval-harness/spec.md` · Plan: `plan.md` · Report: `report.md`
 the scaffold, 0 fixture-caused).
 
 **Oracle**: `pytrec_eval 0.5` behind BEIR's `evaluate()` semantics (identical-id pop, mean over
-returned keys, 5-decimal rounding), pinned in `reference/requirements-003.txt`; 11 golden cases
+returned keys, 5-decimal rounding), pinned in `reference/requirements-003.txt`; 12 golden cases
 agree within 1e-6 (measured ≤ 2.2e-16); every real baseline cross-checked by `--verify-run`.
 
 **The baseline — `lexical-baseline-v1`** (title + text under `standard_en`, title boost 2.0,

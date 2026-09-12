@@ -106,13 +106,16 @@ pub fn score_queries(run: &BTreeMap<String, Vec<String>>, qrels: &Qrels) -> Quer
         if !grades.values().any(|g| *g > 0) {
             no_relevant += 1;
         }
-        let before = ids.len();
+        // BEIR converts a run to a doc→score map before popping the self id, so however many
+        // times the retriever repeated it, the pop counts once per query.
+        if ids.iter().any(|id| id == q) {
+            dropped_identical += 1;
+        }
         let refs: Vec<&str> = ids
             .iter()
             .map(String::as_str)
             .filter(|id| *id != q)
             .collect();
-        dropped_identical += (before - refs.len()) as u32;
         per_query.insert(
             q.clone(),
             (ndcg_at(&refs, grades, 10), recall_at(&refs, grades, 100)),

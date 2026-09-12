@@ -15,7 +15,7 @@ SciFact smoke is a blocking CI job. **ADR-0006 condition 2 is discharged.**
 |---|---|
 | acceptance suite | **25 / 25** offline (`cargo nextest run -p xtriever-eval`) + **4 / 4** dataset-backed (`--run-ignored only`) |
 | workspace suite | 98 / 98 |
-| metric goldens vs `pytrec_eval 0.5` | 11 / 11 cases, every per-query value and mean within 1e-6 (measured: ≤ 2.2e-16) |
+| metric goldens vs `pytrec_eval 0.5` | 12 / 12 cases, every per-query value and mean within 1e-6 (measured: ≤ 2.2e-16) |
 | real baselines vs `pytrec_eval` (`--verify-run`) | 3 / 3 datasets: means agree to ≤ 2.2e-16, BEIR-rounded values identical, query counts identical |
 | gate | fmt ✓ · clippy `-D warnings` ✓ · deny ✓ · iOS / iOS-sim / Android `cargo check` ✓ · no stubs ✓ · library graph pure (no `tantivy`, no C/C++) ✓ |
 | `xtriever-core`, `xtriever-lexical`, `deny.toml` | **unchanged** (`git diff --stat main -- …` empty; FR-027, SC-010) |
@@ -116,8 +116,11 @@ failed with `Resource not accessible by integration`: on pull-request events it 
 files through the GitHub API, and the repository's restricted default token lacked
 `pull-requests: read` (the first run was a `push` event, where the action uses `git diff` and
 needs no API). Fixed by granting the job `permissions: { contents: read, pull-requests: read }`.
-Third-push outcome: *(to be recorded)* — this is the run that will actually exercise the download
-retries.
+**Third push**: `eval-smoke` **passed** — the download succeeded from the runner, every hash
+verified, the SciFact smoke matched the committed baseline. The first `curl (7)` was transient.
+The cache is now seeded under the manifest's hash key, so subsequent runs on this key download
+nothing. Remaining T042 checks (second push hits the cache; a docs-only commit skips the job) are
+observable on the next two pushes and do not block the merge.
 
 ## Success criteria → evidence
 
@@ -140,3 +143,16 @@ retries.
   327 MiB peak is mostly that. A streaming builder would halve it — not needed for these sizes.
 - `Dataset::load` hashes every file (48 MB for FiQA) on every load — a fraction of a second, and
   the price of never scoring unverified data.
+
+## Review round 1 (GitHub Copilot, 2026-09-12) — 5 comments, all acted on
+
+| # | finding | action |
+|---|---|---|
+| 1 | `execute` accepted a config with `k < 100` — only `build` validated it — so a direct caller could report a 10-deep list as Recall@100 | `EvalConfig::validate()` shared by `build` and `execute`; regression test `k_below_100_is_rejected_by_build_and_by_execute` asserts no query runs under an invalid config |
+| 2 | `dropped_identical` counted every repeated self-id; BEIR converts to a doc→score map first, so it pops (and counts) once per query | counts once per query; new golden `identical_ids_repeated` (self id three times ⇒ `dropped_identical = 1`) and the metrics test now checks `dropped_identical` on every golden |
+| 3 | `not_retrieved_queries` was computed but not persisted, so FR-017's "skipped and why" was incomplete | added to `EvalReport` (stable key order updated in the contract and its test); the three baselines regenerated and re-verified — all numbers unchanged, field is 0 |
+| 4 | the ADR trigger used "majority of the reports compared", so a SciFact-only smoke that fell would trigger an ADR — one of three is not a majority | `adr_trigger = fell >= BENCHMARK_MAJORITY (2)`, the majority of the *fixed* three-dataset set; tests for one-of-one (no) and two-of-two (yes) |
+| 5 | quickstart's FiQA timing command used the default temp index dir, so the following `du` measured a stale directory | `--index-dir target/xt-eval-index/fiqa` added to the timed command (T034 already had it) |
+
+After the round: 25 / 25 offline, 4 / 4 dataset-backed, three baselines re-verified against
+`pytrec_eval`, `eval-smoke` passes locally against the regenerated SciFact baseline.

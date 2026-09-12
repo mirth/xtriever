@@ -30,6 +30,11 @@ fn every_golden_case_agrees_with_the_reference() {
             case.name
         );
         assert_eq!(
+            m.dropped_identical, case.expected.dropped_identical,
+            "{}: dropped_identical",
+            case.name
+        );
+        assert_eq!(
             m.per_query.len() as u32,
             case.expected.scored_queries,
             "{}: per_query size",

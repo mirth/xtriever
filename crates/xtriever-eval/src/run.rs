@@ -59,6 +59,22 @@ pub struct EvalConfig {
 }
 
 impl EvalConfig {
+    /// The invariants every entry point relies on (FR-012): `k ≥ 100` so Recall@100 is
+    /// well-defined, and at least one indexed field. Checked by both `build` and `execute`,
+    /// since the fields are public and the two can be called independently.
+    pub fn validate(&self) -> Result<()> {
+        if self.k < 100 {
+            return Err(Error::Run(format!(
+                "k = {} but Recall@100 needs k ≥ 100",
+                self.k
+            )));
+        }
+        if self.fields.is_empty() {
+            return Err(Error::Run("configuration indexes no fields".into()));
+        }
+        Ok(())
+    }
+
     /// The baseline configuration (spec FR-016): `title` and `text` under `standard_en`, boosts
     /// 2.0 / 1.0, `Match(None, …)`, `k = 100`.
     pub fn lexical_baseline_v1() -> Self {
@@ -98,15 +114,7 @@ impl IdMap {
 
 /// Build the schema and documents for `cfg`; `DocId(i)` is the corpus position.
 pub fn build(dataset: &Dataset, cfg: &EvalConfig) -> Result<(Schema, Vec<Document>, IdMap)> {
-    if cfg.k < 100 {
-        return Err(Error::Run(format!(
-            "k = {} but Recall@100 needs k ≥ 100",
-            cfg.k
-        )));
-    }
-    if cfg.fields.is_empty() {
-        return Err(Error::Run("configuration indexes no fields".into()));
-    }
+    cfg.validate()?;
     let schema = Schema {
         fields: cfg
             .fields
@@ -180,6 +188,7 @@ pub fn execute(
     dataset: &Dataset,
     cfg: &EvalConfig,
 ) -> Result<Run> {
+    cfg.validate()?;
     let texts: BTreeMap<&str, &str> = dataset
         .queries
         .queries

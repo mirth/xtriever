@@ -2,7 +2,7 @@
   "config": "lexical-baseline-v1",
   "dataset": "fiqa",
   "lexical_commit": "94ddbe67f926badf962b93e8bd29d687e300189a",
-  "harness_commit": "f1834489cda1c591129c63b498df98dadb44766d",
+  "harness_commit": "72df20367d3a63086bd78b77344f5d027df6a49a",
   "dataset_hashes": {
     "corpus.jsonl": "ff593e4df9933955dc3af83be0c3fa28ac7465f627e08c2e53593e734d506517",
     "qrels/test.tsv": "6adc2a640dcdd22bb8b3858f89107adef2a7c3db20a63550dfa7a0f71e379e44",
@@ -18,6 +18,7 @@
   "no_relevant_queries": 0,
   "dropped_identical": 0,
   "unjudged_queries": 0,
+  "not_retrieved_queries": 0,
   "mean_ndcg_10": 0.2502383275253813,
   "mean_recall_100": 0.551775445062482,
   "beir_rounded": {

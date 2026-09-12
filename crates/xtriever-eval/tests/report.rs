@@ -33,6 +33,7 @@ fn report_with(dataset: &str, ndcg: f64, recall: f64) -> EvalReport {
         no_relevant_queries: 0,
         dropped_identical: 0,
         unjudged_queries: 0,
+        not_retrieved_queries: 0,
         mean_ndcg_10: ndcg,
         mean_recall_100: recall,
         beir_rounded: Rounded {
@@ -69,6 +70,22 @@ fn score_fills_every_field_in_stable_key_order() {
         r.dropped_identical, 1,
         "the self-id result for q2 is dropped at scoring time"
     );
+    // a judged query the run does not contain is reported as skipped, with the reason (FR-017)
+    let partial = Run {
+        results: run
+            .results
+            .iter()
+            .take(1)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        ..run.clone()
+    };
+    let p = score(&partial, &ds, "abc123").expect("score");
+    assert_eq!((p.scored_queries, p.not_retrieved_queries), (1, 1));
+    assert_eq!(
+        serde_json::to_value(&p).unwrap()["not_retrieved_queries"],
+        1
+    );
     assert_eq!(r.per_query.len(), 2);
     assert!((0.0..=1.0).contains(&r.mean_ndcg_10));
     assert_eq!(r.beir_rounded.ndcg_10, (r.mean_ndcg_10 * 1e5).round() / 1e5);
@@ -91,6 +108,7 @@ fn score_fills_every_field_in_stable_key_order() {
             "no_relevant_queries",
             "dropped_identical",
             "unjudged_queries",
+            "not_retrieved_queries",
             "mean_ndcg_10",
             "mean_recall_100",
             "beir_rounded",
@@ -138,6 +156,18 @@ fn delta_table_and_adr_trigger() {
         "one dataset down is not a majority"
     );
 
+    // FR-022: the majority is of the fixed three-dataset set — one dataset falling is not a
+    // majority even when it is the only dataset compared (the SciFact smoke case)
+    let one_down = delta(&before[..1], &[report_with("scifact", 0.50, 0.90)]);
+    assert!(!one_down.adr_trigger, "one of three is not a majority");
+    let two_down = delta(
+        &before[..2],
+        &[
+            report_with("scifact", 0.50, 0.90),
+            report_with("nfcorpus", 0.20, 0.25),
+        ],
+    );
+    assert!(two_down.adr_trigger, "two of three is");
     // a zero baseline reports rel as None, not NaN/inf
     let zero = [report_with("scifact", 0.0, 0.0)];
     let d = delta(&zero, &[report_with("scifact", 0.1, 0.1)]);

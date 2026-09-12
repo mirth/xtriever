@@ -48,7 +48,7 @@ The example depends on `xtriever-lexical` as a dev-dependency; the library does 
 JSON, pretty-printed, keys in this order: `config`, `dataset`, `lexical_commit`,
 `harness_commit`, `dataset_hashes`, `counts { documents, queries, judged_queries, judgement_pairs }`,
 `scored_queries`, `no_relevant_queries`, `dropped_identical`, `unjudged_queries`,
-`mean_ndcg_10`, `mean_recall_100`, `beir_rounded { ndcg_10, recall_100 }`, `per_query`
+`not_retrieved_queries`, `mean_ndcg_10`, `mean_recall_100`, `beir_rounded { ndcg_10, recall_100 }`, `per_query`
 (sorted by id), `observations` (optional).
 
 ## Baseline location

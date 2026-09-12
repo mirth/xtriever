@@ -88,11 +88,25 @@ fn build_produces_schema_documents_and_id_map() {
 }
 
 #[test]
-fn k_below_100_is_rejected() {
+fn k_below_100_is_rejected_by_build_and_by_execute() {
     let (_dir, _m, ds) = mini();
     let mut cfg = EvalConfig::lexical_baseline_v1();
     cfg.k = 10;
     assert!(build(&ds, &cfg).is_err());
+    // `execute` is public and takes the config independently: it must not silently retrieve ten
+    // documents and let them be reported as Recall@100 (FR-012)
+    let (schema, _docs, ids) = build(&ds, &EvalConfig::lexical_baseline_v1()).unwrap();
+    let stub = Stub {
+        schema,
+        order: vec![0, 1, 2, 3],
+        seen: std::sync::Mutex::new(Vec::new()),
+    };
+    let err = execute(&stub, &ids, &ds, &cfg).expect_err("execute must validate k");
+    assert!(err.to_string().contains("k = 10"), "{err}");
+    assert!(
+        stub.seen.lock().unwrap().is_empty(),
+        "no query may run under an invalid config"
+    );
 }
 
 /// A canned retriever: returns, for any query, the documents in a fixed order.

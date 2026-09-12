@@ -157,6 +157,8 @@ def gen_cases(seed: int) -> list[dict]:
          "the order given is the order scored: d10 inside the nDCG cutoff, d11 just outside; d100 at rank 100 inside recall@100, d101 outside")
     case("identical_ids", {"7": {"7": 1, "d1": 1}}, {"7": ["7", "d1", "d2"]},
          "a result whose id equals the query id is dropped before scoring (BEIR ignore_identical_ids); FiQA has 55 such id pairs")
+    case("identical_ids_repeated", {"7": {"7": 1, "d1": 1}, "8": {"d1": 1}}, {"7": ["7", "d1", "7", "7"], "8": ["d1"]},
+         "BEIR converts a run to a doc->score map first, so a self id repeated three times is popped and counted ONCE")
     case("grade_zero", {"q1": {"d1": 0, "d2": 1}}, {"q1": ["d1", "d2"]},
          "an explicit 0 grade is non-relevant and not in the recall denominator: recall 1.0, ndcg = 1/log2(3)")
 

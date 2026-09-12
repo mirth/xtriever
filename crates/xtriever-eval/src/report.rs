@@ -9,6 +9,9 @@ use crate::error::{Error, Result};
 use crate::metrics::score_queries;
 use crate::run::Run;
 
+/// The constitution's benchmark set has three datasets; a "majority" is at least this many.
+pub const BENCHMARK_MAJORITY: usize = 2;
+
 /// The lexical stage commit every Feature 003 report refers to (ADR-0006 condition 1).
 pub const LEXICAL_COMMIT: &str = "94ddbe67f926badf962b93e8bd29d687e300189a";
 
@@ -55,6 +58,8 @@ pub struct EvalReport {
     pub dropped_identical: u32,
     /// Queries run but not judged (0 by construction).
     pub unjudged_queries: u32,
+    /// Judged queries absent from the run — excluded from the mean (FR-017: "skipped and why").
+    pub not_retrieved_queries: u32,
     /// Full-precision mean nDCG@10.
     pub mean_ndcg_10: f64,
     /// Full-precision mean Recall@100.
@@ -116,6 +121,7 @@ pub fn score(run: &Run, dataset: &Dataset, harness_commit: &str) -> Result<EvalR
         no_relevant_queries: m.no_relevant_queries,
         dropped_identical: m.dropped_identical,
         unjudged_queries: m.unjudged_queries + run.unjudged_queries,
+        not_retrieved_queries: m.not_retrieved_queries,
         mean_ndcg_10: m.mean_ndcg_10,
         mean_recall_100: m.mean_recall_100,
         beir_rounded: Rounded {
@@ -183,13 +189,11 @@ impl Delta {
 /// Compare two report sets, matched by dataset name.
 pub fn delta(before: &[EvalReport], after: &[EvalReport]) -> Delta {
     let mut rows = Vec::new();
-    let mut compared = 0usize;
     let mut fell = 0usize;
     for b in before {
         let Some(a) = after.iter().find(|a| a.dataset == b.dataset) else {
             continue; // present on one side only: skipped, not an error
         };
-        compared += 1;
         if a.mean_ndcg_10 < b.mean_ndcg_10 {
             fell += 1;
         }
@@ -209,10 +213,12 @@ pub fn delta(before: &[EvalReport], after: &[EvalReport]) -> Delta {
             });
         }
     }
-    // "majority": strictly more than half of the datasets compared.
+    // "Majority of benchmark datasets" (constitution II, FR-022) is a majority of the FIXED
+    // three-dataset set — at least two — however many reports were supplied. A SciFact-only
+    // smoke that falls is one of three, not a majority.
     Delta {
         rows,
-        adr_trigger: compared > 0 && fell * 2 > compared,
+        adr_trigger: fell >= BENCHMARK_MAJORITY,
     }
 }
 

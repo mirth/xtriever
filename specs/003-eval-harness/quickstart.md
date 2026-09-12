@@ -76,8 +76,11 @@ FR-020 band: each `mean_ndcg_10` within ±0.10 of 0.665 / 0.325 / 0.236 — a mi
 FiQA observations (FR-018), measured outside the process and copied into the report by hand:
 
 ```bash
-/usr/bin/time -l cargo run --release -p xtriever-eval --example beir -- run --dataset fiqa --config lexical-baseline-v1 --out /tmp/fiqa.json 2>&1 | grep 'maximum resident'
-du -sk target/xt-eval-index/fiqa                                 # index directory the example reports
+# --index-dir keeps the index on disk after the run (the default is a temp dir deleted on exit),
+# so the `du` below measures THIS run's index, not a stale one.
+/usr/bin/time -l cargo run --release -p xtriever-eval --example beir -- run --dataset fiqa --config lexical-baseline-v1 \
+  --out /tmp/fiqa.json --index-dir target/xt-eval-index/fiqa 2>&1 | grep 'maximum resident'
+du -sk target/xt-eval-index/fiqa                                 # bytes = KiB × 1024
 ```
 
 Timing for SC-008: `time` around the SciFact run; record the number.
