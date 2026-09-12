@@ -49,7 +49,11 @@ JSON, pretty-printed, keys in this order: `config`, `dataset`, `lexical_commit`,
 `harness_commit`, `dataset_hashes`, `counts { documents, queries, judged_queries, judgement_pairs }`,
 `scored_queries`, `no_relevant_queries`, `dropped_identical`, `unjudged_queries`,
 `not_retrieved_queries`, `mean_ndcg_10`, `mean_recall_100`, `beir_rounded { ndcg_10, recall_100 }`, `per_query`
-(sorted by id), `observations` (optional).
+(sorted by id), `observations` (optional), `stage` (optional, **Feature 004**: `{ kind,
+embedder_fingerprint, load_path, thread_count, baseline }`, always last). Feature 004 also added
+four optional keys inside `observations` (`embed_corpus_ms`, `search_ms`, `model_bytes_buffered`,
+`model_bytes_mmapped`); a report without them serialises exactly as before, and `delta` refuses
+to pair reports of different configurations (004 FR-021).
 
 ## Baseline location
 

@@ -6,7 +6,7 @@ mod support;
 use std::collections::BTreeMap;
 
 use xtriever_eval::dataset::{Counts, Dataset, Manifest};
-use xtriever_eval::report::{EvalReport, LEXICAL_COMMIT, Rounded, delta, score, smoke};
+use xtriever_eval::report::{EvalReport, LEXICAL_COMMIT, Rounded, StageInfo, delta, score, smoke};
 use xtriever_eval::run::Run;
 
 fn mini() -> (tempfile::TempDir, Manifest, Dataset) {
@@ -42,6 +42,7 @@ fn report_with(dataset: &str, ndcg: f64, recall: f64) -> EvalReport {
         },
         per_query: BTreeMap::new(),
         observations: None,
+        stage: None,
     }
 }
 
@@ -133,7 +134,7 @@ fn delta_table_and_adr_trigger() {
         report_with("nfcorpus", 0.29, 0.25),
         report_with("fiqa", 0.19, 0.52),
     ];
-    let d = delta(&before, &after);
+    let d = delta(&before, &after).unwrap();
     assert_eq!(d.rows.len(), 6);
     let sf = d
         .rows
@@ -152,13 +153,13 @@ fn delta_table_and_adr_trigger() {
         report_with("fiqa", 0.19, 0.52),
     ];
     assert!(
-        !delta(&before, &after_ok).adr_trigger,
+        !delta(&before, &after_ok).unwrap().adr_trigger,
         "one dataset down is not a majority"
     );
 
     // FR-022: the majority is of the fixed three-dataset set — one dataset falling is not a
     // majority even when it is the only dataset compared (the SciFact smoke case)
-    let one_down = delta(&before[..1], &[report_with("scifact", 0.50, 0.90)]);
+    let one_down = delta(&before[..1], &[report_with("scifact", 0.50, 0.90)]).unwrap();
     assert!(!one_down.adr_trigger, "one of three is not a majority");
     let two_down = delta(
         &before[..2],
@@ -166,14 +167,15 @@ fn delta_table_and_adr_trigger() {
             report_with("scifact", 0.50, 0.90),
             report_with("nfcorpus", 0.20, 0.25),
         ],
-    );
+    )
+    .unwrap();
     assert!(two_down.adr_trigger, "two of three is");
     // a zero baseline reports rel as None, not NaN/inf
     let zero = [report_with("scifact", 0.0, 0.0)];
-    let d = delta(&zero, &[report_with("scifact", 0.1, 0.1)]);
+    let d = delta(&zero, &[report_with("scifact", 0.1, 0.1)]).unwrap();
     assert!(d.rows.iter().all(|r| r.rel.is_none()));
     // datasets missing on one side are skipped, not an error
-    assert_eq!(delta(&before, &after[..1]).rows.len(), 2);
+    assert_eq!(delta(&before, &after[..1]).unwrap().rows.len(), 2);
 }
 
 // Scenarios 2 & 3 (FR-024), tolerance 0
@@ -196,5 +198,80 @@ fn smoke_fails_on_any_decrease_and_passes_otherwise() {
             .expect_err("recall decrease fails")
             .metric,
         "recall_100"
+    );
+}
+
+// Feature 004: the report format is extended additively — every committed lexical report
+// round-trips byte-for-byte, `stage` serialises last, and `delta` refuses mixed configurations.
+#[test]
+fn committed_lexical_reports_round_trip_byte_for_byte() {
+    let dir = support::repo_root().join("specs/003-eval-harness/baselines");
+    let mut seen = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "json") {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let report: EvalReport = serde_json::from_str(&text).unwrap();
+            assert!(report.stage.is_none());
+            let again = serde_json::to_string_pretty(&report).unwrap() + "\n";
+            assert_eq!(again, text, "{} changed under round-trip", path.display());
+            seen += 1;
+        }
+    }
+    assert_eq!(seen, 3);
+}
+
+#[test]
+fn stage_is_the_last_key_and_round_trips() {
+    let mut r = report_with("scifact", 0.5, 0.8);
+    r.config = "dense-baseline-v1".into();
+    r.stage = Some(StageInfo {
+        kind: "dense".into(),
+        embedder_fingerprint: "fp".into(),
+        load_path: "buffered".into(),
+        thread_count: 4,
+        baseline: "absolute".into(),
+    });
+    let json = serde_json::to_string_pretty(&r).unwrap();
+    let keys: Vec<&str> = json
+        .lines()
+        .filter(|l| l.starts_with("  \""))
+        .map(|l| l.trim().split('"').nth(1).unwrap())
+        .collect();
+    assert_eq!(keys.last(), Some(&"stage"));
+    assert_eq!(keys[keys.len() - 2], "per_query");
+    let back: EvalReport = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, r);
+}
+
+#[test]
+fn delta_refuses_reports_of_different_configurations() {
+    let lexical = report_with("scifact", 0.6, 0.9);
+    let mut dense = report_with("scifact", 0.5, 0.8);
+    dense.config = "dense-baseline-v1".into();
+    let err = delta(std::slice::from_ref(&lexical), std::slice::from_ref(&dense)).unwrap_err();
+    assert!(
+        err.to_string().contains("different configurations"),
+        "{err}"
+    );
+    assert!(
+        err.to_string().contains("lexical-baseline-v1")
+            && err.to_string().contains("dense-baseline-v1"),
+        "{err}"
+    );
+    let same = delta(std::slice::from_ref(&dense), std::slice::from_ref(&dense)).unwrap();
+    assert!(same.rows.iter().all(|r| r.abs == 0.0));
+}
+
+#[test]
+fn smoke_reports_a_mixed_configuration_before_any_metric_comparison() {
+    let lexical = report_with("scifact", 0.6, 0.9);
+    let mut dense = report_with("scifact", 0.5, 0.8); // lower on both metrics
+    dense.config = "dense-baseline-v1".into();
+    let err = smoke(&lexical, &dense).unwrap_err();
+    assert!(err.metric.starts_with("configuration"), "{err}");
+    assert!(
+        err.to_string().contains("different configurations"),
+        "{err}"
     );
 }
