@@ -32,6 +32,8 @@ Recipe (research D11): passage = `title + " " + text` (title omitted when empty)
 100`, `Metric::Cosine`, buffered load path, `RAYON_NUM_THREADS=4`. Harness at `40f461b` (this
 branch; the merge commit is the baseline commit, as with 002).
 
+> **Baseline commit**: `8d558f28b755131e8c77e7583a0109d6f21056e9`
+
 | dataset | nDCG@10 | Recall@100 | BEIR-rounded | scored | no-relevant | dropped self-ids | `--verify-run` |
 |---|---|---|---|---|---|---|---|
 | SciFact | **0.645082** | 0.925000 | 0.64508 / 0.925 | 300 | 0 | 0 | PASS |
