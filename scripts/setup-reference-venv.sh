@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Create the pinned virtualenv that generates Feature 001's golden fixtures.
+# Create the pinned virtualenv that generates a feature's golden fixtures.
+#
+# Usage: scripts/setup-reference-venv.sh [FEATURE]   (default: 002)
+#   FEATURE selects reference/requirements-<FEATURE>.txt and reference/.venv-<FEATURE>.
+#   requirements-002 is a superset of requirements-001, so .venv-002 runs both generators.
 #
 # Why a pinned interpreter: the system python3 here is 3.14, and torch publishes no wheel for
 # it — so `pip install torch` fails with a message that looks like a broken environment rather
@@ -11,9 +15,15 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+feature="${1:-002}"
 py_version="$(tr -d '[:space:]' < "$repo_root/reference/.python-version")"
-venv="$repo_root/reference/.venv-001"
-req="$repo_root/reference/requirements-001.txt"
+venv="$repo_root/reference/.venv-$feature"
+req="$repo_root/reference/requirements-$feature.txt"
+
+if [ ! -f "$req" ]; then
+    printf 'setup-reference-venv: FAIL — %s does not exist\n' "$req" >&2
+    exit 1
+fi
 
 interpreter="$(command -v "python$py_version" || true)"
 if [ -z "$interpreter" ]; then
@@ -33,4 +43,4 @@ else
 fi
 
 printf 'setup-reference-venv: PASS — %s\n' "$venv"
-printf '  run: %s/bin/python reference/gen_001_fixtures.py --seed 1\n' "$venv"
+printf '  run: %s/bin/python reference/gen_%s_fixtures.py --seed <N>\n' "$venv" "$feature"

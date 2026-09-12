@@ -1,6 +1,6 @@
 # ADR-0005: Stages re-sort score ties into ascending `DocId`
 
-- **Status**: Accepted — 2026-09-11
+- **Status**: Accepted — 2026-09-11; k-boundary amendment of 2026-09-12 **superseded the same day** (see below)
 - **Date**: 2026-09-11
 - **Deciders**: mirth (repository owner), 2026-09-11
 - **Origin**: [research.md](../../specs/001-ios-build-spike/research.md) risk R4, raised by Feature 001
@@ -95,3 +95,58 @@ tie.
 | Weaken the contract to "deterministic, backend-defined" | Cheapest, and it makes the promise nearly useless: a caller could no longer compare two backends' output, and fusion would have to special-case each. It also silently widens Principle VI, which is a constitution amendment wearing a disguise. |
 | Force a single segment forever | What Feature 001 did as a *measurement control*, not a design. It would cap index size and forbid background merges — a severe constraint accepted to avoid a stable sort of 10 elements. |
 | Leave it, since it only shows up on ties | Ties are not rare. BM25 scores collide readily on short documents with equal term frequency and equal quantized field length — Feature 001's first fixture attempt produced a top-10 that was *entirely* tied, which is what surfaced this in the first place. |
+
+---
+
+## Amendment — the k-boundary (accepted 2026-09-12; superseded 2026-09-12)
+
+- **Status of this amendment**: **Superseded** — see "Resolution" below. Accepted 2026-09-12 by mirth (repository owner) and retired the same day, by the same decider, on implementation evidence.
+- **Origin**: Feature 002 clarification Q1 ([spec.md](../../specs/002-lexical-stage/spec.md),
+  Clarifications › Session 2026-09-11; FR-014)
+
+The gap this ADR recorded under *"What this does not cover"* is now decided.
+
+**Decision**: A score tie spanning the `k`-th and `(k+1)`-th positions is resolved by the backend's
+own ordering. Stages **do not over-fetch** to close it. The `DocId` tie-break therefore governs the
+**order** of the returned hits, not their **membership**: given a tie group straddling the boundary,
+the members that appear are whichever the backend selected — stably, since its order is
+deterministic — and those that appear are ordered by ascending `DocId`.
+
+**Rationale**: Over-fetching by a fixed margin is correct only for tie groups smaller than the
+margin and needs a second rule for larger ones; adaptive over-fetching degenerates to reading the
+whole posting list on a `Term` query over a keyword field where every document ties. Accepting the
+boundary costs nothing, is deterministic, and is honest about what the backend decides. Chosen for
+simplicity by the repository owner.
+
+**Contract change**: `LexicalIndex::search`'s doc comment in `xtriever-core` gains the sentence in
+[contracts/lexical-index.md](../../specs/002-lexical-stage/contracts/lexical-index.md) ("Contract
+caveat"). `VectorIndex::search` gains the same sentence, since the reasoning is backend-independent.
+This is documentation only — no signature, type or behaviour changes — and it is the only
+`xtriever-core` edit Feature 002 makes (spec FR-002, FR-014).
+
+**Test obligation**: Feature 002 plants a k-boundary tie in its fixture corpus and asserts the
+returned membership and order exactly, so the accepted behaviour is executable rather than
+described (spec Story 2 scenario 5).
+
+### Resolution — the boundary is broken by `DocId` after all (2026-09-12)
+
+Implementing Feature 002 falsified the amendment's premise that the backend's boundary ordering is
+stable. tantivy orders a searcher's segments by descending `max_doc` with a stable sort over a
+`Vec` collected from a `HashMap` (`src/indexer/segment_updater.rs:406-407`,
+`src/indexer/segment_register.rs:18`); equal-size segments therefore take `HashMap` iteration order,
+which std randomises per process. `DocAddress` is segment-ordinal-major, so which members of a
+boundary tie were returned was random across process restarts — a Principle VI violation the
+acceptance suite caught on its second run (one pass, one failure, same inputs).
+
+**Decision**: `xtriever-lexical` keys the backend's top-k collector (`TopDocs::tweak_score`) on
+`(score, Reverse(DocId))`, read per candidate from the hidden id column. The tie-break then holds
+inside the collector, across segments, at the boundary, with no over-fetch and one fast-field read
+per candidate. As a side effect both the filtered and unfiltered paths share one collection
+strategy, which is what makes their scores bit-identical (the plain `TopDocs` path uses block-WAND
+pruning and sums BM25 clauses in a different order).
+
+**Consequences**: the contract change this amendment authorised is **not needed** — the unqualified
+promise in `xtriever-core` (`LexicalIndex::search`, `VectorIndex::search`) is literally true for the
+lexical stage and the doc comments stay as written. The "what this does not cover" gap in the
+original ADR is closed. `VectorIndex` implementations inherit the same obligation: break ties by
+`DocId` at the boundary too, by whatever mechanism their backend offers.
