@@ -41,7 +41,18 @@ for d in "${datasets[@]}"; do
     zip="$cache/$d.zip"
     if [ ! -f "$zip" ]; then
         printf 'fetch-beir: downloading %s\n' "$url"
-        curl -sSL --fail -o "$zip.part" "$url"
+        # Retries with backoff cover transient connection failures (research R4 — seen on the
+        # first CI run: `curl (7) Failed to connect … after 1594 ms`). A host that stays
+        # unreachable still fails here, loudly and as a *download* failure — never as a hash
+        # failure, and never by falling back to another source (spec FR-007).
+        if ! curl -sSL --fail \
+                --connect-timeout 20 --max-time 600 \
+                --retry 5 --retry-delay 5 --retry-all-errors \
+                -o "$zip.part" "$url"; then
+            rm -f "$zip.part"
+            printf 'fetch-beir: FAIL — could not download %s after 6 attempts (network/source, not a hash problem)\n' "$url" >&2
+            exit 1
+        fi
         mv "$zip.part" "$zip"
     else
         printf 'fetch-beir: %s already cached\n' "$d.zip"

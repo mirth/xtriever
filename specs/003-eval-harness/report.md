@@ -100,9 +100,18 @@ the manifest and baselines), `actions/cache` keyed by the manifest hash, `script
 scifact`, then `beir smoke` against the committed SciFact baseline. Blocking. FR-023's escape hatch
 is quoted in the workflow so a demotion has to edit it in place.
 
-**T042 (throwaway-branch verification) is pending the first push** — it needs GitHub. Expected:
-`eval-smoke` runs and passes on this branch (it touches `crates/xtriever-eval/`), the second push
-hits the cache, and a docs-only commit skips it. Record the run URLs here once observed.
+**T042 — first push (2026-09-12)**: the path filter worked (`eval-smoke` ran on a branch touching
+`crates/xtriever-eval/`), the cache missed as expected on a first run, and the job **failed at the
+download**: `curl: (7) Failed to connect to public.ukp.informatik.tu-darmstadt.de port 443 after
+1594 ms`. The host answered in 75 ms from the development machine at the same time, so the runner
+either hit a transient outage or the university's firewall does not admit GitHub's egress ranges.
+Response (research R4): `fetch-beir.sh` now retries six times with backoff and a 20 s connect
+timeout and reports an unreachable source as a *download* failure, never as a hash failure. The
+Hugging Face copy of BEIR was checked as a mirror and rejected: its corpus and queries are Parquet
+conversions, not the pinned bytes (only `qrels/test.tsv` is byte-identical). If the host proves
+permanently unreachable from GitHub runners, FR-023's escape hatch applies — a commit demoting the
+job to non-blocking for one feature cycle, stating this reason and the re-blocking point — and the
+smoke keeps running locally under Rule 5. Second-push outcome: *(to be recorded)*.
 
 ## Success criteria → evidence
 

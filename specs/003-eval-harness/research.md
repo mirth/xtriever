@@ -208,6 +208,6 @@ graph excludes dev-deps).
 | R1 | The BEIR mirror goes away or its archives change | hashes pinned; a change is a loud failure and a new pin + new baseline, never silent |
 | R2 | `lexical-baseline-v1` falls outside the ±0.10 band on some dataset | a finding to investigate (analyzer / k1,b / field handling); the band is not widened (Rule 6) |
 | R3 | FiQA in one `add` batch stresses the 15 MB writer arena | the backend flushes segments when the arena fills; correctness is unaffected, only segment count — and the tie-break no longer depends on layout (002 F-001) |
-| R4 | CI download flakiness | cache keyed by hash; FR-023's one-cycle escape hatch |
+| R4 | CI download flakiness | cache keyed by hash; `curl --retry 5` with backoff and a bounded connect timeout (added after the first CI run failed with `curl (7)`); FR-023's one-cycle escape hatch if the host is unreachable from GitHub runners outright. No byte-identical mirror exists: Hugging Face's `BeIR/scifact` holds Parquet conversions |
 | R5 | `pytrec_eval` wheel availability on 3.12 | measured today: `pytrec_eval 0.5` installed from source with `numpy 2.5.3` on Python 3.12 without a compiler error |
 | R6 | SciFact end-to-end exceeds SC-008's one minute | measured at implementation; if slower it is recorded, not failed |
