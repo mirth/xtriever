@@ -40,6 +40,13 @@ jobs:
   # to the smoke step below WITH that statement in the same commit — never silently.
   eval-smoke:
     runs-on: ubuntu-latest
+    # dorny/paths-filter lists a PR's changed files through the GitHub API on pull_request events
+    # (on push it uses `git diff` and needs nothing). With the repository's restricted default
+    # token this fails with "Resource not accessible by integration" unless the job is granted
+    # pull-requests: read. contents: read is what checkout and the cache need.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3

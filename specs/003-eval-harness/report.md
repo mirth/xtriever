@@ -111,7 +111,13 @@ Hugging Face copy of BEIR was checked as a mirror and rejected: its corpus and q
 conversions, not the pinned bytes (only `qrels/test.tsv` is byte-identical). If the host proves
 permanently unreachable from GitHub runners, FR-023's escape hatch applies — a commit demoting the
 job to non-blocking for one feature cycle, stating this reason and the re-blocking point — and the
-smoke keeps running locally under Rule 5. Second-push outcome: *(to be recorded)*.
+smoke keeps running locally under Rule 5. **Second push (PR #3, `pull_request` event)**: the download step was never reached — `dorny/paths-filter`
+failed with `Resource not accessible by integration`: on pull-request events it lists changed
+files through the GitHub API, and the repository's restricted default token lacked
+`pull-requests: read` (the first run was a `push` event, where the action uses `git diff` and
+needs no API). Fixed by granting the job `permissions: { contents: read, pull-requests: read }`.
+Third-push outcome: *(to be recorded)* — this is the run that will actually exercise the download
+retries.
 
 ## Success criteria → evidence
 
