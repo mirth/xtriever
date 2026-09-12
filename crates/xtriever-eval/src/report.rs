@@ -281,10 +281,22 @@ pub struct SmokeFailure {
 }
 
 /// FR-024 with tolerance 0: fail if either metric is lower than the baseline.
+///
+/// The configuration check runs **first** (through [`delta`]), so a mixed-configuration pair is
+/// always reported as such and never as an ordinary regression (Feature 004 FR-021).
 pub fn smoke(
     baseline: &EvalReport,
     current: &EvalReport,
 ) -> std::result::Result<Delta, SmokeFailure> {
+    let d = delta(
+        std::slice::from_ref(baseline),
+        std::slice::from_ref(current),
+    )
+    .map_err(|e| SmokeFailure {
+        metric: format!("configuration ({e})"),
+        baseline: baseline.mean_ndcg_10,
+        current: current.mean_ndcg_10,
+    })?;
     for (metric, b, c) in [
         ("ndcg_10", baseline.mean_ndcg_10, current.mean_ndcg_10),
         (
@@ -301,14 +313,5 @@ pub fn smoke(
             });
         }
     }
-    // Configurations are checked by `delta`; a mismatch here is a failure with both names.
-    delta(
-        std::slice::from_ref(baseline),
-        std::slice::from_ref(current),
-    )
-    .map_err(|e| SmokeFailure {
-        metric: format!("configuration ({e})"),
-        baseline: baseline.mean_ndcg_10,
-        current: current.mean_ndcg_10,
-    })
+    Ok(d)
 }

@@ -29,7 +29,8 @@
 //!   read the weights and the index through a read-only memory map. This is the crate's only
 //!   hand-written `unsafe` block, in `bytes::map_readonly`, admitted by constitution v1.2.0 and
 //!   ADR-0007 and tested bit-for-bit against the buffered path. The default feature set compiles
-//!   no `unsafe` at all.
+//!   no `unsafe` at all. Mapping carries the contract every mmap-backed store has: the caller
+//!   must ensure no other process modifies or truncates the mapped file while the handle lives.
 
 mod bytes;
 mod embedder;
@@ -46,6 +47,12 @@ pub enum LoadPath {
     /// `std::fs::read` into a heap buffer — the default, no `unsafe`.
     Buffered,
     /// Read-only memory map (feature `mmap`, ADR-0007).
+    ///
+    /// **Precondition the caller owns**: the mapped file (the weights, or an index's
+    /// `index.bin`) must not be modified or truncated by any other process while the mapping
+    /// lives. This crate never writes either file in place, but no code can defend a mapping
+    /// against an external writer — that is the inherent contract of memory mapping and the
+    /// reason this path is opt-in rather than the default.
     #[cfg(feature = "mmap")]
     Mmap,
 }

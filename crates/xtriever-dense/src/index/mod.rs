@@ -77,6 +77,12 @@ impl FlatIndex {
 
     /// Open, mapping the current generation read-only (feature `mmap`, ADR-0007).
     ///
+    /// **Precondition the caller owns**: no other process may modify or truncate
+    /// `dir/index.bin` while this handle lives. This crate itself never does — `commit` only ever
+    /// replaces the file by `rename` — but a mapping cannot defend against external writers,
+    /// which is why this constructor exists only behind the opt-in feature. See
+    /// [`crate::LoadPath::Mmap`].
+    ///
     /// # Errors
     ///
     /// As [`open`](Self::open).
@@ -179,9 +185,17 @@ impl FlatIndex {
                 "vector for {id} has a non-finite component at index {i}"
             )));
         }
-        if self.metric() == Metric::Cosine && search::norm_f64(v.iter().copied()) == 0.0 {
+        let norm = search::norm_f64(v.iter().copied());
+        if self.metric() == Metric::Cosine && norm == 0.0 {
             return Err(schema_err(format!(
                 "vector for {id} has zero norm; cosine similarity is undefined"
+            )));
+        }
+        // The norm is persisted as f32; a finite vector such as [f32::MAX, f32::MAX] has a norm
+        // that only fits f64, and storing it as +inf would silently score its own cosine as 0.
+        if !(norm as f32).is_finite() {
+            return Err(schema_err(format!(
+                "vector for {id} has norm {norm:e}, which does not fit a finite f32"
             )));
         }
         Ok(())
@@ -218,7 +232,8 @@ impl VectorIndex for FlatIndex {
         if self.pending.is_empty() {
             return Ok(());
         }
-        // Merge committed ⊕ pending in ascending id order into a new generation.
+        // Merge committed ⊕ pending in ascending id order into a new generation. `pending` is
+        // borrowed, not taken, so a failed commit keeps the staged changes (see the end).
         let bytes = self.committed.bytes.as_slice();
         let layout = self.committed.layout;
         let dim = layout.dim;
@@ -233,25 +248,26 @@ impl VectorIndex for FlatIndex {
             ids.push(id);
             norms.push(norm);
         };
-        let mut pending = std::mem::take(&mut self.pending).into_iter().peekable();
+        let mut pending = self.pending.iter().peekable();
         for i in 0..layout.count {
             let id = layout.id_at(bytes, i);
             // Emit every pending id below this committed id (pure inserts).
-            while let Some((pid, _)) = pending.peek() {
+            while let Some((pid, change)) = pending.peek() {
                 if pid.0 >= id {
                     break;
                 }
-                let (pid, change) = pending.next().unwrap_or((DocId(0), None));
                 if let Some(v) = change {
                     push(pid.0, &mut v.iter().copied(), None);
                 }
+                pending.next();
             }
             match pending.peek() {
-                Some((pid, _)) if pid.0 == id => {
+                Some((pid, change)) if pid.0 == id => {
                     // Replaced or deleted: the pending entry wins.
-                    if let Some((_, Some(v))) = pending.next() {
+                    if let Some(v) = change {
                         push(id, &mut v.iter().copied(), None);
                     }
+                    pending.next();
                 }
                 _ => push(
                     id,
@@ -272,11 +288,15 @@ impl VectorIndex for FlatIndex {
         write_generation(&self.dir, &header, &ids, &norms, &rows)?;
         self.committed = read_generation(&self.dir, self.load_path)?;
         self.header = header;
+        // Only now: a failure above leaves every staged change in place for a retry.
+        self.pending.clear();
         Ok(())
     }
 
     fn search(&self, query: &[f32], allowed: Option<&DocSet>, k: usize) -> Result<Vec<Hit>> {
         let metric = self.metric();
+        // Validation precedes the no-work shortcut on purpose: a malformed query is a caller
+        // error whatever `k` is, and hiding it behind `k == 0` would let it surface later.
         let q = search::validate_query(query, self.header.dim, metric)?;
         if k == 0 || allowed.is_some_and(DocSet::is_empty) {
             return Ok(Vec::new());

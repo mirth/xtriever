@@ -166,3 +166,22 @@ counts holds (D3 confirmed), so the count is purely a throughput knob; 4 is the 
 - Query latency is dominated by query embedding (~114 ms), not the scan; the pipeline feature
   should count that as the dense stage's cost.
 - `search.json` is 2.2 MB of committed goldens (120 × 384 floats plus the small sets).
+
+## Review round 1 (GitHub Copilot, 2026-09-12) — 10 comments, all acted on
+
+| # | finding | action |
+|---|---|---|
+| 1 | The `// SAFETY:` comment claimed the no-modification invariant was "a property of this crate's own code", but another process can still truncate or rewrite a mapped file; the safe `open_mapped*` / `load(Mmap)` APIs cannot enforce it | Reworded honestly: the crate guarantees it never writes a mapped file in place; the external-writer precondition is stated on `LoadPath::Mmap`, `open_mapped`, `open_mapped_for`, the crate docs, the contract and ADR-0007 condition 2 — the same contract tantivy's `MmapDirectory` offers behind a safe API, and the reason the path is opt-in. Making the constructors `unsafe fn` would push `unsafe` into every consumer, which Principle VII forbids; **no code can enforce this invariant, so it is documented rather than pretended** |
+| 2 | `decode` computed section offsets with unchecked `+`/`×` from the untrusted header — overflow instead of `Corrupt` | `checked_mul` / `checked_add` for every offset; test `absurd_count_or_dim_is_corrupt_not_a_panic` (`count = u64::MAX`, `dim = usize::MAX`, `hdr_len = u64::MAX`) |
+| 3 | A finite vector with norm > `f32::MAX` (e.g. `[f32::MAX, f32::MAX]`) stored `+inf` and scored its own cosine as 0 | `add` rejects a norm that is not a finite `f32` (`Schema`); test `a_norm_that_does_not_fit_f32_is_rejected_on_add` (and a 1e19-norm vector still scores 1.0 against itself) |
+| 4 | `commit` took `pending` out of `self` before any fallible I/O, so a failed commit silently dropped every staged change | `pending` is borrowed during the merge and cleared only after the new generation is written **and** reopened; test `a_failed_commit_keeps_the_staged_changes_for_a_retry` (directory replaced by a file → `Io`; retry commits exactly the staged changes) |
+| 5 | `16 + hdr_len` could overflow on a corrupt header | `16usize.checked_add(hdr_len)`; covered by the test in #2 |
+| 6 | `search` validated the query before the `k == 0` / empty-allowed shortcut | **Kept, made explicit**: a malformed query is a caller error whatever `k` is, and hiding it behind `k == 0` would let it surface later; the contract and data-model now state the order, and `a_malformed_query_is_an_error_even_when_no_work_would_be_done` pins it |
+| 7 | `smoke` ran the metric-decrease loop before the configuration check, so a mixed-configuration pair that also regressed was reported as an ordinary regression | `smoke` calls `delta` (which validates configurations) **first**; test `smoke_reports_a_mixed_configuration_before_any_metric_comparison` |
+| 8 | data-model's in-memory `Generation` (typed `ids`/`norms`/`Rows` columns) no longer matched the implementation (`Bytes` + `Layout`, decoded on access) | data-model corrected to the actual representation |
+| 9 | data-model still said `tie_margin: 1e-5`; the fixture and F-004 say 1e-6 | corrected (and research D7 now records the change with its reason) |
+| 10 | quickstart's wasm32 expectation said `errno`; the run fails first at `getrandom` via candle now | corrected |
+
+After the round: `xtriever-dense` 36 / 36 offline (+ 41 / 41 under `mmap`), `xtriever-eval`
+38 / 38; clippy clean on both feature sets; the one `unsafe {}` and its single item-scoped allow
+unchanged.

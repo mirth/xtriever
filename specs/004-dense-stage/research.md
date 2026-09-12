@@ -192,7 +192,8 @@ them. Sorting 100k pairs is milliseconds; a heap is an optimisation with no meas
 **Oracle** (FR-018): `reference/gen_004_fixtures.py` scores in `float64` from the same `f32`
 values (serialised as the shortest decimal of the `float32`, which parses back to the identical
 `f32`), orders by `(−score, id)`, and **refuses to emit** a case where two consecutive distinct
-scores differ by less than `1e-5` — so every tie in the goldens is a designed exact tie
+scores differ by less than `1e-6` (> 8 f32 ulps at |score| ≤ 1; set from 1e-5 after 50 seeds
+failed on the 384-d set — report F-004) — so every tie in the goldens is a designed exact tie
 (duplicated vectors, including at the `k`-th rank) and every non-tie is unambiguous after `f32`
 rounding. Vector sets: `dim = 8` (readable) and `dim = 384` (real), 50–500 vectors, three
 metrics, `k ∈ {0, 1, 5, 10, n, n + 5}`, `allowed` ∈ {none, empty, subset, subset with unseen ids},

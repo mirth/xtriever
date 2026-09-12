@@ -134,7 +134,10 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<(Header, Layout)> {
             .map_err(|_| corrupt("index.bin header length is unreadable"))?,
     ))
     .map_err(|_| corrupt("index.bin header length does not fit this platform"))?;
-    let Some(json) = bytes.get(16..16 + hdr_len) else {
+    let Some(json) = 16usize
+        .checked_add(hdr_len)
+        .and_then(|end| bytes.get(16..end))
+    else {
         return Err(corrupt(format!(
             "index.bin header length {hdr_len} exceeds the file ({} bytes)",
             bytes.len()
@@ -157,10 +160,23 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<(Header, Layout)> {
     if header.dim == 0 {
         return Err(corrupt("index.bin dim is 0"));
     }
-    let ids_at = 16 + hdr_len;
-    let norms_at = ids_at + count * 4;
-    let vectors_at = norms_at + count * 4;
-    let expected_len = vectors_at + count * header.dim * 4;
+    // Every offset comes from the untrusted header: checked arithmetic, so an absurd `count` or
+    // `dim` is `Corrupt`, never an overflow.
+    let too_large = || {
+        corrupt(format!(
+            "index.bin count {count} × dim {} does not fit this platform",
+            header.dim
+        ))
+    };
+    let column = count.checked_mul(4).ok_or_else(too_large)?;
+    let ids_at = 16 + hdr_len; // bounded by `bytes.len()` above
+    let norms_at = ids_at.checked_add(column).ok_or_else(too_large)?;
+    let vectors_at = norms_at.checked_add(column).ok_or_else(too_large)?;
+    let rows = count
+        .checked_mul(header.dim)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or_else(too_large)?;
+    let expected_len = vectors_at.checked_add(rows).ok_or_else(too_large)?;
     if bytes.len() != expected_len {
         return Err(corrupt(format!(
             "index.bin is {} bytes, expected {expected_len} for count {count} × dim {}",
@@ -212,6 +228,35 @@ mod tests {
             serde_json::to_string(&header).unwrap(),
             "{\"format_version\":1,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"count\":2}"
         );
+    }
+
+    #[test]
+    fn absurd_count_or_dim_is_corrupt_not_a_panic() {
+        for (count, dim) in [
+            (u64::MAX, 1usize),
+            (1 << 40, usize::MAX),
+            (usize::MAX as u64, 4),
+        ] {
+            let header = Header {
+                format_version: FORMAT_VERSION,
+                dim,
+                metric: MetricName::Dot,
+                fingerprint: String::new(),
+                count,
+            };
+            let bytes = encode(&header, &[], &[], &[]).unwrap();
+            assert!(
+                matches!(decode(&bytes), Err(xtriever_core::Error::Corrupt(_))),
+                "{count} × {dim}"
+            );
+        }
+        // A header length past the end of the file, including one that would overflow `16 + len`.
+        let mut bytes = b"XTDENSE1".to_vec();
+        bytes.extend_from_slice(&u64::MAX.to_le_bytes());
+        assert!(matches!(
+            decode(&bytes),
+            Err(xtriever_core::Error::Corrupt(_))
+        ));
     }
 
     #[test]

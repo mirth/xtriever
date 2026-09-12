@@ -80,7 +80,7 @@ generator's own hash (002/003 pattern; `tests/fixtures_valid.rs`).
 |---|---|---|
 | `dir` | `PathBuf` | holds `index.bin` |
 | `header` | `Header { format_version: 1, dim, metric, fingerprint, count }` | |
-| `committed` | `Generation { ids: Vec<u32>, norms: Vec<f32>, rows: Rows }` | `Rows::Owned(Vec<f32>)` or, under `mmap`, `Rows::Mapped { map: Mmap, offset: usize }` |
+| `committed` | `Generation { bytes: Bytes, layout: Layout }` | `Bytes::Owned(Vec<u8>)` (the whole file, read once) or, under `mmap`, `Bytes::Mapped(Mmap)`; `Layout { count, dim, ids_at, norms_at, vectors_at }` is the decoded section table. Both paths decode ids, norms and rows **on access** with `from_le_bytes`; nothing is copied into typed columns (implementation note, corrected after review) |
 | `pending` | `BTreeMap<DocId, Option<Vec<f32>>>` | `None` = delete; invisible until `commit` |
 
 `impl VectorIndex`: `dim`, `metric`, `fingerprint` from the header; `add`, `delete`, `commit`,
@@ -123,9 +123,10 @@ generation current at *its* open; a handle never observes another handle's commi
 | `add` | `vector.len() == dim` | `DimensionMismatch { expected, actual }` |
 | `add` | every component finite | `Schema` |
 | `add` | norm > 0 when `metric == Cosine` | `Schema` |
+| `add` | norm representable as a finite `f32` (it is persisted as one) | `Schema` |
 | `search` | `query.len() == dim` | `DimensionMismatch` |
 | `search` | every component finite; norm > 0 under `Cosine` | `InvalidQuery` |
-| `search` | `k == 0` or empty `allowed` | `Ok(vec![])` |
+| `search` | `k == 0` or empty `allowed` (after the query checks above) | `Ok(vec![])` |
 | `open` | magic / version / size / order | `Corrupt` |
 | `open_for` | header fingerprint == embedder fingerprint | `FingerprintMismatch { index, current }` |
 
@@ -137,7 +138,7 @@ generation current at *its* open; a handle never observes another handle's commi
 ## Search Goldens (`reference/fixtures/004/search.json`, `mutations.json`)
 
 ```
-search.json: { "schema_version": 1, "score_abs_tol": 1e-6, "tie_margin": 1e-5,
+search.json: { "schema_version": 1, "score_abs_tol": 1e-6, "tie_margin": 1e-6,
   "sets": [ { "id": "dim8_ties", "dim": 8, "metric": "cosine",
               "rows": [ { "id": 0, "vector": [..] }, … ],          // ids ascending, may contain duplicate vectors
               "queries": [ { "id": "q0", "vector": [..],

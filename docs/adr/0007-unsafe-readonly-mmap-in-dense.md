@@ -66,8 +66,12 @@ constructor at `candle-nn-0.9.2/src/var_builder.rs:658`) and the vector index
    mapped file is not modified or truncated for the lifetime of the map. For the weights that
    holds because they are a read-only, hash-verified resource; for the index because the writer
    **never modifies `index.bin` in place** — it writes `index.bin.tmp` and `rename`s, so a mapped
-   inode stays intact (research D8). Both are properties of this crate's own code, not of the
-   caller.
+   inode stays intact (research D8). Those are the parts this crate's own code guarantees. What
+   no code can guarantee — that no *other* process modifies or truncates the file while the map
+   lives — is stated as the caller's precondition on `LoadPath::Mmap` and every `open_mapped*`
+   constructor, exactly as tantivy's `MmapDirectory` (already admitted by Principle I) does
+   behind its safe API. That inherent limit is why the path is opt-in rather than the default
+   (review round 1, comment 1).
 3. **Tested against the safe path, bit-for-bit.** `tests/load_paths.rs` (buffered vs mapped
    embeddings over the golden set) and the index suite run twice (`open` vs `open_mapped`) must
    agree to the bit. Disagreement is a defect in the mapped path and is fixed or the path is

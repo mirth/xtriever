@@ -262,3 +262,16 @@ fn delta_refuses_reports_of_different_configurations() {
     let same = delta(std::slice::from_ref(&dense), std::slice::from_ref(&dense)).unwrap();
     assert!(same.rows.iter().all(|r| r.abs == 0.0));
 }
+
+#[test]
+fn smoke_reports_a_mixed_configuration_before_any_metric_comparison() {
+    let lexical = report_with("scifact", 0.6, 0.9);
+    let mut dense = report_with("scifact", 0.5, 0.8); // lower on both metrics
+    dense.config = "dense-baseline-v1".into();
+    let err = smoke(&lexical, &dense).unwrap_err();
+    assert!(err.metric.starts_with("configuration"), "{err}");
+    assert!(
+        err.to_string().contains("different configurations"),
+        "{err}"
+    );
+}

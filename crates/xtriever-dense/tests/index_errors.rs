@@ -248,3 +248,68 @@ fn k_and_allowed_edge_cases() {
     assert_eq!(hits[1].id, DocId(2));
     assert_eq!(hits[0].score.to_bits(), hits[1].score.to_bits());
 }
+
+// Review round 1 (Copilot) regressions.
+
+#[test]
+fn a_norm_that_does_not_fit_f32_is_rejected_on_add() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = small(tmp.path());
+    // Finite components, norm ≈ 2.4e38 > f32::MAX: storing it as +inf would score its own
+    // cosine as 0 instead of 1.
+    let huge = [f32::MAX, f32::MAX, 0.0];
+    assert!(matches!(
+        index.add(DocId(9), &huge).unwrap_err(),
+        Error::Schema(_)
+    ));
+    index.commit().unwrap();
+    assert_eq!(index.len(), 2);
+    // A large-but-representable norm is fine and scores 1.0 against itself.
+    let big = [1.0e19, 1.0e19, 0.0];
+    index.add(DocId(9), &big).unwrap();
+    index.commit().unwrap();
+    let hits = index.search(&big, None, 1).unwrap();
+    assert_eq!(hits[0].id, DocId(9));
+    assert!((hits[0].score - 1.0).abs() <= 1e-6, "{}", hits[0].score);
+}
+
+#[test]
+fn a_failed_commit_keeps_the_staged_changes_for_a_retry() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = small(tmp.path());
+    index.add(DocId(3), &[0.0, 0.0, 1.0]).unwrap();
+    index.delete(&[DocId(1)]).unwrap();
+    // Make the commit fail: the directory is replaced by a file, so `index.bin.tmp` cannot be
+    // created. Nothing staged may be lost.
+    let dir = tmp.path().to_path_buf();
+    let stash = tmp.path().with_extension("moved");
+    std::fs::rename(&dir, &stash).unwrap();
+    std::fs::write(&dir, b"not a directory").unwrap();
+    assert!(matches!(index.commit().unwrap_err(), Error::Io(_)));
+    std::fs::remove_file(&dir).unwrap();
+    std::fs::rename(&stash, &dir).unwrap();
+    // Retry succeeds with exactly the staged changes applied.
+    index.commit().unwrap();
+    assert_eq!(index.len(), 2);
+    let hits = index.search(&[0.0, 0.0, 1.0], None, 5).unwrap();
+    assert_eq!(hits[0].id, DocId(3));
+    assert!(hits.iter().all(|h| h.id != DocId(1)));
+}
+
+#[test]
+fn a_malformed_query_is_an_error_even_when_no_work_would_be_done() {
+    // Validation precedes the `k == 0` / empty-allowed shortcut (contract): a caller error is
+    // reported regardless of how much work the call would do.
+    let tmp = tempfile::tempdir().unwrap();
+    let index = small(tmp.path());
+    assert!(matches!(
+        index.search(&[1.0, 0.0], None, 0).unwrap_err(),
+        Error::DimensionMismatch { .. }
+    ));
+    assert!(matches!(
+        index
+            .search(&[f32::NAN, 0.0, 0.0], Some(&support::doc_set(&[])), 5)
+            .unwrap_err(),
+        Error::InvalidQuery(_)
+    ));
+}

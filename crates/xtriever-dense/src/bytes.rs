@@ -44,16 +44,21 @@ pub(crate) fn read(path: &Path, load_path: LoadPath) -> Result<Bytes> {
 ///
 /// `memmap2::MmapOptions::map` is `unsafe` because the borrow checker cannot see external
 /// modification of the underlying file: if another process truncated or rewrote it, the mapped
-/// slice would alias changing or unmapped memory.
+/// slice would alias changing or unmapped memory. No code in any process can *enforce* that
+/// precondition on a shared filesystem — which is why the mapped paths are opt-in (`mmap`) and
+/// their public constructors state it as the caller's obligation, the same contract every
+/// mmap-backed store (tantivy's `MmapDirectory` included) offers behind a safe API.
 #[cfg(feature = "mmap")]
 #[allow(unsafe_code)]
 pub(crate) fn map_readonly(file: &std::fs::File) -> std::io::Result<memmap2::Mmap> {
-    // SAFETY: the mapped file is never modified or truncated for the lifetime of the map
-    // (ADR-0007 condition 2). Two files ever reach this function: the pinned model weights,
-    // which are a read-only, hash-verified resource (`model::verify_files` runs first), and the
-    // vector index's `index.bin`, which this crate only ever *replaces* — `FlatIndex::commit`
-    // writes `index.bin.tmp` in full and `rename`s it over the old name, so an inode that has been
-    // mapped keeps its bytes until the last reference is dropped and is never written in place.
-    // Both invariants are properties of this crate's own code, not of the caller.
+    // SAFETY (ADR-0007 condition 2). Requirement: the mapped file is not modified or truncated
+    // for the lifetime of the map. What this crate guarantees: it never writes either file in
+    // place — the weights are opened read-only after `model::verify_files`, and `index.bin` is
+    // only ever *replaced* by `FlatIndex::commit` (`index.bin.tmp` written in full, then
+    // `rename`), so an inode that has been mapped keeps its bytes until the last reference is
+    // dropped. What this crate cannot guarantee and documents as the caller's precondition on
+    // `LoadPath::Mmap`, `FlatIndex::open_mapped` and `FlatIndex::open_mapped_for`: that no
+    // *other* process modifies or truncates the file meanwhile. The handle is read-only, so
+    // nothing through it can write.
     unsafe { memmap2::MmapOptions::new().map(file) }
 }

@@ -147,7 +147,7 @@ cargo check --workspace --target aarch64-apple-ios
 cargo check --workspace --target aarch64-apple-ios-sim
 cargo check --workspace --target aarch64-linux-android
 cargo check -p xtriever-dense --features mmap --target aarch64-apple-ios
-cargo check --workspace --target wasm32-unknown-unknown   # best-effort; still fails at errno (tracked)
+cargo check --workspace --target wasm32-unknown-unknown   # best-effort; fails at getrandom via candle (was errno via tantivy) — tracked
 ./scripts/check-no-stubs.sh
 # containment: exactly one hand-written unsafe block, in bytes.rs, only under the feature
 grep -rn 'unsafe' crates/xtriever-dense/src/ | grep -v '^.*//' ; grep -c 'unsafe {' crates/xtriever-dense/src/bytes.rs   # expect 1

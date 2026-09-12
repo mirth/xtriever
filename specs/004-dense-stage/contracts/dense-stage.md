@@ -96,10 +96,10 @@ within the golden tolerance, not bit-identical (research D3).
 | method | behaviour | errors |
 |---|---|---|
 | `dim()` / `metric()` / `fingerprint()` | from the header | — |
-| `add(id, v)` | validate width, finiteness, (Cosine) non-zero norm; stage `Some(v)` under `id`, replacing any pending entry | `DimensionMismatch`, `Schema` |
+| `add(id, v)` | validate width, finiteness, (Cosine) non-zero norm, norm representable as a finite `f32`; stage `Some(v)` under `id`, replacing any pending entry | `DimensionMismatch`, `Schema` |
 | `delete(ids)` | stage `None` per id; unknown ids are a no-op | — |
-| `commit()` | merge committed ⊕ pending in ascending id order into a new `index.bin` via `.tmp` + `rename`; reload; clear pending. No-op if nothing pending | `Io`, `Corrupt` |
-| `search(q, allowed, k)` | validate `q`; `k == 0` or empty `allowed` ⇒ `Ok(vec![])`; score every live row (∩ `allowed`) in `f64`, round to `f32`; sort by `(score DESC, id ASC)`; truncate to `k` | `DimensionMismatch`, `InvalidQuery` |
+| `commit()` | merge committed ⊕ pending in ascending id order into a new `index.bin` via `.tmp` + `rename`; reload; **then** clear pending — a failed commit keeps every staged change for a retry. No-op if nothing pending | `Io`, `Corrupt` |
+| `search(q, allowed, k)` | validate `q` **first** (a malformed query is an error even when `k == 0`); then `k == 0` or empty `allowed` ⇒ `Ok(vec![])`; score every live row (∩ `allowed`) in `f64`, round to `f32`; sort by `(score DESC, id ASC)`; truncate to `k` | `DimensionMismatch`, `InvalidQuery` |
 | `len()` | committed row count | — |
 
 **The tie-break** is the implementation's, as ADR-0005 requires of `VectorIndex` implementations,
@@ -122,7 +122,7 @@ and holds at the `k`-th rank because the sort is total over `(score, id)` (FR-01
 | feature | default | adds | effect |
 |---|---|---|---|
 | (none) | yes | — | buffered loading for weights and index; zero `unsafe` compiled |
-| `mmap` | no | `memmap2` | `LoadPath::Mmap`, `FlatIndex::open_mapped*`; compiles the one `unsafe` block in `bytes::map_readonly` (ADR-0007) |
+| `mmap` | no | `memmap2` | `LoadPath::Mmap`, `FlatIndex::open_mapped*`; compiles the one `unsafe` block in `bytes::map_readonly` (ADR-0007). **Caller precondition**: no other process modifies or truncates a mapped file while the handle lives — the inherent contract of memory mapping, stated on every mapped constructor; this crate never writes a mapped file in place |
 
 ## Harness extension (`xtriever-eval`, additive)
 
