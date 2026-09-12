@@ -65,13 +65,15 @@ dense.len()`, else `Corrupt` naming all four.
 ## IdMap (`ids.json`, format version 1)
 
 ```json
-{ "format_version": 1, "external": ["d1", null, "d3"] }
+{ "format_version": 1, "external": ["d1", null, "d3"],
+  "chunks": { "2": { "parent": "src-1", "ordinal": 0, "byte_range": [0, 512] } } }
 ```
 
 | rule | error |
 |---|---|
 | external id non-empty | `Schema("external id must not be empty")` |
 | position = internal `DocId`; `null` = deleted; ids never reused | — |
+| `chunks`: optional, keyed by internal id as a string, present only for chunked documents; the pipeline keeps provenance itself so hits carry it without a stage lookup (FR-007) | — |
 | `live()` = non-null count | — |
 | reverse map `HashMap<String, u32>` rebuilt at open | — |
 
