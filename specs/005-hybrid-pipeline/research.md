@@ -57,9 +57,17 @@ ahead of dense* or *both stages ahead of the id map/descriptor*.
 **Open-time check**: `descriptor.live_docs`, the id map's live count, `lexical.stats().num_docs`
 (`xtriever-lexical/src/stats.rs:82`, live documents) and `dense.len()` must all agree; a
 disagreement is `Error::Corrupt` naming all four numbers. This is cheap (one `stats()` call, one
-`len()`), detects every partial commit the order above can produce, and needs no journal. It
-does not *repair* — repair is a later feature with a measured need; FR-005 asks only that a
-half-committed generation is never served silently.
+`len()`) and needs no journal. It does not *repair* — repair is a later feature with a measured
+need; FR-005 asks only that a half-committed generation is never served silently.
+
+> **Amended after review round 1 (#1)**: the count check alone cannot see a *same-cardinality*
+> partial commit — a replace (or a delete plus an add) that crashed after the lexical stage
+> committed leaves every live count unchanged while the stages hold mixed generations. `commit`
+> therefore writes a **`commit.pending` marker** (containing the new generation number) before the
+> first stage commit and removes it after the descriptor is written; `open` refuses a directory
+> whose marker exists, before touching either stage. The count check stays as a second, cheap
+> line of defence. Tested with the on-disk state a crash leaves (marker present + lexical
+> committed) for both the count-changing and the same-cardinality case.
 
 **Identity check**: `schema` equals the lexical index's `schema()`; `embedder_fingerprint`
 equals `embedder.fingerprint()` and the dense index opens through `open_for(dir, embedder)`

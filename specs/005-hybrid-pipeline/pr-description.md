@@ -21,8 +21,9 @@ Hand-written line counts (goldens and baselines are generated data): `crates/xtr
 
 Implements `xtriever-pipeline`: `HybridIndex` composes the 002 lexical stage and the 004 dense
 stage under one directory with a versioned descriptor and a persisted external-id ↔ `DocId` map
-(ids never reused; both stages see only `DocId`s). Commit order is lexical → dense → id map →
-descriptor, and `open` refuses any partial state by a four-count check. Search resolves a filter
+(ids never reused; both stages see only `DocId`s). Commit order is marker → lexical → dense → id map →
+descriptor → marker removed, and `open` refuses an interrupted commit (marker present) or any
+count disagreement. Search resolves a filter
 once for both stages, fuses by reciprocal rank fusion (`k = 60`, `f64`, `(score DESC, DocId
 ASC)`), degrades to the lexical list when the dense stage fails or a caller-supplied elapsed-time
 source says the budget is spent (strict mode errors instead), and explains every hit under the
@@ -32,8 +33,8 @@ the 004 embedding cache by value (0 documents embedded).
 
 Spec: `specs/005-hybrid-pipeline/spec.md` · Plan: `plan.md` · Report: `report.md`
 
-**Tests**: 37 / 37 offline (`cargo nextest run -p xtriever-pipeline`), 38 / 38 under
-`--features mmap`, 1 / 1 model-backed; `xtriever-eval` 37 / 37; workspace 188 / 188. Committed red
+**Tests**: 39 / 39 offline (`cargo nextest run -p xtriever-pipeline`), 40 / 40 under
+`--features mmap`, 1 / 1 model-backed; `xtriever-eval` 37 / 37; workspace 190 / 190. Committed red
 first (PR 1: 31 pipeline tests, 2 pass, 29 fail on the scaffold; 4 eval tests red on scaffolds).
 
 **Oracles**: Python RRF over hand-made lists (10 cases, 1e-9 — bit-identical by construction);

@@ -181,6 +181,7 @@ fn k_zero_empty_filter_and_empty_query_edge_cases() {
     assert!(r.hits.is_empty());
     assert_eq!(r.stages.lexical_candidates, 0);
     assert_eq!(r.stages.dense_candidates, None);
+    assert!(r.stages.degraded.is_none());
     let r = index.search("zephyr", None, 3, &explained()).unwrap();
     assert_eq!(r.hits.len(), 3);
     let none = Filter::Eq("source".into(), xtriever_core::Value::Keyword("zzz".into()));
@@ -190,7 +191,8 @@ fn k_zero_empty_filter_and_empty_query_edge_cases() {
     assert!(r.hits.is_empty());
     assert_eq!(
         (r.stages.lexical_candidates, r.stages.dense_candidates),
-        (0, Some(0))
+        (0, None),
+        "neither stage ran on an empty resolved filter"
     );
     // Empty query: lexical matches nothing, the dense stage still ranks (the table knows "").
     let r = index.search("", None, 5, &explained()).unwrap();

@@ -31,6 +31,7 @@ Constructors: `create(dir, config: HybridConfig, embedder)`, `open(dir, embedder
 ```
 <dir>/xtriever-pipeline.json     Descriptor
 <dir>/ids.json                   IdMap
+<dir>/commit.pending             only while a commit is in flight (contains the generation)
 <dir>/lexical/                   002 format (TantivyIndex)
 <dir>/dense/                     004 format v1 (FlatIndex)
 ```
@@ -50,8 +51,9 @@ Both JSON files are replaced by `<name>.tmp` + `rename`, never modified in place
 | `live_docs` | `u64` | live documents at the last full commit |
 | `generation` | `u64` | incremented per full commit |
 
-**Consistency at open** (FR-005): `live_docs == ids.live() == lexical.stats().num_docs ==
-dense.len()`, else `Corrupt` naming all four.
+**Consistency at open** (FR-005): no `commit.pending` marker (else `Corrupt("interrupted
+commit …")`), then `live_docs == ids.live() == lexical.stats().num_docs == dense.len()`, else
+`Corrupt` naming all four.
 
 ## HybridConfig (creation-time)
 
@@ -93,8 +95,11 @@ supplied vector (width checked against `embedder.dim()` ⇒ `DimensionMismatch`)
 
 `delete(&[&str])`: unknown ids ignored; known ⇒ slot `null`, both stages `delete`.
 
-`commit()`: `lexical.commit()` → `dense.commit()` → write `ids.json` → write descriptor
-(`generation += 1`, `live_docs`). No-op when nothing is pending.
+`commit()`: write `commit.pending` (the new generation number) → `lexical.commit()` →
+`dense.commit()` → write `ids.json` → write descriptor (`generation += 1`, `live_docs`) → remove
+`commit.pending`. No-op when nothing is pending. The marker exists exactly while a commit is in
+flight; `open` refuses a directory that has one (review round 1 #1: a replace that crashed after
+one stage leaves every count unchanged).
 
 ### State transitions
 
@@ -124,16 +129,17 @@ Response {
 HybridHit { external_id: String, id: DocId, score: f64, chunk: Option<ChunkInfo>, explain: Option<HitExplain> }
 HitExplain { bm25_score: Option<f32>, bm25_rank: Option<u32>, dense_score: Option<f32>, dense_rank: Option<u32>, fused: f64 }
   .features() -> [(FeatureName, f32); 5]   // NaN for absent (core convention)
-StageReport { lexical_candidates: usize, dense_candidates: Option<usize>, degraded: Option<Degradation>, time_limit_ignored: bool }
+StageReport { lexical_candidates: usize, dense_candidates: Option<usize> /* None = did not run */, degraded: Option<Degradation>, time_limit_ignored: bool }
 Degradation { stage: "dense", reason: DegradeReason }
 DegradeReason { StageError(String), BudgetExceeded { elapsed_ms: u64, limit_ms: u64 } }
 ```
 
 ### Search algorithm (research D5–D7)
 
-1. `k == 0` ⇒ empty response (stages not run; `lexical_candidates = 0`). Query validation is
-   the stages' (an empty query is fine: lexical matches nothing, dense embeds it).
-2. Filter: `lexical.resolve_filter` → `DocSet`; empty ⇒ empty response.
+1. `k == 0` ⇒ empty response (stages not run; `lexical_candidates = 0`, `dense_candidates =
+   None`). Query validation is the stages' (an empty query is fine: lexical matches nothing,
+   dense embeds it).
+2. Filter: `lexical.resolve_filter` → `DocSet`; empty ⇒ empty response, neither stage run.
 3. Lexical: `search(Match(None, query), Some(Filter::Ids(set)), depth)`; error ⇒ error.
 4. Check point A (time) → maybe degrade.
 5. Dense: `embedder.embed(&[query], Query)` then `dense.search(&v, Some(&set), min(depth,
@@ -179,7 +185,7 @@ vectors. Lexical expectations are not re-oracled (002).
 |---|---|
 | `run::HybridConfig` | `{ name: "hybrid-baseline-v1", lexical: EvalConfig, dense: DenseConfig, candidate_depth: 100, rrf_k: 60, k: 100 }`; `validate()`: `k ≥ 100`, `candidate_depth ≥ k` |
 | `run::build_external(dataset, &EvalConfig)` | `Vec<(String, BTreeMap<FieldName, Value>)>` in corpus order, empty fields omitted per `omit_empty_fields` |
-| `run::execute_external(dataset, name, k, &mut dyn FnMut(&str) -> Result<Vec<String>>)` | `Run` over judged queries ascending |
+| `run::execute_external(dataset, name, k, &mut dyn FnMut(&str, &str) -> Result<Vec<String>>)` | `Run` over judged queries ascending; the closure receives `(query_id, text)` |
 | `report::compare(a, b)` | `Comparison { a_config, b_config, rows: Vec<DeltaRow> }` — no ADR trigger; `to_markdown()` names both configurations |
 | `stage.kind` | `"hybrid"`, `baseline: "guarded"` |
 

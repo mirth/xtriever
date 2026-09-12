@@ -448,9 +448,7 @@ fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Resul
         explain: true,
         ..SearchOptions::default()
     };
-    let query_ids: Vec<String> = ds.qrels.grades.keys().cloned().collect();
-    let mut qi = 0usize;
-    let mut retrieve = |text: &str| -> xtriever_core::Result<Vec<String>> {
+    let mut retrieve = |query_id: &str, text: &str| -> xtriever_core::Result<Vec<String>> {
         let t = Instant::now();
         let r = index.search(text, None, cfg.k, &opts)?;
         lex_ms += t.elapsed().as_secs_f64() * 1000.0;
@@ -478,14 +476,13 @@ fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Resul
             lexical.sort_unstable();
             dense.sort_unstable();
             let line = serde_json::json!({
-                "query_id": query_ids.get(qi).cloned().unwrap_or_default(),
+                "query_id": query_id,
                 "lexical": lexical.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
                 "dense": dense.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
                 "fused": r.hits.iter().map(|h| h.external_id.as_str()).collect::<Vec<_>>(),
             });
             writeln!(out, "{line}").map_err(xtriever_core::Error::Io)?;
         }
-        qi += 1;
         Ok(r.hits.into_iter().map(|h| h.external_id).collect())
     };
     let run = execute_external(&ds, &cfg.name, cfg.k, &mut retrieve)?;

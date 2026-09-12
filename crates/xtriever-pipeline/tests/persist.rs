@@ -114,24 +114,47 @@ fn a_descriptor_schema_that_disagrees_with_the_lexical_index_is_corrupt() {
     ));
 }
 
+/// Reproduce the on-disk state a crash leaves after the lexical stage has committed but before
+/// the dense stage, id map and descriptor have: the commit marker is present and the lexical
+/// sub-index holds the new generation. Done through the lexical stage's own handle and the
+/// filesystem — the pipeline exposes no way to commit one stage (review round 1 #3).
+fn crash_after_lexical_commit(dir: &std::path::Path, docs: &[xtriever_core::Document]) {
+    use xtriever_core::LexicalIndex;
+    std::fs::write(dir.join("commit.pending"), "2").unwrap();
+    let mut lexical = xtriever_lexical::TantivyIndex::open(&dir.join("lexical")).unwrap();
+    lexical.add(docs).unwrap();
+    lexical.commit().unwrap();
+}
+
 #[test]
-fn a_partial_commit_is_refused_at_open_naming_four_counts() {
+fn a_partial_commit_that_changes_counts_is_refused_at_open() {
     let tmp = tempfile::tempdir().unwrap();
-    let (h, mut index) = support::build_from_fixture(tmp.path());
+    let (h, index) = support::build_from_fixture(tmp.path());
     let n = h.documents.len();
-    // Three new documents the embedder knows nothing about would fail; reuse three fixture
-    // passages under fresh ids instead.
-    let extra: Vec<_> = h.documents[..3]
-        .iter()
-        .map(|d| {
-            let mut s = d.source();
-            s.external_id = format!("extra-{}", d.external_id);
-            s
+    drop(index);
+    // Three new documents reach the lexical stage only.
+    let extra: Vec<xtriever_core::Document> = (0..3)
+        .map(|i| xtriever_core::Document {
+            id: xtriever_core::DocId((n + i) as u32),
+            fields: h.documents[i].fields.clone(),
+            chunk: None,
         })
         .collect();
-    index.add(&extra).unwrap();
-    index.commit_lexical_only_for_test().unwrap(); // crash after the lexical commit
-    drop(index);
+    crash_after_lexical_commit(tmp.path(), &extra);
+    match HybridIndex::open(
+        tmp.path(),
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap_err()
+    {
+        Error::Corrupt(msg) => assert!(
+            msg.contains("interrupted commit") && msg.contains("commit.pending"),
+            "{msg}"
+        ),
+        other => panic!("{other:?}"),
+    }
+    // Without the marker the count check still catches this state (second line of defence).
+    std::fs::remove_file(tmp.path().join("commit.pending")).unwrap();
     match HybridIndex::open(
         tmp.path(),
         Box::new(support::TableEmbedder::from_fixture(&h)),
@@ -139,18 +162,63 @@ fn a_partial_commit_is_refused_at_open_naming_four_counts() {
     .unwrap_err()
     {
         Error::Corrupt(msg) => {
-            assert!(
-                msg.contains(&n.to_string()),
-                "descriptor count missing: {msg}"
-            );
-            assert!(
-                msg.contains(&(n + 3).to_string()),
-                "lexical count missing: {msg}"
-            );
             assert!(msg.to_lowercase().contains("partial"), "{msg}");
+            assert!(
+                msg.contains(&n.to_string()) && msg.contains(&(n + 3).to_string()),
+                "{msg}"
+            );
         }
         other => panic!("{other:?}"),
     }
+}
+
+/// A replacement that crashed after the lexical commit leaves every live count unchanged — only
+/// the marker can tell (review round 1 #1).
+#[test]
+fn a_same_cardinality_partial_commit_is_refused_at_open() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, index) = support::build_from_fixture(tmp.path());
+    drop(index);
+    // Replace document 0 (same internal id, new text) in the lexical stage only.
+    let mut fields = h.documents[0].fields.clone();
+    fields.insert(
+        "text".into(),
+        xtriever_core::Value::Text("replaced text only in the lexical stage".into()),
+    );
+    let replaced = xtriever_core::Document {
+        id: xtriever_core::DocId(0),
+        fields,
+        chunk: None,
+    };
+    crash_after_lexical_commit(tmp.path(), std::slice::from_ref(&replaced));
+    match HybridIndex::open(
+        tmp.path(),
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap_err()
+    {
+        Error::Corrupt(msg) => assert!(msg.contains("interrupted commit"), "{msg}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_completed_commit_leaves_no_marker_and_the_next_generation_opens() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    assert!(!tmp.path().join("commit.pending").exists());
+    index
+        .delete(&[h.documents[0].external_id.as_str()])
+        .unwrap();
+    index.commit().unwrap();
+    assert!(!tmp.path().join("commit.pending").exists());
+    drop(index);
+    let reopened = HybridIndex::open(
+        tmp.path(),
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap();
+    assert_eq!(reopened.len(), h.documents.len() as u64 - 1);
 }
 
 #[test]

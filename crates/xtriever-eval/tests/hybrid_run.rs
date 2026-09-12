@@ -61,17 +61,20 @@ fn build_external_keeps_corpus_order_and_omits_empty_fields() {
 #[test]
 fn execute_external_runs_every_judged_query_in_order_with_k() {
     let (_dir, ds) = mini();
-    let mut seen: Vec<(String, usize)> = Vec::new();
-    let mut retrieve = |text: &str| -> xtriever_core::Result<Vec<String>> {
-        seen.push((text.to_owned(), 0));
+    let mut seen: Vec<(String, String)> = Vec::new();
+    let mut retrieve = |query_id: &str, text: &str| -> xtriever_core::Result<Vec<String>> {
+        seen.push((query_id.to_owned(), text.to_owned()));
         Ok(vec!["q2".into(), "d1".into(), "d2".into()])
     };
     let run = execute_external(&ds, "hybrid-baseline-v1", 100, &mut retrieve).unwrap();
     assert_eq!(run.config, "hybrid-baseline-v1");
     assert_eq!(run.dataset, "mini");
     assert_eq!(
-        seen.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(),
-        vec!["quantum lattice", "river"]
+        seen.iter()
+            .map(|(id, t)| (id.as_str(), t.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("q1", "quantum lattice"), ("q2", "river")],
+        "judged queries with text, ascending id, each with its own id"
     );
     assert_eq!(run.results["q1"], vec!["q2", "d1", "d2"]);
     assert_eq!(run.results.len(), 2);

@@ -34,7 +34,7 @@ pub struct Response { pub hits: Vec<HybridHit>, pub stages: StageReport }
 pub struct HybridHit { pub external_id: String, pub id: DocId, pub score: f64, pub chunk: Option<ChunkInfo>, pub explain: Option<HitExplain> }
 pub struct HitExplain { pub bm25_score: Option<f32>, pub bm25_rank: Option<u32>, pub dense_score: Option<f32>, pub dense_rank: Option<u32>, pub fused: f64 }
 impl HitExplain { pub fn features(&self) -> [(FeatureName, f32); 5]; }   // NaN for absent
-pub struct StageReport { pub lexical_candidates: usize, pub dense_candidates: Option<usize>, pub degraded: Option<Degradation>, pub time_limit_ignored: bool }
+pub struct StageReport { pub lexical_candidates: usize, pub dense_candidates: Option<usize> /* None = did not run: degraded, or k == 0 / empty filter */, pub degraded: Option<Degradation>, pub time_limit_ignored: bool }
 pub struct Degradation { pub stage: &'static str /* "dense" */, pub reason: DegradeReason }
 pub enum DegradeReason { StageError(String), BudgetExceeded { elapsed_ms: u64, limit_ms: u64 } }
 
@@ -72,11 +72,11 @@ function, one constant. No trait of its own, no generics, no async, no threads, 
 | method | behaviour | errors |
 |---|---|---|
 | `create` | validate config (`dense_fields` non-empty and all `Text` fields of `schema`; `candidate_depth ≥ 1`; `rrf_k ≥ 1`); `dir` empty or absent; create `lexical/` and `dense/` (`dim = embedder.dim()`, `metric = embedder.metric()`, fingerprint) and write `ids.json` + descriptor (generation 0) | `Schema`, `Corrupt` (non-empty dir), `Io`, stage errors |
-| `open` / `open_mapped` | read descriptor (version, identity checks) → id map → `TantivyIndex::open` → `FlatIndex::open_for`/`open_mapped_for` → four-count consistency check (research D3) | `Corrupt` (naming both versions / both schemas / all four counts), `FingerprintMismatch` (from the dense stage), `Io` |
+| `open` / `open_mapped` | read descriptor (version) → **refuse if `commit.pending` exists** (interrupted commit) → `TantivyIndex::open` + identity checks → id map → `FlatIndex::open_for`/`open_mapped_for` → four-count consistency check (research D3, second line of defence) | `Corrupt` (naming both versions / both schemas / the marker / all four counts), `FingerprintMismatch` (from the dense stage), `Io` |
 | `add` | per document: reject empty `external_id`; assign or reuse internal id; passage from `dense_fields`; `embed(&[passage], Passage)`; `lexical.add(&[Document { id, fields, chunk }])`; `dense.add(id, &v)` | `Schema` (empty id, unknown/invalid fields via the lexical stage), `Model` (embedder), `DimensionMismatch` |
 | `add_embedded` | as `add` with the supplied vector, width checked against `embedder.dim()` | as above |
 | `delete` | unknown ids ignored; known ⇒ id map slot `null` (pending), both stages `delete` | stage errors |
-| `commit` | `lexical.commit()` → `dense.commit()` → `ids.json` → descriptor; no-op if nothing pending. A failure between steps leaves a state `open` refuses (FR-005) | `Io`, stage errors |
+| `commit` | write `commit.pending` (the generation number) → `lexical.commit()` → `dense.commit()` → `ids.json` → descriptor → remove `commit.pending`; no-op if nothing pending. A crash anywhere between the first and last step leaves the marker, and `open` refuses the directory (FR-005) — this catches same-cardinality partial commits (a replace that crashed after one stage) that the count check cannot | `Io`, stage errors |
 | `search` | `LexicalQuery::Match(None, query)`; then as `search_lexical` | — |
 | `search_lexical` | data-model "Search algorithm" steps 1–8; the dense stage embeds `dense_text` (a `LexicalQuery` has no single text to embed — added at implementation) | `InvalidQuery`/`UnknownField` (filter or query), lexical stage errors (every mode), dense stage errors (strict only), `BudgetExhausted` (strict + time exceeded), `Corrupt` (an id the map does not know) |
 | `rrf` | `Σ 1/(rrf_k + rank)` over the lists, `f64`, `(score DESC, id ASC)`, first `k` | — (pure) |
@@ -113,7 +113,7 @@ pub mod run {
     impl HybridConfig { pub fn validate(&self) -> Result<()>; pub fn hybrid_baseline_v1() -> Self; }
     pub fn build_external(dataset: &Dataset, cfg: &EvalConfig) -> Result<Vec<(String, BTreeMap<FieldName, Value>)>>;
     pub fn execute_external(dataset: &Dataset, config_name: &str, k: usize,
-                            retrieve: &mut dyn FnMut(&str) -> Result<Vec<String>>) -> Result<Run>;
+                            retrieve: &mut dyn FnMut(&str, &str) -> Result<Vec<String>>) -> Result<Run>;   // (query_id, text) → external ids; dangling judged ids get no call
 }
 pub mod report {
     pub struct Comparison { pub a_config: String, pub b_config: String, pub rows: Vec<DeltaRow> }
@@ -131,9 +131,12 @@ pub mod report {
 | `compare a.json b.json` | cross-configuration table, no ADR line | 0 / 1 |
 | `delta`, `smoke`, `verify`, `model-memory`, `export-vectors` | unchanged; `delta` still refuses mixed configurations | as before |
 
-`--export-explain F`: one line per judged query `{"query_id", "lexical": [ext ids], "dense":
-[ext ids], "fused": [ext ids]}` from the explained response, for
-`gen_005_fixtures.py --verify-fusion F`.
+`--export-explain F`: one line per judged query
+`{"query_id", "lexical": [[rank, ext id], …], "dense": [[rank, ext id], …], "fused": [ext ids]}`.
+The two stage lists are **complete** (every candidate with its 1-based rank, obtained from a
+second search with `k = 2 × candidate_depth`, the union bound); `fused` is the run's top-`k`.
+`gen_005_fixtures.py --verify-fusion F` recomputes RRF from the ranks and compares tie blocks as
+sets (the oracle breaks ties by external id, the pipeline by internal id).
 
 ### Report file
 

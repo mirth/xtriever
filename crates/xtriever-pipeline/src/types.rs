@@ -144,7 +144,8 @@ impl HitExplain {
 pub struct StageReport {
     /// Candidates the lexical stage returned.
     pub lexical_candidates: usize,
-    /// Candidates the dense stage returned; `None` when it was skipped.
+    /// Candidates the dense stage returned; `None` when it did not run — degraded (see
+    /// `degraded`), or short-circuited by `k == 0` / an empty resolved filter.
     pub dense_candidates: Option<usize>,
     /// Set when the response is the previous stage's results.
     pub degraded: Option<Degradation>,

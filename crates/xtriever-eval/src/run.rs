@@ -480,8 +480,9 @@ pub fn build_external(
         .collect())
 }
 
-/// Run every judged query (ascending id) through `retrieve`, which maps a query text to external
-/// ids in rank order; the library names no retriever type.
+/// Run every judged query (ascending id) through `retrieve(query_id, text)`, which returns
+/// external ids in rank order; the library names no retriever type. Judged queries without a
+/// text (dangling, reported by `Dataset::load`) are skipped without a call.
 ///
 /// # Errors
 ///
@@ -490,7 +491,7 @@ pub fn execute_external(
     dataset: &Dataset,
     config_name: &str,
     k: usize,
-    retrieve: &mut dyn FnMut(&str) -> xtriever_core::Result<Vec<String>>,
+    retrieve: &mut dyn FnMut(&str, &str) -> xtriever_core::Result<Vec<String>>,
 ) -> Result<Run> {
     if k < 100 {
         return Err(Error::Run(format!("k = {k} but Recall@100 needs k ≥ 100")));
@@ -506,7 +507,7 @@ pub fn execute_external(
         let Some(text) = texts.get(query_id.as_str()) else {
             continue;
         };
-        let mut ids = retrieve(text)?;
+        let mut ids = retrieve(query_id, text)?;
         ids.truncate(k);
         results.insert(query_id.clone(), ids);
     }

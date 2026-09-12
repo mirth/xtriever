@@ -18,6 +18,10 @@ use crate::{HybridConfig, SourceDocument};
 
 pub(crate) const LEXICAL_DIR: &str = "lexical";
 pub(crate) const DENSE_DIR: &str = "dense";
+/// Present from just before the first stage commit until the descriptor is written: an
+/// interrupted commit leaves it behind, and `open` refuses the directory (research D3, review
+/// round 1 #1 — a same-cardinality partial commit is invisible to the count check alone).
+pub(crate) const COMMIT_MARKER: &str = "commit.pending";
 
 /// The hybrid index: a lexical stage, a dense stage, an embedder and the id map under one
 /// directory (contract `hybrid-pipeline.md`).
@@ -146,6 +150,18 @@ impl HybridIndex {
 
     fn open_with(dir: &Path, embedder: Box<dyn Embedder>, mapped: bool) -> Result<Self> {
         let descriptor = Descriptor::read(dir)?;
+        // An interrupted commit leaves its marker; refuse before looking at anything else. The
+        // count check below cannot see a same-cardinality partial commit (a replace that
+        // crashed after the lexical stage committed), the marker can.
+        let marker = dir.join(COMMIT_MARKER);
+        if marker.exists() {
+            let generation = std::fs::read_to_string(&marker).unwrap_or_default();
+            return Err(corrupt(format!(
+                "interrupted commit: {} exists (generation {}); the stages may hold mixed generations",
+                marker.display(),
+                generation.trim()
+            )));
+        }
         let lexical = TantivyIndex::open(&dir.join(LEXICAL_DIR))?;
         descriptor.check_identity(lexical.schema(), embedder.fingerprint())?;
         let ids = IdMap::read(dir)?;
@@ -162,8 +178,8 @@ impl HybridIndex {
         } else {
             FlatIndex::open_for(&dense_dir, embedder.as_ref())?
         };
-        // The four-count check (research D3): every state a crash between the commit steps can
-        // leave is a disagreement here.
+        // The four-count check (research D3): every count-changing partial state is a
+        // disagreement here — a second, cheap line of defence behind the marker.
         let lexical_live = lexical.stats()?.num_docs;
         let dense_live = dense.len();
         let map_live = ids.live();
@@ -326,30 +342,27 @@ impl HybridIndex {
         if !self.dirty {
             return Ok(());
         }
+        let generation = self.descriptor.generation + 1;
+        // 1. The marker: from here until the descriptor is written, the directory is in flight.
+        let marker = self.dir.join(COMMIT_MARKER);
+        std::fs::write(&marker, generation.to_string())?;
+        // 2–3. The stages, each durable on its own.
         self.lexical.commit()?;
         self.dense.commit()?;
-        self.finish_commit()
-    }
-
-    fn finish_commit(&mut self) -> Result<()> {
+        // 4–5. The id map, then the descriptor.
         self.pending_ids.write(&self.dir)?;
         let descriptor = Descriptor {
             live_docs: self.pending_ids.live(),
-            generation: self.descriptor.generation + 1,
+            generation,
             ..self.descriptor.clone()
         };
         descriptor.write(&self.dir)?;
+        // 6. Only now is the generation complete.
+        std::fs::remove_file(&marker)?;
         self.descriptor = descriptor;
         self.committed_ids = self.pending_ids.clone();
         self.dirty = false;
         Ok(())
-    }
-
-    /// Simulates a crash after the lexical commit (spec FR-005 test): the lexical stage is
-    /// committed, the dense stage, id map and descriptor are not.
-    #[doc(hidden)]
-    pub fn commit_lexical_only_for_test(&mut self) -> Result<()> {
-        self.lexical.commit()
     }
 
     pub(crate) fn external_of(&self, id: DocId) -> Result<&str> {

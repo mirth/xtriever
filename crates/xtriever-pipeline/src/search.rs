@@ -69,17 +69,19 @@ impl HybridIndex {
         opts: &SearchOptions<'_>,
     ) -> Result<Response> {
         let time_limit_ignored = opts.budget.max_time.is_some() && opts.elapsed.is_none();
-        let empty = |dense_ran: bool| Response {
+        // Neither stage runs on the two short-circuits: `dense_candidates` is `None` because
+        // the stage did not run, and `degraded` is `None` because nothing was skipped for cause.
+        let empty = || Response {
             hits: Vec::new(),
             stages: StageReport {
                 lexical_candidates: 0,
-                dense_candidates: dense_ran.then_some(0),
+                dense_candidates: None,
                 degraded: None,
                 time_limit_ignored,
             },
         };
         if k == 0 {
-            return Ok(empty(false));
+            return Ok(empty());
         }
         // 2. Filter, resolved once; an empty set short-circuits both stages.
         let allowed: Option<DocSet> = match filter {
@@ -87,7 +89,7 @@ impl HybridIndex {
             None => None,
         };
         if allowed.as_ref().is_some_and(DocSet::is_empty) {
-            return Ok(empty(true));
+            return Ok(empty());
         }
         let depth = opts.depth.unwrap_or(self.config.candidate_depth);
 

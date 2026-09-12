@@ -144,3 +144,18 @@ scaffolded with `Error::Run("NotImplemented …")` so the workspace compiled red
 - The harness's hybrid run holds two copies of the dense vectors (cache + index); the number in
   `observations.peak_rss_bytes` is the harness's, not the pipeline's.
 - Hits are per chunk with no grouping by source (user decision Q1); a RAG caller groups.
+
+## Review round 1 (GitHub Copilot, 2026-09-13) — 5 comments, all acted on
+
+| # | finding | action |
+|---|---|---|
+| 1 | The four-count check cannot detect a **same-cardinality** partial commit: a replace (or delete + add) that crashes after the lexical commit leaves every live count unchanged while the stages hold mixed generations — FR-005 violated | `commit` now writes a **`commit.pending` marker** (the new generation number) before the first stage commit and removes it only after the descriptor is written; `open` refuses a directory whose marker exists, before touching either stage. The count check stays as a second line of defence. Tests reproduce the crash's on-disk state (marker + lexical committed through the stage's own handle) for both the count-changing case and the same-cardinality replace; a completed commit leaves no marker. Research D3, data-model and contract amended |
+| 2 | `--export-explain` labelled lines with `query_ids[qi]` from all judged ids, but `execute_external` skips dangling judged ids without calling the closure — after the first dangling id every label would be wrong | The runner closure now receives `(query_id, text)`; the export uses the id it was called with. Contract and the runner test updated (each call carries its own id; dangling ids get no call) |
+| 3 | `commit_lexical_only_for_test` was a public method whose only effect is an inconsistent index | Removed. The FR-005 tests build the crash state through the filesystem and the lexical stage's own handle (`support::crash_after_lexical_commit`), which is also a more faithful reproduction of a real crash |
+| 4 | An empty resolved filter reported `dense_candidates = Some(0)`, i.e. "the dense stage ran and found nothing", although neither stage ran | `None` for both short-circuits (`k == 0`, empty filter); `StageReport::dense_candidates` documented as "`None` = did not run (degraded, or short-circuited)"; test updated |
+| 5 | The contract's `--export-explain` schema still said bare id lists; the implementation exchanges `[rank, id]` pairs | Contract updated with the actual schema, the completeness guarantee (`k = 2 × depth` second search) and the tie-block comparison rule |
+
+After the round: `xtriever-pipeline` 39 / 39 offline (+ 40 / 40 under `mmap`), `xtriever-eval`
+37 / 37, workspace 190 / 190; the three baselines re-run with the fixed export are identical in
+every field but `harness_commit`; `--verify-fusion` 1,271 / 1,271; zero `unsafe`, zero clock or
+thread reads in the pipeline.
