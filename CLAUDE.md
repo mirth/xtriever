@@ -2,7 +2,7 @@
 
 Xtriever is a cross-platform hybrid retrieval engine for RAG: BM25 → dense → fusion → re-rank → LTR.
 
-**`.specify/memory/constitution.md` (v1.1.0) is the highest authority in this repository.** It
+**`.specify/memory/constitution.md` (v1.2.0) is the highest authority in this repository.** It
 supersedes this file, the templates, and the README. Read it before planning or implementing
 anything. If this file and the constitution ever disagree, the constitution wins and this file is
 the bug — fix it rather than following it.
@@ -68,10 +68,12 @@ additions to them — see the constitution for the full text and rationale.
   identical results, ties broken by ascending `DocId`.
 - **No `unwrap` / `expect` / `panic!` / `todo!` in library code (VII).** The workspace lints in
   `Cargo.toml` deny them. Library errors are `thiserror` enums; `anyhow` is for binaries only.
-  Hand-written `unsafe` is confined to `xtriever-dense` SIMD kernels, each block preceded by
-  `// SAFETY:` and tested against the safe path. `xtriever-ffi` additionally carries a crate-level
-  `#![allow(unsafe_code)]` for uniffi's generated FFI scaffolding; modules with hand-written logic
-  re-declare `#![deny(unsafe_code)]` (constitution v1.1.0, [ADR-0003](docs/adr/0003-uniffi-scaffolding-requires-unsafe-allow.md)).
+  Hand-written `unsafe` is confined to `xtriever-dense`, and there to SIMD kernels and read-only
+  memory mapping behind a non-default feature ([ADR-0007](docs/adr/0007-unsafe-readonly-mmap-in-dense.md));
+  each block preceded by `// SAFETY:` and tested against the safe path. `xtriever-ffi` additionally
+  carries a crate-level `#![allow(unsafe_code)]` for uniffi's generated FFI scaffolding; modules
+  with hand-written logic re-declare `#![deny(unsafe_code)]` (constitution v1.2.0,
+  [ADR-0003](docs/adr/0003-uniffi-scaffolding-requires-unsafe-allow.md)).
 - **Add dependencies with `cargo add` (VII).** Never write a version number from memory. Edition
   2024, toolchain pinned in `rust-toolchain.toml`, `Cargo.lock` committed.
 

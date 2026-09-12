@@ -1,0 +1,15 @@
+# Direct dependencies for reference/gen_004_fixtures.py (Feature 004 golden fixtures).
+#
+# These are EXACTLY Feature 001's pins (reference/requirements-001.in): the embedding oracle for
+# the dense stage *is* Feature 001's torch pipeline, so a different torch/transformers build here
+# would silently mint a different golden and every comparison downstream would inherit it
+# (Principle IV, research D14). numpy additionally serves the exact-search oracle (research D7).
+#
+# tokenizers is pinned to the SAME version as the Rust crate in crates/xtriever-dense/Cargo.toml,
+# which is what makes the tokenization-parity check meaningful.
+torch==2.14.0
+transformers==5.17.0
+tokenizers==0.23.2
+safetensors==0.8.0
+huggingface-hub==1.31.0
+numpy==2.5.3

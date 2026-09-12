@@ -346,6 +346,18 @@ footprint being measured. The
 hypothesis the `unsafe` exemption was granted to test. ADR-0002 condition 4 also holds: both paths
 produced **bit-identical** embeddings, so the mmap path stays.
 
+> **Correction (2026-09-12, Feature 004 research D1).** The caveat below turned out to be the
+> whole story. candle 0.9.2 copies every safetensors tensor onto the heap whichever loader is
+> used (`candle-core-0.9.2/src/safetensors.rs:115-137` → `Tensor::from_slice`), so after
+> `BertModel::load` the ~87 MiB of weights are resident in **both** paths; mapping removes only
+> the transient file buffer during load. The 2.56 MB figure is the marginal cost measured second
+> in the same process after the buffered path had freed ~101 MB — the allocator handed the tensor
+> copies pages it had retained. The 39.5× claim is therefore withdrawn; ADR-0002 condition 4
+> (bit-identical embeddings) still holds and the mmap path's real, structural benefit is for
+> Feature 004's memory-mapped *vector index*, whose rows are read from the map without a copy.
+> Feature 004 measures each weight load path from cold in its own process
+> (`specs/004-dense-stage/report.md`).
+
 **One caveat, stated because it limits the claim.** Both paths run in the *same process*, buffered
 first. The mmap load is therefore measured against an allocator that has just freed ~101 MB, so
 `2.56 MB` is a marginal cost, not a from-cold one. The 40× gap is far too large for ordering to

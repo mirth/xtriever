@@ -5,9 +5,11 @@ reference/.venv-*/
 __pycache__/
 *.py[cod]
 
-# Pinned model weights: 87.1 MiB, downloaded by gen_001_fixtures.py, NEVER committed.
-# reference/fixtures/ IS tracked — those are the goldens.
-reference/models/
+# Pinned model weights: 87.1 MiB, downloaded by gen_001_fixtures.py (001) and
+# scripts/fetch-model.sh (004), NEVER committed. reference/fixtures/ IS tracked — those are the
+# goldens — and so is reference/models/manifest.json, the pins the fetch script verifies against.
+reference/models/*
+!reference/models/manifest.json
 *.safetensors
 
 # uniffi bindgen output (quickstart Step 3)
