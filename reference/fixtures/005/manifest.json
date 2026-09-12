@@ -1,0 +1,9 @@
+{
+  "files": {
+    "fusion.json": "289ae92968e82e33b1ff2d724412a76fd7b98a6c2e0946ebacc37e7599e2da0e",
+    "hybrid.json": "228a8210290ef154a26698728aedcff12a9804b5663eae474b1aeb2273c69034"
+  },
+  "generator_sha256": "bb4c7fe85d5fafd94e981367df1eb79bef2aa452229945c7fd3ea195f3e886aa",
+  "python_version": "3.12.12",
+  "schema_version": 1
+}

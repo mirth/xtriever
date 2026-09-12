@@ -2,8 +2,9 @@
 
 **Feature**: `005-hybrid-pipeline` | **Date**: 2026-09-13 | **Plan**: [plan.md](./plan.md)
 
-> **Status**: plan-time. The Constitution Check passes on all 14 rows with no ADR needed.
-> Nothing below has been executed.
+> **Status**: **executed 2026-09-13** — every step ran; results in [report.md](./report.md).
+> SC-011 PASS 3 / 3 (fused nDCG@10 0.690 / 0.345 / 0.369 vs the dense stage's 0.645 / 0.317 /
+> 0.369); `--verify-fusion` 1,271 / 1,271 real queries; FiQA ingest from the cache 5.2 s.
 
 ## Step 0 — Toolchain and prerequisites
 
@@ -40,7 +41,7 @@ cargo nextest run -p xtriever-pipeline --run-ignored only    # one model-backed 
 ```
 
 Expected: every fusion golden exact (SC-001); 1,000-document round-trip (SC-002); reopen
-identical (SC-003); filtered = unfiltered ∩ set (SC-004); failing/slow dense stage degrades in
+identical (SC-003); filtered = fusion of both stages restricted to the set (SC-004, corrected); failing/slow dense stage degrades in
 the default mode and errors in strict (SC-005); explanations reproduce the stage lists and never
 change ranking (SC-006); the partial-commit test opens with `Corrupt` naming four counts.
 

@@ -54,7 +54,7 @@ impl HybridIndex {
     pub fn delete(&mut self, external_ids: &[&str]) -> Result<()>;
     pub fn commit(&mut self) -> Result<()>;
     pub fn search(&self, query: &str, filter: Option<&Filter>, k: usize, options: &SearchOptions<'_>) -> Result<Response>;
-    pub fn search_lexical(&self, query: &LexicalQuery, filter: Option<&Filter>, k: usize, options: &SearchOptions<'_>) -> Result<Response>;  // caller-built lexical query
+    pub fn search_lexical(&self, query: &LexicalQuery, dense_text: &str, filter: Option<&Filter>, k: usize, options: &SearchOptions<'_>) -> Result<Response>;  // caller-built lexical query; the dense stage embeds `dense_text`
 }
 
 /// Reciprocal rank fusion over two ranked id lists (research D5). Public so the harness and
@@ -78,7 +78,7 @@ function, one constant. No trait of its own, no generics, no async, no threads, 
 | `delete` | unknown ids ignored; known ⇒ id map slot `null` (pending), both stages `delete` | stage errors |
 | `commit` | `lexical.commit()` → `dense.commit()` → `ids.json` → descriptor; no-op if nothing pending. A failure between steps leaves a state `open` refuses (FR-005) | `Io`, stage errors |
 | `search` | `LexicalQuery::Match(None, query)`; then as `search_lexical` | — |
-| `search_lexical` | data-model "Search algorithm" steps 1–8 | `InvalidQuery`/`UnknownField` (filter or query), lexical stage errors (every mode), dense stage errors (strict only), `BudgetExhausted` (strict + time exceeded), `Corrupt` (an id the map does not know) |
+| `search_lexical` | data-model "Search algorithm" steps 1–8; the dense stage embeds `dense_text` (a `LexicalQuery` has no single text to embed — added at implementation) | `InvalidQuery`/`UnknownField` (filter or query), lexical stage errors (every mode), dense stage errors (strict only), `BudgetExhausted` (strict + time exceeded), `Corrupt` (an id the map does not know) |
 | `rrf` | `Σ 1/(rrf_k + rank)` over the lists, `f64`, `(score DESC, id ASC)`, first `k` | — (pure) |
 
 **Determinism**: same directory contents + same query + same options ⇒ identical `hits` (ids,

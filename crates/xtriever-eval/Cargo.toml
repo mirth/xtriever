@@ -25,3 +25,4 @@ tempfile = "3.27.0"
 # The example needs both load paths (research D12); the `mmap` feature is dev-only here.
 xtriever-dense = { path = "../xtriever-dense", features = ["mmap"] }
 xtriever-lexical = { path = "../xtriever-lexical" }
+xtriever-pipeline = { path = "../xtriever-pipeline" }

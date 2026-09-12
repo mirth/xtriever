@@ -315,3 +315,68 @@ pub fn smoke(
     }
     Ok(d)
 }
+
+// ── Feature 005: cross-configuration comparison ────────────────────────────────────────────
+
+/// A comparison of two report sets from *different* configurations (spec 005 FR-023): the
+/// same rows as [`delta`], no ADR trigger, both names shown.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Comparison {
+    /// Configuration of the first set.
+    pub a_config: String,
+    /// Configuration of the second set.
+    pub b_config: String,
+    /// One row per dataset present in both sets × metric.
+    pub rows: Vec<DeltaRow>,
+}
+
+impl Comparison {
+    /// A heading naming both configurations, then the table.
+    pub fn to_markdown(&self) -> String {
+        let mut out = format!("comparison: {} → {}\n\n", self.a_config, self.b_config);
+        out.push_str(
+            "| dataset | metric | before | after | abs | rel |\n|---|---|---|---|---|---|\n",
+        );
+        for r in &self.rows {
+            let rel = r
+                .rel
+                .map_or_else(|| "n/a".to_owned(), |v| format!("{:+.2}%", v * 100.0));
+            out.push_str(&format!(
+                "| {} | {} | {:.6} | {:.6} | {:+.6} | {} |\n",
+                r.dataset, r.metric, r.before, r.after, r.abs, rel
+            ));
+        }
+        out
+    }
+}
+
+/// Compare two report sets across configurations, matched by dataset name. The first report of
+/// each set names the configuration; rows are `delta`'s rows with no ADR trigger.
+#[must_use]
+pub fn compare(a: &[EvalReport], b: &[EvalReport]) -> Comparison {
+    let mut rows = Vec::new();
+    for x in a {
+        let Some(y) = b.iter().find(|y| y.dataset == x.dataset) else {
+            continue;
+        };
+        for (metric, bv, av) in [
+            ("ndcg_10", x.mean_ndcg_10, y.mean_ndcg_10),
+            ("recall_100", x.mean_recall_100, y.mean_recall_100),
+        ] {
+            let abs = av - bv;
+            rows.push(DeltaRow {
+                dataset: x.dataset.clone(),
+                metric: metric.to_owned(),
+                before: bv,
+                after: av,
+                abs,
+                rel: (bv != 0.0).then(|| abs / bv),
+            });
+        }
+    }
+    Comparison {
+        a_config: a.first().map(|r| r.config.clone()).unwrap_or_default(),
+        b_config: b.first().map(|r| r.config.clone()).unwrap_or_default(),
+        rows,
+    }
+}

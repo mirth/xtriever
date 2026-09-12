@@ -80,8 +80,11 @@ independent reference implementation of the fusion rule.
    order equals the reference implementation's order for every committed golden, including
    documents present in only one list.
 3. **Given** a filter, **When** the query is searched with it, **Then** every hit satisfies the
-   filter, both stages were restricted by the same resolved set, and the result equals the
-   unrestricted result filtered to that set.
+   filter, both stages were restricted by the same resolved set before ranking, and the result
+   is the fusion of the two restricted candidate lists; a stage's score for a document is the
+   same with or without the filter. *(Corrected at implementation: the original wording "equals
+   the unrestricted result filtered to that set" is false under rank fusion — removing
+   candidates shifts ranks — and was never the intended contract; see report F-001.)*
 4. **Given** a document that only the lexical stage retrieves (or only the dense stage), **When**
    fused, **Then** it still appears with the contribution of the one stage that found it.
 5. **Given** chunked documents, **When** several chunks of one source are retrieved, **Then**
@@ -326,8 +329,9 @@ in the 003 format with the fused deltas and reproduces on re-run.
   discrepancies).
 - **SC-003**: Two searches of the same query on the same index, before and after reopening, give
   identical hit lists — 0 differences — for every golden query.
-- **SC-004**: A filtered search equals the unfiltered search restricted to the resolved set — 0
-  differences on every golden filter.
+- **SC-004**: A filtered search equals the fusion of the two stages each restricted to the
+  resolved set, every hit is in the set, and no stage score changes under the filter — 0
+  differences on every golden filter. *(Corrected at implementation, see report F-001.)*
 - **SC-005**: A failing dense stage yields the lexical ranking with the degraded marker set in
   the default mode and the stage error in strict mode — both asserted in tests; a lexical failure
   is an error in both.
