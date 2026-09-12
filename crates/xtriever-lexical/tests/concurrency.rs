@@ -195,3 +195,37 @@ fn search_during_merge_is_consistent() {
     merger.join().unwrap();
     reader.join().unwrap();
 }
+
+// Scenario 4b (research D14, third row): a handle already open keeps its own snapshot when the
+// other handle commits; it observes the new state only through its own commit/reload.
+#[test]
+fn already_open_second_handle_keeps_its_snapshot_after_the_first_commits() {
+    let mut a = TestIndex::create_fixture();
+    let docs = corpus().documents;
+    index_in_batches(&mut a.index, &docs[..500], 1);
+    let b = TantivyIndex::open(&a.path()).expect("open B while A is live");
+    assert_eq!(b.stats().unwrap().num_docs, 500);
+
+    a.index.add(&docs[500..]).unwrap();
+    a.index.commit().unwrap();
+    assert_eq!(
+        a.index.stats().unwrap().num_docs,
+        1000,
+        "A sees its own commit"
+    );
+    assert_eq!(
+        b.stats().unwrap().num_docs,
+        500,
+        "B must keep the snapshot it opened"
+    );
+    let q = LexicalQuery::Match(Some("body".into()), "quantum".into());
+    let hb = ids(&b.search(&q, None, 1000).unwrap());
+    assert!(
+        hb.iter().all(|i| *i < 500),
+        "B returned a document it never saw committed"
+    );
+
+    // A fresh open sees A's commit — the on-disk state moved, only B's view did not.
+    let c = TantivyIndex::open(&a.path()).expect("open C");
+    assert_eq!(c.stats().unwrap().num_docs, 1000);
+}

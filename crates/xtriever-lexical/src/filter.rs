@@ -42,6 +42,13 @@ fn lookup<'a>(fields: &'a FieldMap, name: &FieldName, what: &str) -> Result<&'a 
             "{what} is not defined on analyzed text field `{name}`; only Exists is"
         )));
     }
+    if what == "Range" && mf.kind == FieldKind::Bool {
+        // The backend's fast-field range weight accepts u64/i64/f64/date terms only; checked here so
+        // every `Range` shape on a bool — bounded or fully open — is rejected the same way.
+        return Err(invalid_query(format!(
+            "Range is not defined on bool field `{name}`; use Eq"
+        )));
+    }
     Ok(mf)
 }
 
@@ -108,12 +115,6 @@ pub(crate) fn resolve(filter: &Filter, fields: &FieldMap, searcher: &Searcher) -
         }
         Filter::Range(name, lo, hi) => {
             let mf = lookup(fields, name, "Range")?;
-            if mf.kind == FieldKind::Bool {
-                // The backend's fast-field range weight accepts u64/i64/f64/date terms only.
-                return Err(invalid_query(format!(
-                    "Range is not defined on bool field `{name}`; use Eq"
-                )));
-            }
             let bound = |v: &Option<Value>| -> Result<Bound<Term>> {
                 Ok(match v {
                     Some(v) => Bound::Included(term(mf, name, v)?),
@@ -142,12 +143,15 @@ pub(crate) fn resolve(filter: &Filter, fields: &FieldMap, searcher: &Searcher) -
         }
         Filter::Not(sub) => Ok(alive(searcher)?.difference(&resolve(sub, fields, searcher)?)),
         Filter::Ids(ids) => {
-            let alive = alive(searcher)?;
-            Ok(ids
+            // A term-set lookup on the id column scales with the ids supplied, not with the corpus;
+            // the searcher drops deleted documents, so unknown and deleted ids simply do not match.
+            if ids.is_empty() {
+                return Ok(DocSet::new());
+            }
+            let terms = ids
                 .iter()
-                .copied()
-                .filter(|id| alive.contains(*id))
-                .collect())
+                .map(|id| Term::from_field_u64(fields.id_field(), u64::from(id.0)));
+            collect(searcher, &TermSetQuery::new(terms))
         }
     }
 }

@@ -134,7 +134,9 @@ impl TantivyIndex {
         for attempt in 0..ATTEMPTS {
             let ids = self.index.searchable_segment_ids().map_err(map)?;
             if ids.len() < 2 {
-                return Ok(());
+                // Nothing left to merge — possibly because the background merge won the race
+                // since the commit above; reload so this handle sees whatever layout is current.
+                return self.reader.reload().map_err(map);
             }
             let writer = self.writer()?;
             match writer.merge(&ids).wait() {

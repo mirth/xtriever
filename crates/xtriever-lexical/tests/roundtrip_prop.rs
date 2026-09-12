@@ -157,3 +157,54 @@ fn create_refuses_a_non_empty_directory() {
     let err = TantivyIndex::create(dir.path(), fixture_schema()).expect_err("must fail");
     assert!(matches!(err, Error::Io(_)), "{err}");
 }
+
+// FR-012: a descriptor whose schema differs from the on-disk index — same format version — is a
+// hard error at open, never a silent reinterpretation.
+#[test]
+fn open_rejects_descriptor_schema_mismatch() {
+    let t = TestIndex::create_fixture();
+    let TestIndex { dir, index } = t;
+    drop(index);
+    let idx_dir = dir.path().join("idx");
+    let descriptor = idx_dir.join("xtriever-lexical.json");
+    let original = std::fs::read_to_string(&descriptor).expect("descriptor exists");
+    let mut json: serde_json::Value = serde_json::from_str(&original).unwrap();
+    assert_eq!(json["format_version"], 1);
+
+    // (a) a different analyzer on `title`: the backend tokenizer name changes
+    json["schema"]["fields"][0]["kind"] = serde_json::json!({"Text": "standard_en"});
+    std::fs::write(&descriptor, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+    let err = TantivyIndex::open(&idx_dir).expect_err("analyzer change must fail");
+    assert!(
+        matches!(&err, Error::Corrupt(m) if m.contains("schema")),
+        "{err}"
+    );
+
+    // (b) a different field kind on `views`
+    let mut json: serde_json::Value = serde_json::from_str(&original).unwrap();
+    json["schema"]["fields"][5]["kind"] = serde_json::json!("I64");
+    std::fs::write(&descriptor, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+    let err = TantivyIndex::open(&idx_dir).expect_err("kind change must fail");
+    assert!(
+        matches!(&err, Error::Corrupt(m) if m.contains("schema")),
+        "{err}"
+    );
+
+    // (c) an extra field
+    let mut json: serde_json::Value = serde_json::from_str(&original).unwrap();
+    json["schema"]["fields"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!(
+            {"name": "extra", "kind": "Keyword", "indexed": true, "stored": false, "boost": 1.0}
+        ));
+    std::fs::write(&descriptor, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+    let err = TantivyIndex::open(&idx_dir).expect_err("extra field must fail");
+    assert!(
+        matches!(&err, Error::Corrupt(m) if m.contains("schema")),
+        "{err}"
+    );
+
+    std::fs::write(&descriptor, original).unwrap();
+    TantivyIndex::open(&idx_dir).expect("restored descriptor opens");
+}

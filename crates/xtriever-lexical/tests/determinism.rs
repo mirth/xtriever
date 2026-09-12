@@ -137,3 +137,58 @@ fn k_boundary_tie_membership_and_order() {
         );
     }
 }
+
+/// Child half of the cross-process check: build a fresh 4-batch index and print the k-boundary
+/// hits as JSON. Runs only when the parent sets `XT_BOUNDARY_CHILD`.
+#[test]
+fn boundary_child() {
+    if std::env::var_os("XT_BOUNDARY_CHILD").is_none() {
+        return;
+    }
+    let entry = support::query("term_tag_tie");
+    let t = build(4);
+    let hits = t.index.search(&entry.query, None, entry.k).expect("search");
+    let all = t.index.search(&entry.query, None, 1000).expect("search");
+    println!(
+        "XT_HITS {}",
+        serde_json::to_string(&(hits, all.len())).unwrap()
+    );
+}
+
+// FR-014 / FR-015 across processes. Segment ordinals for equal-size segments come from a HashMap
+// whose seed differs per process, so an in-process loop cannot exercise the failure that motivated
+// F-001. Each child builds the same corpus in its own process; every child must return the same
+// k-boundary membership, and it must be the DocId-minimal one.
+#[test]
+fn k_boundary_membership_is_identical_across_processes() {
+    let exe = std::env::current_exe().expect("test binary path");
+    let mut outputs = Vec::new();
+    for _ in 0..3 {
+        let out = std::process::Command::new(&exe)
+            .args(["--exact", "boundary_child", "--nocapture"])
+            .env("XT_BOUNDARY_CHILD", "1")
+            .output()
+            .expect("spawn child");
+        assert!(
+            out.status.success(),
+            "child failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let line = stdout
+            .lines()
+            .find(|l| l.starts_with("XT_HITS "))
+            .expect("child printed hits");
+        let (hits, group_len): (Vec<xtriever_core::Hit>, usize) =
+            serde_json::from_str(&line["XT_HITS ".len()..]).unwrap();
+        assert!(group_len > hits.len(), "the tie group must exceed k");
+        outputs.push(ids(&hits));
+    }
+    let golden = ids(support::query("term_tag_tie").expected.as_ref().unwrap());
+    for (i, o) in outputs.iter().enumerate() {
+        assert_eq!(
+            o, &golden,
+            "process {i} returned different k-boundary membership"
+        );
+    }
+}

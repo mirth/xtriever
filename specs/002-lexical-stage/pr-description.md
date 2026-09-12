@@ -29,8 +29,8 @@ layouts, at the k-boundary, and across process restarts.
 
 Spec: `specs/002-lexical-stage/spec.md` · Plan: `plan.md` · Report: `report.md`
 
-**Tests** (`cargo nextest run -p xtriever-lexical`): 60 / 60 pass, 1 ignored measurement.
-Workspace: 69 / 69. The suite was committed red first (PR 1: 57 tests, 2 pass, 55 fail on the
+**Tests** (`cargo nextest run -p xtriever-lexical`): 64 / 64 pass, 1 ignored measurement (4 tests added in review round 1).
+Workspace: 73 / 73. The suite was committed red first (PR 1: 57 tests, 2 pass, 55 fail on the
 `NotImplemented` scaffold, 0 fixture-caused failures — SC-010).
 
 **Oracles**: 18 / 18 ranking goldens agree with the independent Python BM25 transcription

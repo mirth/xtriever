@@ -2,10 +2,11 @@
 
 **Feature**: `002-lexical-stage` | **Date**: 2026-09-11 | **Plan**: [plan.md](./plan.md)
 
-> **Unblocked**: [ADR-0006](../../docs/adr/0006-defer-beir-eval-gate.md) and the
-> [ADR-0005 amendment](../../docs/adr/0005-tie-breaking-contract.md) were accepted 2026-09-12, and
-> the Constitution Check passes on all 14 rows. Nothing below has been executed; the commands are the
-> validation contract.
+> **Status (2026-09-12, implementation complete)**: every command below has been executed and
+> passes — see [report.md](./report.md). The Constitution Check passes on all 14 rows under
+> [ADR-0006](../../docs/adr/0006-defer-beir-eval-gate.md) (accepted). The ADR-0005 k-boundary
+> amendment that this file once cited was **superseded during implementation** (report.md F-001);
+> the tie-break now holds at the boundary and `xtriever-core` is untouched.
 
 Everything in this feature runs on a host. No device, no model, no network after the Python
 environment is set up.
@@ -26,10 +27,13 @@ The oracle needs the pinned venv from Feature 001 plus one package (`snowballste
 `standard_en` analyzer). The requirements file is extended in place and re-pinned.
 
 ```bash
-./scripts/setup-reference-venv.sh          # creates/updates reference/.venv from requirements-002.txt
-source reference/.venv/bin/activate
+./scripts/setup-reference-venv.sh 002      # creates/updates reference/.venv-002 from requirements-002.txt
+source reference/.venv-002/bin/activate
 python3 --version                          # 3.12.x — the generator refuses anything else
 ```
+
+Every `python3` below assumes that activation; without it the generator exits at its interpreter
+guard rather than running on the unsupported system interpreter.
 
 ## Step 2 — Prove the oracle refactor is byte-neutral (before anything else)
 
@@ -56,13 +60,17 @@ python3 reference/gen_002_fixtures.py --seed 2 --out reference/fixtures/002/
 git status --short reference/fixtures/002/   # schema, corpus, queries, filters, stats, mutations, manifest
 ```
 
+Re-running the generator preserves already-minted `expected` rankings for entries whose query,
+filter and `k` are unchanged, so a fixture tweak never silently un-mints `queries.json`.
+
 The generator refuses to emit a `Term` golden without a genuine tie at the k-boundary and refuses a
 `Phrase` golden whose phrase occurs only once — both are planted deliberately (data-model,
 `FixtureCorpus`). Ranking goldens are minted afterwards by the Rust example and cross-checked:
 
 ```bash
-cargo run -p xtriever-lexical --example gen_ranking -- --fixtures reference/fixtures/002/
-python3 reference/gen_002_fixtures.py --verify-ranking reference/fixtures/002/   # Python ≈ Rust within 1e-5 where covered
+cargo run -p xtriever-lexical --example gen_ranking -- --fixtures reference/fixtures/002/ [--force]
+python3 reference/gen_002_fixtures.py --verify-ranking reference/fixtures/002/    # Python ≈ Rust within 1e-5
+python3 reference/gen_002_fixtures.py --refresh-manifest reference/fixtures/002/  # re-hashes; refuses if verify fails
 ```
 
 (Minting needs the implementation, so this step is re-run at the end of PR 3 — see Step 5.)

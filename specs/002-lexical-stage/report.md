@@ -11,8 +11,8 @@ tests; the full local gate passes; `xtriever-core` is untouched.
 
 | | |
 |---|---|
-| acceptance suite | **60 / 60** pass (`cargo nextest run -p xtriever-lexical`), 1 `#[ignore]`d measurement |
-| workspace suite | 69 / 69 |
+| acceptance suite | **64 / 64** pass (`cargo nextest run -p xtriever-lexical`; 60 before review round 1), 1 `#[ignore]`d measurement |
+| workspace suite | 73 / 73 |
 | goldens vs the independent Python oracle | **18 / 18** rankings agree — ids and order exact, scores within 1e-5 relative — 22 / 22 filter sets exact, all statistics exact |
 | property tests | filter algebra 5 properties × 1,000 cases; analyzer determinism 48 cases; round-trip 32 cases |
 | gate | fmt ✓ · clippy `-D warnings` ✓ · deny ✓ (no new ignore; `onig_sys` ban intact) · iOS / iOS-sim / Android `cargo check` ✓ · wasm32 ✗ tracked (below) · no stubs ✓ · zero C/C++ in the graph ✓ |
@@ -41,15 +41,20 @@ the next with identical inputs. In a four-batch index the planted tie group (`Te
 `max_doc` using a *stable* sort over a `Vec` collected from a `HashMap`
 (`src/indexer/segment_updater.rs:406-407`, `src/indexer/segment_register.rs:18,66-70`). Equal-size
 segments therefore take `HashMap` iteration order, which std randomises per process. `DocAddress`
-is segment-ordinal-major, so the backend's tie-break at the boundary was random across restarts —
-a Principle VI violation, and one that FR-015 ("identical across process restarts") forbids.
+is segment-ordinal-major, so the backend's tie-break at the boundary was random across **builds**:
+the order is fixed into `meta.json` at commit time, so reopening one on-disk index is stable, but
+the same corpus committed the same way in two processes produced two different boundary
+memberships — a Principle VI violation of "same index + same query + same config", and one FR-015
+("across segment layouts … reached by the same mutation history") forbids.
 
 **Resolution** (repository owner, 2026-09-12): key the backend's top-k collector on
 `(score, Reverse(DocId))` via `TopDocs::tweak_score` (research D12 revised). The `DocId` tie-break
 now holds inside the collector, across segments and at the boundary, with no over-fetch and one
 fast-field read per candidate. The ADR-0005 amendment is superseded and the core doc comment
 stays as written. **Smallest reproduction**: build the fixture corpus in 4 batches of 250, run
-`term_tag_tie` in two processes, compare membership.
+`term_tag_tie` in two processes, compare membership — which is exactly what
+`determinism::k_boundary_membership_is_identical_across_processes` now does (three child
+processes, each building fresh), added after review round 1.
 
 ### F-002 — Filtered and unfiltered searches took different collection paths (resolved)
 
@@ -147,3 +152,18 @@ reached via `tantivy 0.26.2 → fs4 1.4.1 → rustix 1.1.4 → errno`, i.e. the 
 | SC-011 history-pair statistics | `stats::history_pair_has_identical_live_statistics` |
 | SC-012 divergence recorded | table above |
 | SC-013 shared under a lock, one type | `concurrency::*` (5 tests); public surface = `TantivyIndex` + `ANALYZERS` |
+
+## Review round 1 (GitHub Copilot, 2026-09-12) — 8 comments, all acted on
+
+| # | finding | action |
+|---|---|---|
+| 1 | `Range(bool, None, None)` bypassed the Bool rejection via the `Exists` rewrite | kind check moved into `lookup` so every `Range` shape on a bool is `InvalidQuery`; test covers closed, half-open and fully-open |
+| 2 | `Ids` materialised the whole live corpus | now a `TermSetQuery` on `__xt_id` — scales with the ids supplied (the D10 design as written) |
+| 3 | `merge()` could return without reloading when a background merge won the race | reloads before the early return |
+| 4 | the two-handle test never exercised "B already open when A commits" | `already_open_second_handle_keeps_its_snapshot_after_the_first_commits` added |
+| 5 | in-process layouts cannot regress the per-process `HashMap` seed | `k_boundary_membership_is_identical_across_processes`: three child processes build fresh 4-batch indexes; memberships must agree and equal the golden |
+| 6 | descriptor tests never altered the schema at a valid version | `open_rejects_descriptor_schema_mismatch`: analyzer change, kind change, extra field — all `Corrupt` |
+| 7 | quickstart status block was stale and cited the superseded amendment | rewritten |
+| 8 | quickstart activated `reference/.venv`, which does not exist | `.venv-002`, with the guard's behaviour stated |
+
+After the round: 64 / 64 acceptance tests (four added), full gate re-run green.

@@ -146,16 +146,22 @@ fn eq_in_range_on_text_field_are_invalid_query_but_exists_works() {
 #[test]
 fn range_on_bool_is_invalid_query() {
     let t = fixture_index();
-    let f = Filter::Range(
-        "published".into(),
-        Some(Value::Bool(false)),
-        Some(Value::Bool(false)),
-    );
-    let err = t.index.resolve_filter(&f).expect_err("must fail");
-    assert!(
-        matches!(&err, Error::InvalidQuery(m) if m.contains("published")),
-        "{err}"
-    );
+    // every Range shape on a bool, including the fully-open one that otherwise rewrites to Exists
+    for f in [
+        Filter::Range(
+            "published".into(),
+            Some(Value::Bool(false)),
+            Some(Value::Bool(false)),
+        ),
+        Filter::Range("published".into(), None, Some(Value::Bool(true))),
+        Filter::Range("published".into(), None, None),
+    ] {
+        let err = t.index.resolve_filter(&f).expect_err("must fail");
+        assert!(
+            matches!(&err, Error::InvalidQuery(m) if m.contains("published")),
+            "{f:?}: {err}"
+        );
+    }
 }
 
 #[test]
