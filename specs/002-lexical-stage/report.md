@@ -25,7 +25,7 @@ The first `xtriever-eval` run must use as its baseline **the merge commit of bra
 `002-lexical-stage` into `main`**. At the time this report was written the branch base was
 `b36f430` (`main` after Feature 001); the merge commit hash is to be filled in by whoever merges:
 
-> **Baseline commit**: `________` *(merge of 002-lexical-stage → main)*
+> **Baseline commit**: `94ddbe67f926badf962b93e8bd29d687e300189a` *(merge of 002-lexical-stage → main)*
 
 ## Findings
 
