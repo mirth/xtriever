@@ -62,6 +62,10 @@ impl FlatIndex {
     pub fn open_for(dir: &Path, embedder: &dyn Embedder) -> Result<Self>;
     #[cfg(feature = "mmap")]
     pub fn open_mapped_for(dir: &Path, embedder: &dyn Embedder) -> Result<Self>;
+    /// The committed vector under `id`, exactly as added (`None` if not a committed row).
+    pub fn vector(&self, id: DocId) -> Option<Vec<f32>>;
+    /// The directory this index lives in.
+    pub fn dir(&self) -> &Path;
 }
 
 impl xtriever_core::VectorIndex for FlatIndex { /* all eight methods */ }

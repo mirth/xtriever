@@ -24,15 +24,44 @@ pub struct Rounded {
     pub recall_100: f64,
 }
 
-/// FiQA-only observations (spec FR-018): numbers, units and the method that produced them.
+/// FiQA-only observations (003 FR-018; 004 FR-023): numbers, units and the method that produced
+/// them. The four optional fields were added by Feature 004 and are omitted when absent, so
+/// Feature 003's reports serialise unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Observations {
-    /// `du -sk` of the index directory, in bytes.
+    /// `du -sk` of the index directory (or the size of the vector index file), in bytes.
     pub index_dir_bytes: u64,
     /// Peak resident set size of the evaluating process, in bytes.
     pub peak_rss_bytes: u64,
-    /// How the two numbers were obtained.
+    /// How the numbers were obtained.
     pub method: String,
+    /// Wall time to embed the corpus, in milliseconds (dense).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embed_corpus_ms: Option<u64>,
+    /// Wall time to embed and search every judged query, in milliseconds (dense).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_ms: Option<u64>,
+    /// Peak RSS of a fresh process that only loads the model through the buffered path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_bytes_buffered: Option<u64>,
+    /// Peak RSS of a fresh process that only loads the model through the memory-mapped path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_bytes_mmapped: Option<u64>,
+}
+
+/// Identity of a non-lexical stage a report was produced with (Feature 004, spec FR-019/FR-021).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StageInfo {
+    /// `dense`.
+    pub kind: String,
+    /// `Embedder::fingerprint()` at run time.
+    pub embedder_fingerprint: String,
+    /// `buffered` or `mmap`.
+    pub load_path: String,
+    /// The engine's effective thread count during the run (`RAYON_NUM_THREADS`).
+    pub thread_count: usize,
+    /// `absolute`: the number is a baseline for a new stage, not a delta against another stage.
+    pub baseline: String,
 }
 
 /// One dataset's evaluation. **Field order is the on-disk key order** (contract).
@@ -71,6 +100,9 @@ pub struct EvalReport {
     /// FiQA observations, when measured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observations: Option<Observations>,
+    /// The stage a non-lexical report was produced with (Feature 004). Always the last key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<StageInfo>,
 }
 
 impl EvalReport {
@@ -130,6 +162,7 @@ pub fn score(run: &Run, dataset: &Dataset, harness_commit: &str) -> Result<EvalR
         },
         per_query: m.per_query,
         observations: None,
+        stage: None,
     })
 }
 
@@ -187,13 +220,26 @@ impl Delta {
 }
 
 /// Compare two report sets, matched by dataset name.
-pub fn delta(before: &[EvalReport], after: &[EvalReport]) -> Delta {
+///
+/// # Errors
+///
+/// `Error::Run` when a matched pair was produced by different configurations: a delta is only
+/// meaningful within one configuration over time, never across stages (Feature 004 FR-021 — the
+/// dense baseline is absolute, not a delta against the lexical one).
+pub fn delta(before: &[EvalReport], after: &[EvalReport]) -> Result<Delta> {
     let mut rows = Vec::new();
     let mut fell = 0usize;
     for b in before {
         let Some(a) = after.iter().find(|a| a.dataset == b.dataset) else {
             continue; // present on one side only: skipped, not an error
         };
+        if a.config != b.config {
+            return Err(Error::Run(format!(
+                "reports for `{}` are for different configurations (`{}` vs `{}`); a delta is only \
+                 meaningful within one configuration (FR-021)",
+                b.dataset, b.config, a.config
+            )));
+        }
         if a.mean_ndcg_10 < b.mean_ndcg_10 {
             fell += 1;
         }
@@ -216,10 +262,10 @@ pub fn delta(before: &[EvalReport], after: &[EvalReport]) -> Delta {
     // "Majority of benchmark datasets" (constitution II, FR-022) is a majority of the FIXED
     // three-dataset set — at least two — however many reports were supplied. A SciFact-only
     // smoke that falls is one of three, not a majority.
-    Delta {
+    Ok(Delta {
         rows,
         adr_trigger: fell >= BENCHMARK_MAJORITY,
-    }
+    })
 }
 
 /// Why a smoke run failed (spec FR-024).
@@ -255,8 +301,14 @@ pub fn smoke(
             });
         }
     }
-    Ok(delta(
+    // Configurations are checked by `delta`; a mismatch here is a failure with both names.
+    delta(
         std::slice::from_ref(baseline),
         std::slice::from_ref(current),
-    ))
+    )
+    .map_err(|e| SmokeFailure {
+        metric: format!("configuration ({e})"),
+        baseline: baseline.mean_ndcg_10,
+        current: current.mean_ndcg_10,
+    })
 }

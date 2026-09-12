@@ -2,9 +2,11 @@
 
 **Feature**: `004-dense-stage` | **Date**: 2026-09-12 | **Plan**: [plan.md](./plan.md)
 
-> **Status**: plan-time. The Constitution Check passes on all 14 rows under constitution v1.2.0
-> (ADR-0007 accepted 2026-09-12). Nothing below has been executed except the Phase 0 measurements
-> in research.md.
+> **Status**: **executed 2026-09-12** — every step below ran; results in [report.md](./report.md).
+> Measured: FiQA embeds in **5,433 s** (94 ms/passage, 4 threads; 8 threads was slower); model
+> memory from cold buffered 226.3 MB vs mapped 197.4 MB (−13 %, ADR-0007 condition 5: the mmap
+> weight path stays); thread-count and load-path bit-identity both hold. Step 8's containment
+> greps: one `unsafe {}` in `bytes.rs`, one item-scoped allow.
 
 ## Step 0 — Toolchain provenance
 
@@ -61,7 +63,8 @@ Model memory, per path, each in its own process (FR-023, research D12):
 
 ```bash
 /usr/bin/time -l cargo run --release -p xtriever-eval --example beir -- model-memory --load-path buffered 2>&1 | grep 'maximum resident'
-/usr/bin/time -l cargo run --release -p xtriever-eval --features mmap --example beir -- model-memory --load-path mmap 2>&1 | grep 'maximum resident'
+/usr/bin/time -l cargo run --release -p xtriever-eval --example beir -- model-memory --load-path mmap 2>&1 | grep 'maximum resident'
+# (the example's dev-dependency on xtriever-dense enables `mmap`, so no feature flag is needed here)
 ```
 
 Record both; the expected difference is roughly the 90.9 MB transient (D1), **not** 001's 39.5×.

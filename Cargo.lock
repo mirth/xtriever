@@ -2636,6 +2636,17 @@ dependencies = [
 name = "xtriever-dense"
 version = "0.1.0"
 dependencies = [
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "memmap2",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokenizers",
  "xtriever-core",
 ]
 
@@ -2651,6 +2662,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "xtriever-core",
+ "xtriever-dense",
  "xtriever-lexical",
 ]
 

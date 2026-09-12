@@ -1,0 +1,10 @@
+{
+  "files": {
+    "embeddings.json": "1731c8b7468b6f0d7c84dcda31d79fa81946800b90317dd65769d82b28a9722d",
+    "mutations.json": "e3184fa9d2af03e697aaf59b7d064d37b2b83b2c7860366d3f2a6c8ab89b8d16",
+    "search.json": "b22a3da5acf2b579115a60023b41ec0b18704bdec8b43eb8eae2c0ebd659de5f"
+  },
+  "generator_sha256": "30864b9e9fb47c033c15df4cd1224b1ff2285d9dc148cb1543da285d41c18ae1",
+  "python_version": "3.12.12",
+  "schema_version": 1
+}

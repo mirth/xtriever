@@ -126,3 +126,13 @@ non-default feature; each block preceded by `// SAFETY:` and tested against the 
 one further case is admitted, as v1.1.0 did for uniffi scaffolding). `CLAUDE.md` and the plan
 template carry the new wording. Conditions 1–5 remain in force as the terms under which the
 amendment applies; condition 5's measurement is owed by Feature 004's report.
+
+**Condition 5, measured 2026-09-12** (Feature 004 T043/T044; Apple M1 Pro, macOS 25.6,
+`RAYON_NUM_THREADS=4`, `/usr/bin/time -l` on `beir model-memory`, three fresh processes per
+path): peak RSS buffered **222.8 / 226.3 / 226.7 MB**, mapped **193.1 / 197.4 / 197.5 MB** —
+a difference of ~29 MB, **13 % of the buffered peak**, above the 10 % threshold. **The weights-mmap
+path stays.** The saving is a third of the 90.9 MB file buffer it avoids, not all of it, because
+macOS counts touched file-backed pages in RSS and candle touches every page while copying the
+tensors onto the heap (research D1); steady state is identical between the paths. The number is
+recorded in `specs/004-dense-stage/baselines/dense-baseline-v1.fiqa.json` (`observations`) and
+the feature report.
