@@ -1,0 +1,82 @@
+{
+ "num_docs": 1000,
+ "avg_field_len": {
+  "title": 5.046,
+  "body": 25.943,
+  "summary": 10.06
+ },
+ "terms": [
+  {
+   "field": "body",
+   "term": "quantum",
+   "doc_freq": 286,
+   "total_term_freq": 347
+  },
+  {
+   "field": "body",
+   "term": "lattice",
+   "doc_freq": 290,
+   "total_term_freq": 346
+  },
+  {
+   "field": "body",
+   "term": "photon",
+   "doc_freq": 298,
+   "total_term_freq": 348
+  },
+  {
+   "field": "title",
+   "term": "kernel",
+   "doc_freq": 70,
+   "total_term_freq": 72
+  },
+  {
+   "field": "title",
+   "term": "quantum",
+   "doc_freq": 57,
+   "total_term_freq": 61
+  },
+  {
+   "field": "summary",
+   "term": "run",
+   "doc_freq": 307,
+   "total_term_freq": 445
+  },
+  {
+   "field": "summary",
+   "term": "dog",
+   "doc_freq": 303,
+   "total_term_freq": 459
+  },
+  {
+   "field": "summary",
+   "term": "running",
+   "doc_freq": null,
+   "total_term_freq": null
+  },
+  {
+   "field": "tags",
+   "term": "alpha",
+   "doc_freq": 99,
+   "total_term_freq": 99
+  },
+  {
+   "field": "source",
+   "term": "web",
+   "doc_freq": 242,
+   "total_term_freq": 242
+  },
+  {
+   "field": "body",
+   "term": "zzzzunknownword",
+   "doc_freq": null,
+   "total_term_freq": null
+  },
+  {
+   "field": "body",
+   "term": "lettuce",
+   "doc_freq": 1,
+   "total_term_freq": 1
+  }
+ ]
+}

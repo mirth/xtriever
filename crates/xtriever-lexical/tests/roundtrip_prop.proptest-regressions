@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6e84aad6cea46b82edb37798421ddb28624c02c8ee577f1b13807132fd152db8 # shrinks to docs = [RDoc { id: 0, title: " ", source: "web", views: 0, published: false, note: None }]

@@ -1,0 +1,3783 @@
+{
+ "replace": {
+  "id": 5,
+  "new_document": {
+   "id": 5,
+   "fields": {
+    "title": {
+     "Text": "Replaced document five"
+    },
+    "body": {
+     "Text": "Nothing about crystals here, only replacement text."
+    },
+    "source": {
+     "Keyword": "web"
+    },
+    "views": {
+     "U64": 1
+    },
+    "rank": {
+     "I64": 0
+    },
+    "quality": {
+     "F64": 0.5
+    },
+    "published": {
+     "Bool": false
+    },
+    "ts": {
+     "DateMillis": 1700000000000
+    }
+   },
+   "chunk": null
+  },
+  "absent_from": "phrase_exact",
+  "present_in": {
+   "query": {
+    "Match": [
+     "title",
+     "replaced"
+    ]
+   },
+   "expected_ids": [
+    5
+   ]
+  }
+ },
+ "delete": {
+  "ids": [
+   17,
+   42,
+   300
+  ],
+  "expected_num_docs": 997,
+  "expected_term_stats": [
+   {
+    "field": "body",
+    "term": "quantum",
+    "doc_freq": 283,
+    "total_term_freq": 343
+   },
+   {
+    "field": "body",
+    "term": "lattice",
+    "doc_freq": 287,
+    "total_term_freq": 342
+   }
+  ],
+  "expected_avg_field_len": {
+   "title": 5.0401203610832495,
+   "body": 25.930792377131393,
+   "summary": 10.058232931726907
+  },
+  "phrase_exact_after_delete_ids": "golden ids minus deleted, same order"
+ },
+ "history_pair": {
+  "extra_documents": [
+   {
+    "id": 1000,
+    "fields": {
+     "title": {
+      "Text": "Gear valve trumpet gear"
+     },
+     "body": {
+      "Text": "Quantum lattice axle postings graph ranking graph postings bugle violin socket turbine lagoon glacier commit merge matrix brake filter orbit heap packet."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 5804
+     },
+     "rank": {
+      "I64": 37
+     },
+     "quality": {
+      "F64": 0.1302
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060000000
+     },
+     "summary": {
+      "Text": "running dogs indexing ran dogs fast queries indexing"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1001,
+    "fields": {
+     "title": {
+      "Text": "Banjo canyon harbor valley"
+     },
+     "body": {
+      "Text": "Quantum lattice heap quantum graph axle violin banjo graph turbine harp violin commit cello bugle photon valve heap ranking quantum retrieval gear."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 48144
+     },
+     "rank": {
+      "I64": 10
+     },
+     "quality": {
+      "F64": 0.9137
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060060000
+     },
+     "summary": {
+      "Text": "running dogs queried engineered dogs dogs dog indexing"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1002,
+    "fields": {
+     "title": {
+      "Text": "Banjo river vector thread"
+     },
+     "body": {
+      "Text": "Quantum lattice graph lagoon cello chime filter cello banjo corpus drum turbine cache quantum banjo guitar photon plasma vector turbine axle fusion."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 78827
+     },
+     "rank": {
+      "I64": 1
+     },
+     "quality": {
+      "F64": 0.448
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060120000
+     },
+     "summary": {
+      "Text": "running dogs retrieved documented documented documented queries engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1003,
+    "fields": {
+     "title": {
+      "Text": "Buffer merge bitmap thread"
+     },
+     "body": {
+      "Text": "Quantum lattice delta kernel lagoon bearing glacier analyzer cache query chime engine meadow banjo packet meadow turbine drum kernel buffer organ postings."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 14490
+     },
+     "rank": {
+      "I64": -35
+     },
+     "quality": {
+      "F64": 0.3124
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060180000
+     },
+     "summary": {
+      "Text": "running dogs dog queries faster ranking dog indexing"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1004,
+    "fields": {
+     "title": {
+      "Text": "Thread filter plasma switch"
+     },
+     "body": {
+      "Text": "Quantum lattice commit brake engine chassis field field glacier cache canyon guitar socket piano turbine switch delta piano banjo queue piano switch."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 29210
+     },
+     "rank": {
+      "I64": -40
+     },
+     "quality": {
+      "F64": 0.429
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060240000
+     },
+     "summary": {
+      "Text": "running dogs searched documents dogs quickly fastest ranked"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1005,
+    "fields": {
+     "title": {
+      "Text": "Quantum merge mountain drum"
+     },
+     "body": {
+      "Text": "Quantum lattice vector tensor matrix lagoon graph memory quantum ranking bearing memory quantum brake segment heap organ signal axle socket lagoon score."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 22984
+     },
+     "rank": {
+      "I64": -4
+     },
+     "quality": {
+      "F64": 0.9213
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060300000
+     },
+     "summary": {
+      "Text": "running dogs running dog queried ranking fastest searched"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1006,
+    "fields": {
+     "title": {
+      "Text": "Plasma socket commit retrieval"
+     },
+     "body": {
+      "Text": "Quantum lattice bugle glacier signal river memory quantum island search token plasma drum packet plasma reactor meadow gasket valley guitar lattice socket."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 80937
+     },
+     "rank": {
+      "I64": 3
+     },
+     "quality": {
+      "F64": 0.6165
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060360000
+     },
+     "summary": {
+      "Text": "running dogs engines fastest retrieved faster retrieval engineered"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1007,
+    "fields": {
+     "title": {
+      "Text": "Merge bearing engine commit"
+     },
+     "body": {
+      "Text": "Quantum lattice score memory guitar fusion chime retrieval buffer router photon harbor commit token plasma document river postings fusion heap photon ranking."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 37968
+     },
+     "rank": {
+      "I64": 29
+     },
+     "quality": {
+      "F64": 0.1289
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060420000
+     },
+     "summary": {
+      "Text": "running dogs quickly quickly engines engines engineered fast"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1008,
+    "fields": {
+     "title": {
+      "Text": "Tensor desert vector token"
+     },
+     "body": {
+      "Text": "Quantum lattice photon mountain harbor heap token flute chime fusion heap turbine cello orbit heap banjo meadow desert island bugle matrix gear."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 8455
+     },
+     "rank": {
+      "I64": -32
+     },
+     "quality": {
+      "F64": 0.712
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060480000
+     },
+     "summary": {
+      "Text": "running dogs fastest fastest retrieval indexing retrieval retrieval"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1009,
+    "fields": {
+     "title": {
+      "Text": "Organ harbor thread island"
+     },
+     "body": {
+      "Text": "Quantum lattice heap turbine reactor valve turbine matrix signal fusion flute orbit gear harp postings forest analyzer engine bitmap canyon stack search."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 76042
+     },
+     "rank": {
+      "I64": -24
+     },
+     "quality": {
+      "F64": 0.57
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060540000
+     },
+     "summary": {
+      "Text": "running dogs ran dog dogs engineered dogs quickly"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1010,
+    "fields": {
+     "title": {
+      "Text": "Thread postings axle bearing"
+     },
+     "body": {
+      "Text": "Quantum lattice cello meadow bugle harbor guitar lagoon valley glacier heap guitar cache socket canyon buffer merge memory heap guitar canyon piston."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 49246
+     },
+     "rank": {
+      "I64": -4
+     },
+     "quality": {
+      "F64": 0.8476
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060600000
+     },
+     "summary": {
+      "Text": "running dogs documents searched documents dogs quickly documents"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1011,
+    "fields": {
+     "title": {
+      "Text": "Organ reactor trumpet score"
+     },
+     "body": {
+      "Text": "Quantum lattice delta cache router field reactor engine queue harp orbit document analyzer heap drum bugle quantum router segment chime orbit cello."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 59294
+     },
+     "rank": {
+      "I64": -15
+     },
+     "quality": {
+      "F64": 0.489
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060660000
+     },
+     "summary": {
+      "Text": "running dogs faster engines faster ranked queried dogs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1012,
+    "fields": {
+     "title": {
+      "Text": "Axle filter lattice socket"
+     },
+     "body": {
+      "Text": "Quantum lattice queue router flute delta cache trumpet commit merge island delta organ field cello fusion bitmap violin lagoon delta index index."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 45022
+     },
+     "rank": {
+      "I64": 34
+     },
+     "quality": {
+      "F64": 0.1522
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060720000
+     },
+     "summary": {
+      "Text": "running dogs quickly ran engines ranking ranking engineered"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1013,
+    "fields": {
+     "title": {
+      "Text": "Filter field tensor retrieval"
+     },
+     "body": {
+      "Text": "Quantum lattice gear banjo photon valley orbit index chime switch bearing kernel index queue router memory vector harbor cello packet lattice fusion."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 25562
+     },
+     "rank": {
+      "I64": 31
+     },
+     "quality": {
+      "F64": 0.579
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060780000
+     },
+     "summary": {
+      "Text": "running dogs retrieved runs ran indexed documented queried"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1014,
+    "fields": {
+     "title": {
+      "Text": "Stack harbor drum quantum"
+     },
+     "body": {
+      "Text": "Quantum lattice axle plasma document axle desert packet merge guitar banjo fusion engine filter tensor retrieval signal thread harbor graph filter merge."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 34122
+     },
+     "rank": {
+      "I64": -11
+     },
+     "quality": {
+      "F64": 0.9919
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060840000
+     },
+     "summary": {
+      "Text": "running dogs running ranking queries fastest fastest indexing"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1015,
+    "fields": {
+     "title": {
+      "Text": "Filter quantum score router"
+     },
+     "body": {
+      "Text": "Quantum lattice document valley document segment turbine piston glacier brake chime switch harbor mountain organ orbit plasma photon valve piston switch banjo."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 65640
+     },
+     "rank": {
+      "I64": 29
+     },
+     "quality": {
+      "F64": 0.1982
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060900000
+     },
+     "summary": {
+      "Text": "running dogs documented indexed documented ranked indexed documented"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1016,
+    "fields": {
+     "title": {
+      "Text": "Guitar reactor plasma lagoon"
+     },
+     "body": {
+      "Text": "Quantum lattice mountain valve query gasket brake valley stack analyzer memory valley meadow kernel heap packet stack gear plasma fusion graph drum."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 23917
+     },
+     "rank": {
+      "I64": 18
+     },
+     "quality": {
+      "F64": 0.1123
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700060960000
+     },
+     "summary": {
+      "Text": "running dogs searches runs searched searches retrieval retrieved"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1017,
+    "fields": {
+     "title": {
+      "Text": "Fusion desert axle guitar"
+     },
+     "body": {
+      "Text": "Quantum lattice segment piano piano organ packet valley retrieval document filter gear graph valley harbor thread axle island desert lagoon meadow delta."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 60198
+     },
+     "rank": {
+      "I64": -8
+     },
+     "quality": {
+      "F64": 0.087
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061020000
+     },
+     "summary": {
+      "Text": "running dogs faster dog indexing engineered ran engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1018,
+    "fields": {
+     "title": {
+      "Text": "Guitar router postings reactor"
+     },
+     "body": {
+      "Text": "Quantum lattice photon harp stack packet retrieval corpus flute fusion piston gear retrieval buffer score flute river guitar canyon organ cache mountain."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 26210
+     },
+     "rank": {
+      "I64": -35
+     },
+     "quality": {
+      "F64": 0.3901
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061080000
+     },
+     "summary": {
+      "Text": "running dogs queried ranking faster fast quickly documented"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1019,
+    "fields": {
+     "title": {
+      "Text": "Search harbor river trumpet"
+     },
+     "body": {
+      "Text": "Quantum lattice chassis router filter island bitmap canyon bearing socket organ forest delta photon buffer guitar flute valve forest field score queue."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 24673
+     },
+     "rank": {
+      "I64": -42
+     },
+     "quality": {
+      "F64": 0.907
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061140000
+     },
+     "summary": {
+      "Text": "running dogs faster dogs indexing ranking quickly ranking"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1020,
+    "fields": {
+     "title": {
+      "Text": "Piston switch reactor heap"
+     },
+     "body": {
+      "Text": "Quantum lattice mountain gasket field engine gear valley thread chime stack matrix gear lattice reactor vector packet island fusion harbor bearing piano."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 13613
+     },
+     "rank": {
+      "I64": 30
+     },
+     "quality": {
+      "F64": 0.1217
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061200000
+     },
+     "summary": {
+      "Text": "running dogs fast engines searched engines indexing ran"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1021,
+    "fields": {
+     "title": {
+      "Text": "Gear delta vector heap"
+     },
+     "body": {
+      "Text": "Quantum lattice photon vector segment packet score harbor commit packet axle gasket trumpet harp organ violin score matrix desert violin river brake."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 88787
+     },
+     "rank": {
+      "I64": 36
+     },
+     "quality": {
+      "F64": 0.9063
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061260000
+     },
+     "summary": {
+      "Text": "running dogs ran fast queried faster queried documented"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1022,
+    "fields": {
+     "title": {
+      "Text": "Queue gasket segment field"
+     },
+     "body": {
+      "Text": "Quantum lattice drum harp search matrix query desert drum retrieval flute island thread switch graph plasma matrix harp router engine bitmap gasket."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 2565
+     },
+     "rank": {
+      "I64": -23
+     },
+     "quality": {
+      "F64": 0.8157
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061320000
+     },
+     "summary": {
+      "Text": "running dogs dog faster engineered quickly searches faster"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1023,
+    "fields": {
+     "title": {
+      "Text": "Chassis valley packet corpus"
+     },
+     "body": {
+      "Text": "Quantum lattice ranking axle cache meadow document commit packet thread river delta orbit gear analyzer merge piston lagoon token photon field trumpet."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 97067
+     },
+     "rank": {
+      "I64": -25
+     },
+     "quality": {
+      "F64": 0.1324
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061380000
+     },
+     "summary": {
+      "Text": "running dogs queried retrieval quickly searches engineered fast"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1024,
+    "fields": {
+     "title": {
+      "Text": "Bearing quantum reactor matrix"
+     },
+     "body": {
+      "Text": "Quantum lattice kernel quantum desert stack switch valley signal canyon piston trumpet violin token axle thread query postings router analyzer canyon memory."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 70974
+     },
+     "rank": {
+      "I64": -27
+     },
+     "quality": {
+      "F64": 0.5287
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061440000
+     },
+     "summary": {
+      "Text": "running dogs ranked ranked runs running engineered ranking"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1025,
+    "fields": {
+     "title": {
+      "Text": "Meadow filter harbor bearing"
+     },
+     "body": {
+      "Text": "Quantum lattice score orbit search bugle switch ranking organ graph photon organ field field quantum drum turbine corpus token piston analyzer ranking."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 26576
+     },
+     "rank": {
+      "I64": 11
+     },
+     "quality": {
+      "F64": 0.6753
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061500000
+     },
+     "summary": {
+      "Text": "running dogs fast documented retrieved searches fastest indexing"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1026,
+    "fields": {
+     "title": {
+      "Text": "Valve fusion harbor matrix"
+     },
+     "body": {
+      "Text": "Quantum lattice island turbine query packet field mountain piston tensor gasket orbit lattice delta drum kernel fusion matrix cache chime quantum reactor."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 86686
+     },
+     "rank": {
+      "I64": -21
+     },
+     "quality": {
+      "F64": 0.9845
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061560000
+     },
+     "summary": {
+      "Text": "running dogs searches indexed fastest indexed retrieval ranked"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1027,
+    "fields": {
+     "title": {
+      "Text": "Plasma piano violin cello"
+     },
+     "body": {
+      "Text": "Quantum lattice gear commit quantum valley turbine cache valve query query fusion canyon bitmap desert photon forest gear drum buffer chassis valley."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 47483
+     },
+     "rank": {
+      "I64": -22
+     },
+     "quality": {
+      "F64": 0.24
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061620000
+     },
+     "summary": {
+      "Text": "running dogs runs indexing quickly runs ranking documented"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1028,
+    "fields": {
+     "title": {
+      "Text": "Router lattice gasket axle"
+     },
+     "body": {
+      "Text": "Quantum lattice valve merge gasket canyon valve valve document delta bearing commit axle matrix buffer brake engine drum drum router reactor retrieval."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 9503
+     },
+     "rank": {
+      "I64": 27
+     },
+     "quality": {
+      "F64": 0.325
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061680000
+     },
+     "summary": {
+      "Text": "running dogs running indexing documents fastest dog retrieval"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1029,
+    "fields": {
+     "title": {
+      "Text": "Turbine memory piano vector"
+     },
+     "body": {
+      "Text": "Quantum lattice field analyzer bitmap island query harbor tensor orbit engine mountain token token thread banjo harp axle banjo segment island field."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 19304
+     },
+     "rank": {
+      "I64": -2
+     },
+     "quality": {
+      "F64": 0.5739
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061740000
+     },
+     "summary": {
+      "Text": "running dogs searched quickly engines engines searches running"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1030,
+    "fields": {
+     "title": {
+      "Text": "Cello postings island field"
+     },
+     "body": {
+      "Text": "Quantum lattice cache stack cello bugle buffer drum stack banjo banjo cello socket bearing thread corpus score violin brake vector banjo filter."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 14925
+     },
+     "rank": {
+      "I64": -30
+     },
+     "quality": {
+      "F64": 0.5579
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061800000
+     },
+     "summary": {
+      "Text": "running dogs indexing dog runs running ranking fast"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1031,
+    "fields": {
+     "title": {
+      "Text": "Valve switch valve trumpet"
+     },
+     "body": {
+      "Text": "Quantum lattice stack photon tensor ranking island valley ranking fusion valve cache switch cache segment gasket graph token bearing piano orbit trumpet."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 21016
+     },
+     "rank": {
+      "I64": 28
+     },
+     "quality": {
+      "F64": 0.7649
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061860000
+     },
+     "summary": {
+      "Text": "running dogs dog fast searches indexed ranked documented"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1032,
+    "fields": {
+     "title": {
+      "Text": "Token photon mountain retrieval"
+     },
+     "body": {
+      "Text": "Quantum lattice lattice guitar bearing router banjo chime ranking field desert chime brake trumpet organ bugle chime orbit chime filter banjo banjo."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 64348
+     },
+     "rank": {
+      "I64": 23
+     },
+     "quality": {
+      "F64": 0.4977
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061920000
+     },
+     "summary": {
+      "Text": "running dogs fast queries retrieved fast retrieved engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1033,
+    "fields": {
+     "title": {
+      "Text": "Bearing photon packet harbor"
+     },
+     "body": {
+      "Text": "Quantum lattice valve quantum axle signal tensor queue cache matrix reactor banjo buffer kernel thread merge search router tensor cello valve field."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 92591
+     },
+     "rank": {
+      "I64": 48
+     },
+     "quality": {
+      "F64": 0.8808
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700061980000
+     },
+     "summary": {
+      "Text": "running dogs ran running indexed running engineered dogs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1034,
+    "fields": {
+     "title": {
+      "Text": "Retrieval gear switch socket"
+     },
+     "body": {
+      "Text": "Quantum lattice bitmap flute postings reactor matrix score commit guitar reactor kernel lattice queue heap guitar fusion desert harp kernel quantum commit."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 83885
+     },
+     "rank": {
+      "I64": -22
+     },
+     "quality": {
+      "F64": 0.3724
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062040000
+     },
+     "summary": {
+      "Text": "running dogs engines engineered ran ranked queries documents"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1035,
+    "fields": {
+     "title": {
+      "Text": "Lagoon desert turbine turbine"
+     },
+     "body": {
+      "Text": "Quantum lattice engine photon axle lagoon thread thread meadow guitar score router cello island glacier guitar harbor chime meadow violin graph banjo."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 15626
+     },
+     "rank": {
+      "I64": -46
+     },
+     "quality": {
+      "F64": 0.8359
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062100000
+     },
+     "summary": {
+      "Text": "running dogs runs running retrieved documents searches documents"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1036,
+    "fields": {
+     "title": {
+      "Text": "Signal query chime heap"
+     },
+     "body": {
+      "Text": "Quantum lattice socket reactor drum photon piano harp reactor desert signal delta query desert quantum cache fusion mountain harbor filter engine desert."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 49602
+     },
+     "rank": {
+      "I64": 49
+     },
+     "quality": {
+      "F64": 0.2761
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062160000
+     },
+     "summary": {
+      "Text": "running dogs indexing retrieval faster dogs fastest queried"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1037,
+    "fields": {
+     "title": {
+      "Text": "Flute violin orbit drum"
+     },
+     "body": {
+      "Text": "Quantum lattice valley banjo photon canyon river piston thread guitar retrieval island drum turbine reactor segment harbor organ retrieval guitar trumpet bugle."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 16034
+     },
+     "rank": {
+      "I64": 18
+     },
+     "quality": {
+      "F64": 0.5046
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062220000
+     },
+     "summary": {
+      "Text": "running dogs running retrieved fast engineered indexed engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1038,
+    "fields": {
+     "title": {
+      "Text": "Router banjo piston router"
+     },
+     "body": {
+      "Text": "Quantum lattice bugle corpus axle fusion bugle merge lagoon vector search commit queue valley island guitar canyon graph document trumpet banjo packet."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 32585
+     },
+     "rank": {
+      "I64": -9
+     },
+     "quality": {
+      "F64": 0.0381
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062280000
+     },
+     "summary": {
+      "Text": "running dogs dog searches ran queried documented queries"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1039,
+    "fields": {
+     "title": {
+      "Text": "Heap valley valley photon"
+     },
+     "body": {
+      "Text": "Quantum lattice quantum segment tensor analyzer mountain photon switch router trumpet field photon forest stack harp glacier turbine flute meadow switch photon."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 21828
+     },
+     "rank": {
+      "I64": 19
+     },
+     "quality": {
+      "F64": 0.9831
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062340000
+     },
+     "summary": {
+      "Text": "running dogs fast searches fastest fastest queried indexed"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1040,
+    "fields": {
+     "title": {
+      "Text": "Island harbor switch canyon"
+     },
+     "body": {
+      "Text": "Quantum lattice commit commit corpus bearing search socket harp plasma document merge ranking search plasma island flute orbit index analyzer analyzer kernel."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 82243
+     },
+     "rank": {
+      "I64": 48
+     },
+     "quality": {
+      "F64": 0.0384
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062400000
+     },
+     "summary": {
+      "Text": "running dogs retrieval indexing ranking searches engines fastest"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1041,
+    "fields": {
+     "title": {
+      "Text": "Mountain reactor chassis forest"
+     },
+     "body": {
+      "Text": "Quantum lattice piano commit bugle flute query fusion buffer engine queue thread mountain bearing corpus photon stack vector memory orbit harp piano."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 75378
+     },
+     "rank": {
+      "I64": -40
+     },
+     "quality": {
+      "F64": 0.6156
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062460000
+     },
+     "summary": {
+      "Text": "running dogs quickly retrieval indexing retrieval faster runs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1042,
+    "fields": {
+     "title": {
+      "Text": "Violin bearing graph matrix"
+     },
+     "body": {
+      "Text": "Quantum lattice packet retrieval engine flute merge meadow score bugle chassis gasket mountain bugle ranking forest memory flute engine analyzer axle lattice."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 20551
+     },
+     "rank": {
+      "I64": -1
+     },
+     "quality": {
+      "F64": 0.1808
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062520000
+     },
+     "summary": {
+      "Text": "running dogs documented documents ranked retrieved dogs runs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1043,
+    "fields": {
+     "title": {
+      "Text": "Harbor search merge filter"
+     },
+     "body": {
+      "Text": "Quantum lattice token valley fusion index engine segment socket trumpet heap merge island commit chime chime matrix corpus bitmap river corpus graph."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 48116
+     },
+     "rank": {
+      "I64": -5
+     },
+     "quality": {
+      "F64": 0.9109
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062580000
+     },
+     "summary": {
+      "Text": "running dogs indexing indexing documented fast ranked ranking"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1044,
+    "fields": {
+     "title": {
+      "Text": "Glacier router vector axle"
+     },
+     "body": {
+      "Text": "Quantum lattice graph piston forest lagoon axle field kernel mountain vector banjo lagoon forest buffer guitar gear reactor organ cello canyon field."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 53407
+     },
+     "rank": {
+      "I64": 8
+     },
+     "quality": {
+      "F64": 0.4486
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062640000
+     },
+     "summary": {
+      "Text": "running dogs dogs engines ran ranked queries searched"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1045,
+    "fields": {
+     "title": {
+      "Text": "Merge stack photon chime"
+     },
+     "body": {
+      "Text": "Quantum lattice organ segment gasket ranking token matrix glacier guitar buffer score bitmap score lattice heap score chime tensor tensor harbor segment."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 56376
+     },
+     "rank": {
+      "I64": -14
+     },
+     "quality": {
+      "F64": 0.4847
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062700000
+     },
+     "summary": {
+      "Text": "running dogs runs runs indexed engines searched ran"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1046,
+    "fields": {
+     "title": {
+      "Text": "Ranking queue postings segment"
+     },
+     "body": {
+      "Text": "Quantum lattice heap violin heap field harbor thread harbor desert turbine memory gasket harbor score chassis bitmap harbor filter guitar buffer chime."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 20961
+     },
+     "rank": {
+      "I64": 42
+     },
+     "quality": {
+      "F64": 0.5479
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062760000
+     },
+     "summary": {
+      "Text": "running dogs fast queried engineered ran retrieved queried"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1047,
+    "fields": {
+     "title": {
+      "Text": "Matrix matrix river cello"
+     },
+     "body": {
+      "Text": "Quantum lattice retrieval organ island forest queue memory ranking postings bitmap field river drum gasket graph bugle canyon valley bearing graph river."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 6376
+     },
+     "rank": {
+      "I64": 14
+     },
+     "quality": {
+      "F64": 0.5958
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062820000
+     },
+     "summary": {
+      "Text": "running dogs engineered ran quickly ran quickly indexing"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1048,
+    "fields": {
+     "title": {
+      "Text": "Orbit cache harbor canyon"
+     },
+     "body": {
+      "Text": "Quantum lattice trumpet retrieval signal engine reactor socket score drum piston document harp glacier search reactor photon bitmap glacier violin lagoon filter."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 29664
+     },
+     "rank": {
+      "I64": 42
+     },
+     "quality": {
+      "F64": 0.7176
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062880000
+     },
+     "summary": {
+      "Text": "running dogs ranking retrieval running runs engines faster"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1049,
+    "fields": {
+     "title": {
+      "Text": "Buffer axle river packet"
+     },
+     "body": {
+      "Text": "Quantum lattice piano graph flute corpus token delta plasma delta piano buffer valve segment query postings tensor bearing switch kernel turbine chime."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 48895
+     },
+     "rank": {
+      "I64": -30
+     },
+     "quality": {
+      "F64": 0.8065
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700062940000
+     },
+     "summary": {
+      "Text": "running dogs documented documents faster ran quickly runs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1050,
+    "fields": {
+     "title": {
+      "Text": "Query organ retrieval desert"
+     },
+     "body": {
+      "Text": "Quantum lattice island cello lattice brake packet vector fusion search quantum guitar analyzer matrix chassis document piano vector postings tensor orbit trumpet."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 10058
+     },
+     "rank": {
+      "I64": 34
+     },
+     "quality": {
+      "F64": 0.9123
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063000000
+     },
+     "summary": {
+      "Text": "running dogs engineered faster runs searched retrieved queries"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1051,
+    "fields": {
+     "title": {
+      "Text": "Gasket engine kernel ranking"
+     },
+     "body": {
+      "Text": "Quantum lattice token glacier chime segment chassis chime lattice axle filter gasket glacier plasma index valve chassis drum filter field reactor token."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 7460
+     },
+     "rank": {
+      "I64": 34
+     },
+     "quality": {
+      "F64": 0.3924
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063060000
+     },
+     "summary": {
+      "Text": "running dogs running searched retrieval ran searched ranking"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1052,
+    "fields": {
+     "title": {
+      "Text": "Orbit bugle merge stack"
+     },
+     "body": {
+      "Text": "Quantum lattice orbit delta cello search harbor search glacier filter token piano harbor signal photon forest switch queue delta bugle mountain river."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 55473
+     },
+     "rank": {
+      "I64": -31
+     },
+     "quality": {
+      "F64": 0.3831
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063120000
+     },
+     "summary": {
+      "Text": "running dogs fastest fast documented dogs fastest runs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1053,
+    "fields": {
+     "title": {
+      "Text": "Delta queue tensor graph"
+     },
+     "body": {
+      "Text": "Quantum lattice heap ranking island axle query river filter cache index meadow orbit lattice forest chime search organ retrieval delta violin organ."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 13114
+     },
+     "rank": {
+      "I64": -17
+     },
+     "quality": {
+      "F64": 0.3872
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063180000
+     },
+     "summary": {
+      "Text": "running dogs fastest fast searched runs searches ran"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1054,
+    "fields": {
+     "title": {
+      "Text": "Token desert token piano"
+     },
+     "body": {
+      "Text": "Quantum lattice ranking retrieval desert cello plasma score vector plasma trumpet fusion tensor corpus retrieval forest harbor forest thread packet router ranking."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 61089
+     },
+     "rank": {
+      "I64": -22
+     },
+     "quality": {
+      "F64": 0.2171
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063240000
+     },
+     "summary": {
+      "Text": "running dogs faster indexing indexing queries quickly runs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1055,
+    "fields": {
+     "title": {
+      "Text": "Chassis filter piston chassis"
+     },
+     "body": {
+      "Text": "Quantum lattice reactor flute search piano cache bugle mountain guitar harp piano gear socket query merge merge desert chassis bugle cello graph."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 79442
+     },
+     "rank": {
+      "I64": -21
+     },
+     "quality": {
+      "F64": 0.5827
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063300000
+     },
+     "summary": {
+      "Text": "running dogs retrieved runs indexed running engineered fast"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1056,
+    "fields": {
+     "title": {
+      "Text": "Meadow score drum cello"
+     },
+     "body": {
+      "Text": "Quantum lattice piston cache segment cello desert document river harbor valley router reactor harp search thread thread index merge socket reactor flute."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 36582
+     },
+     "rank": {
+      "I64": -3
+     },
+     "quality": {
+      "F64": 0.7351
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063360000
+     },
+     "summary": {
+      "Text": "running dogs ranking runs dog queries running ran"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1057,
+    "fields": {
+     "title": {
+      "Text": "Socket stack analyzer kernel"
+     },
+     "body": {
+      "Text": "Quantum lattice river piano bitmap canyon score document cello matrix harp merge retrieval filter meadow photon filter fusion gasket brake signal bitmap."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 89882
+     },
+     "rank": {
+      "I64": 18
+     },
+     "quality": {
+      "F64": 0.8245
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063420000
+     },
+     "summary": {
+      "Text": "running dogs engines retrieval searched searches dog running"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1058,
+    "fields": {
+     "title": {
+      "Text": "Quantum memory search brake"
+     },
+     "body": {
+      "Text": "Quantum lattice trumpet bearing heap score river canyon piano vector gear commit switch photon piston corpus switch chassis thread flute violin photon."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 89574
+     },
+     "rank": {
+      "I64": -20
+     },
+     "quality": {
+      "F64": 0.2452
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063480000
+     },
+     "summary": {
+      "Text": "running dogs documents runs documented queried queries engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1059,
+    "fields": {
+     "title": {
+      "Text": "Delta memory brake lattice"
+     },
+     "body": {
+      "Text": "Quantum lattice bearing packet photon packet stack valley brake meadow photon mountain drum trumpet router bitmap harp drum postings violin meadow bearing."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 48699
+     },
+     "rank": {
+      "I64": 17
+     },
+     "quality": {
+      "F64": 0.9327
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063540000
+     },
+     "summary": {
+      "Text": "running dogs engineered ranked ranked ranking quickly ranked"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1060,
+    "fields": {
+     "title": {
+      "Text": "Harbor corpus drum merge"
+     },
+     "body": {
+      "Text": "Quantum lattice score heap postings river mountain glacier thread bugle vector postings search score buffer field valley meadow gear valve chime stack."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 52555
+     },
+     "rank": {
+      "I64": 38
+     },
+     "quality": {
+      "F64": 0.7843
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063600000
+     },
+     "summary": {
+      "Text": "running dogs queried searches running dogs ranking searches"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1061,
+    "fields": {
+     "title": {
+      "Text": "Violin forest search stack"
+     },
+     "body": {
+      "Text": "Quantum lattice router piano socket piston matrix brake bearing quantum piston vector meadow meadow photon filter stack bugle engine index reactor axle."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 99431
+     },
+     "rank": {
+      "I64": -36
+     },
+     "quality": {
+      "F64": 0.5904
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063660000
+     },
+     "summary": {
+      "Text": "running dogs fast ranking fast searches retrieval queries"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1062,
+    "fields": {
+     "title": {
+      "Text": "Axle corpus commit flute"
+     },
+     "body": {
+      "Text": "Quantum lattice valve quantum analyzer desert heap river token flute lattice orbit plasma delta cache flute socket tensor fusion lagoon bearing switch."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 98338
+     },
+     "rank": {
+      "I64": -2
+     },
+     "quality": {
+      "F64": 0.2039
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063720000
+     },
+     "summary": {
+      "Text": "running dogs searched indexing indexing ran documents retrieved"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1063,
+    "fields": {
+     "title": {
+      "Text": "Postings harp drum document"
+     },
+     "body": {
+      "Text": "Quantum lattice switch fusion glacier delta corpus mountain analyzer bearing query piano orbit heap canyon trumpet switch heap harp orbit tensor search."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 5345
+     },
+     "rank": {
+      "I64": 15
+     },
+     "quality": {
+      "F64": 0.7645
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063780000
+     },
+     "summary": {
+      "Text": "running dogs fastest quickly fast documents retrieval indexing"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1064,
+    "fields": {
+     "title": {
+      "Text": "Chassis lagoon cello chassis"
+     },
+     "body": {
+      "Text": "Quantum lattice chime field harbor retrieval score cache flute tensor query vector gasket memory harp turbine buffer document memory filter cache banjo."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 3533
+     },
+     "rank": {
+      "I64": 21
+     },
+     "quality": {
+      "F64": 0.3664
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063840000
+     },
+     "summary": {
+      "Text": "running dogs queries indexing retrieval faster indexed retrieved"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1065,
+    "fields": {
+     "title": {
+      "Text": "Memory reactor valley gasket"
+     },
+     "body": {
+      "Text": "Quantum lattice socket organ valley retrieval meadow packet drum filter socket photon chassis vector ranking axle flute thread organ socket queue segment."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 98466
+     },
+     "rank": {
+      "I64": -6
+     },
+     "quality": {
+      "F64": 0.4587
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063900000
+     },
+     "summary": {
+      "Text": "running dogs retrieval ranked running queried runs engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1066,
+    "fields": {
+     "title": {
+      "Text": "Delta flute harp fusion"
+     },
+     "body": {
+      "Text": "Quantum lattice document island query socket valve document query piston graph gasket cache plasma thread analyzer analyzer valley corpus forest cache reactor."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 17039
+     },
+     "rank": {
+      "I64": 46
+     },
+     "quality": {
+      "F64": 0.7091
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700063960000
+     },
+     "summary": {
+      "Text": "running dogs queried ranking queries engineered queried ran"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1067,
+    "fields": {
+     "title": {
+      "Text": "Query piano postings router"
+     },
+     "body": {
+      "Text": "Quantum lattice lagoon ranking canyon commit orbit gasket router token switch plasma valve tensor segment piston ranking switch guitar lattice switch island."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 12296
+     },
+     "rank": {
+      "I64": 13
+     },
+     "quality": {
+      "F64": 0.8711
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064020000
+     },
+     "summary": {
+      "Text": "running dogs ranked documents searches indexed ranking queried"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1068,
+    "fields": {
+     "title": {
+      "Text": "Engine score bitmap retrieval"
+     },
+     "body": {
+      "Text": "Quantum lattice stack guitar fusion cello cello bitmap document banjo gear gasket filter cache turbine field turbine quantum organ trumpet postings router."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 22170
+     },
+     "rank": {
+      "I64": -19
+     },
+     "quality": {
+      "F64": 0.0685
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064080000
+     },
+     "summary": {
+      "Text": "running dogs indexing ranking searched dog indexing engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1069,
+    "fields": {
+     "title": {
+      "Text": "Brake chime retrieval turbine"
+     },
+     "body": {
+      "Text": "Quantum lattice switch piston tensor chassis score reactor socket search piston axle island river kernel turbine plasma orbit gear router gear signal."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 26770
+     },
+     "rank": {
+      "I64": 7
+     },
+     "quality": {
+      "F64": 0.028
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064140000
+     },
+     "summary": {
+      "Text": "running dogs queries queries faster quickly running indexed"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1070,
+    "fields": {
+     "title": {
+      "Text": "Vector merge router query"
+     },
+     "body": {
+      "Text": "Quantum lattice turbine guitar queue delta merge lattice trumpet bugle kernel glacier socket drum vector bearing search buffer gear delta quantum router."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 21365
+     },
+     "rank": {
+      "I64": -29
+     },
+     "quality": {
+      "F64": 0.3722
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064200000
+     },
+     "summary": {
+      "Text": "running dogs ran quickly retrieved fastest fastest searched"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1071,
+    "fields": {
+     "title": {
+      "Text": "Router queue corpus tensor"
+     },
+     "body": {
+      "Text": "Quantum lattice piano brake ranking fusion queue photon river quantum glacier canyon merge ranking island glacier flute corpus desert forest bitmap buffer."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 32489
+     },
+     "rank": {
+      "I64": -32
+     },
+     "quality": {
+      "F64": 0.6429
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064260000
+     },
+     "summary": {
+      "Text": "running dogs engineered running searched fastest fastest queried"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1072,
+    "fields": {
+     "title": {
+      "Text": "Lattice retrieval heap score"
+     },
+     "body": {
+      "Text": "Quantum lattice guitar switch cello cello thread query socket vector chime index socket index corpus score analyzer canyon thread island document valve."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 66895
+     },
+     "rank": {
+      "I64": -20
+     },
+     "quality": {
+      "F64": 0.8126
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064320000
+     },
+     "summary": {
+      "Text": "running dogs documented fastest quickly running searches retrieval"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1073,
+    "fields": {
+     "title": {
+      "Text": "Stack turbine meadow valve"
+     },
+     "body": {
+      "Text": "Quantum lattice valley field brake piano mountain postings banjo guitar merge vector organ search fusion chime photon commit trumpet token bugle turbine."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 22695
+     },
+     "rank": {
+      "I64": 34
+     },
+     "quality": {
+      "F64": 0.3713
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064380000
+     },
+     "summary": {
+      "Text": "running dogs queries quickly retrieved runs ran queries"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1074,
+    "fields": {
+     "title": {
+      "Text": "Lattice drum token postings"
+     },
+     "body": {
+      "Text": "Quantum lattice analyzer kernel chassis plasma commit photon turbine heap lattice orbit thread valve socket kernel signal violin harbor reactor token cache."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 97264
+     },
+     "rank": {
+      "I64": -34
+     },
+     "quality": {
+      "F64": 0.4642
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064440000
+     },
+     "summary": {
+      "Text": "running dogs dogs indexed indexed engines retrieval retrieved"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1075,
+    "fields": {
+     "title": {
+      "Text": "Switch piano meadow plasma"
+     },
+     "body": {
+      "Text": "Quantum lattice vector analyzer field harp ranking meadow quantum trumpet river merge index document memory plasma memory heap drum bugle signal forest."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 89679
+     },
+     "rank": {
+      "I64": 4
+     },
+     "quality": {
+      "F64": 0.0638
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064500000
+     },
+     "summary": {
+      "Text": "running dogs faster quickly dog ranked ranking retrieval"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1076,
+    "fields": {
+     "title": {
+      "Text": "Flute glacier meadow valve"
+     },
+     "body": {
+      "Text": "Quantum lattice commit trumpet island glacier buffer filter cache gasket fusion packet kernel glacier flute kernel plasma canyon piston search lagoon quantum."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 70349
+     },
+     "rank": {
+      "I64": 29
+     },
+     "quality": {
+      "F64": 0.9334
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064560000
+     },
+     "summary": {
+      "Text": "running dogs fastest ranking documented runs searches dog"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1077,
+    "fields": {
+     "title": {
+      "Text": "Queue filter trumpet memory"
+     },
+     "body": {
+      "Text": "Quantum lattice analyzer cello island matrix meadow river retrieval forest gear search queue retrieval ranking memory token field violin banjo piano vector."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 66958
+     },
+     "rank": {
+      "I64": 50
+     },
+     "quality": {
+      "F64": 0.1473
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064620000
+     },
+     "summary": {
+      "Text": "running dogs searches fastest searched ranked engineered documents"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1078,
+    "fields": {
+     "title": {
+      "Text": "Organ brake tensor gear"
+     },
+     "body": {
+      "Text": "Quantum lattice gear chassis river delta cello heap score queue reactor fusion buffer island document query guitar cello valve guitar lattice mountain."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 9398
+     },
+     "rank": {
+      "I64": -7
+     },
+     "quality": {
+      "F64": 0.0094
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064680000
+     },
+     "summary": {
+      "Text": "running dogs retrieval indexed searched queries indexed ranked"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1079,
+    "fields": {
+     "title": {
+      "Text": "Retrieval kernel graph cache"
+     },
+     "body": {
+      "Text": "Quantum lattice chassis packet token trumpet packet matrix signal river postings thread fusion chime commit document commit violin meadow piano signal piano."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 60683
+     },
+     "rank": {
+      "I64": 4
+     },
+     "quality": {
+      "F64": 0.3549
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064740000
+     },
+     "summary": {
+      "Text": "running dogs fast ranked queried documents searched ranking"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1080,
+    "fields": {
+     "title": {
+      "Text": "Fusion router cello piano"
+     },
+     "body": {
+      "Text": "Quantum lattice switch retrieval piano search matrix harbor bugle glacier ranking queue socket field queue merge photon piano cello field search mountain."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 8941
+     },
+     "rank": {
+      "I64": 19
+     },
+     "quality": {
+      "F64": 0.7939
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064800000
+     },
+     "summary": {
+      "Text": "running dogs documented documents faster retrieved queries running"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1081,
+    "fields": {
+     "title": {
+      "Text": "Cello token filter valve"
+     },
+     "body": {
+      "Text": "Quantum lattice analyzer violin filter document stack field glacier score gear plasma field desert token queue photon ranking turbine turbine piano postings."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 93674
+     },
+     "rank": {
+      "I64": 33
+     },
+     "quality": {
+      "F64": 0.2944
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064860000
+     },
+     "summary": {
+      "Text": "running dogs ran quickly ranking queries ranking quickly"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1082,
+    "fields": {
+     "title": {
+      "Text": "Harbor desert socket vector"
+     },
+     "body": {
+      "Text": "Quantum lattice token reactor vector desert thread fusion delta organ flute cello buffer island valve brake bugle orbit flute glacier chassis turbine."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 9463
+     },
+     "rank": {
+      "I64": 30
+     },
+     "quality": {
+      "F64": 0.236
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064920000
+     },
+     "summary": {
+      "Text": "running dogs documented retrieval documented running documented running"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1083,
+    "fields": {
+     "title": {
+      "Text": "Filter river axle lagoon"
+     },
+     "body": {
+      "Text": "Quantum lattice tensor harp glacier brake reactor packet commit orbit bugle memory plasma cache reactor heap delta bitmap cache drum matrix stack."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 83857
+     },
+     "rank": {
+      "I64": 41
+     },
+     "quality": {
+      "F64": 0.0866
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700064980000
+     },
+     "summary": {
+      "Text": "running dogs ranked dogs searched ranking ranked dog"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1084,
+    "fields": {
+     "title": {
+      "Text": "Corpus mountain socket lattice"
+     },
+     "body": {
+      "Text": "Quantum lattice stack query forest river island index chime glacier drum ranking plasma desert trumpet graph bearing organ bearing router violin trumpet."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 72319
+     },
+     "rank": {
+      "I64": 38
+     },
+     "quality": {
+      "F64": 0.7695
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065040000
+     },
+     "summary": {
+      "Text": "running dogs documents searches quickly indexing searches fastest"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1085,
+    "fields": {
+     "title": {
+      "Text": "Drum bitmap graph analyzer"
+     },
+     "body": {
+      "Text": "Quantum lattice memory piano matrix organ cache fusion valley bearing segment tensor matrix turbine stack lattice piston gasket queue turbine banjo cello."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 58763
+     },
+     "rank": {
+      "I64": -34
+     },
+     "quality": {
+      "F64": 0.0918
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065100000
+     },
+     "summary": {
+      "Text": "running dogs searches engineered documents searched searched faster"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1086,
+    "fields": {
+     "title": {
+      "Text": "Query cache postings guitar"
+     },
+     "body": {
+      "Text": "Quantum lattice router violin packet lagoon filter gasket bugle engine document lagoon filter chime reactor guitar plasma cello meadow meadow packet socket."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 5728
+     },
+     "rank": {
+      "I64": 14
+     },
+     "quality": {
+      "F64": 0.6049
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065160000
+     },
+     "summary": {
+      "Text": "running dogs engineered engines retrieval dog running running"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1087,
+    "fields": {
+     "title": {
+      "Text": "Brake retrieval gasket bitmap"
+     },
+     "body": {
+      "Text": "Quantum lattice drum trumpet fusion reactor delta packet canyon valley gear turbine banjo filter matrix desert valley island axle gear query gear."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 59855
+     },
+     "rank": {
+      "I64": 6
+     },
+     "quality": {
+      "F64": 0.5879
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065220000
+     },
+     "summary": {
+      "Text": "running dogs retrieved queries runs indexing indexed documents"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1088,
+    "fields": {
+     "title": {
+      "Text": "Queue document thread glacier"
+     },
+     "body": {
+      "Text": "Quantum lattice river valve segment organ engine island retrieval segment chime fusion bitmap graph gasket document analyzer glacier search segment stack index."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 48774
+     },
+     "rank": {
+      "I64": 15
+     },
+     "quality": {
+      "F64": 0.7193
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065280000
+     },
+     "summary": {
+      "Text": "running dogs documents searches fast indexing retrieval ran"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1089,
+    "fields": {
+     "title": {
+      "Text": "Document thread drum guitar"
+     },
+     "body": {
+      "Text": "Quantum lattice commit forest orbit vector glacier switch brake corpus desert index lagoon postings queue socket bearing document document thread packet quantum."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 15596
+     },
+     "rank": {
+      "I64": 49
+     },
+     "quality": {
+      "F64": 0.0367
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065340000
+     },
+     "summary": {
+      "Text": "running dogs running dog runs quickly ranking engineered"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1090,
+    "fields": {
+     "title": {
+      "Text": "Turbine orbit desert tensor"
+     },
+     "body": {
+      "Text": "Quantum lattice stack desert violin bugle token filter banjo piano forest violin flute cache fusion turbine segment cache photon piano violin quantum."
+     },
+     "source": {
+      "Keyword": "book"
+     },
+     "views": {
+      "U64": 41477
+     },
+     "rank": {
+      "I64": 36
+     },
+     "quality": {
+      "F64": 0.8471
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065400000
+     },
+     "summary": {
+      "Text": "running dogs retrieved indexed ranked indexed ran runs"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1091,
+    "fields": {
+     "title": {
+      "Text": "Index violin ranking chime"
+     },
+     "body": {
+      "Text": "Quantum lattice reactor valve trumpet plasma analyzer bugle bugle queue axle thread guitar delta chassis mountain piano router stack queue graph bearing."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 63086
+     },
+     "rank": {
+      "I64": 29
+     },
+     "quality": {
+      "F64": 0.3684
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065460000
+     },
+     "summary": {
+      "Text": "running dogs documents fast indexing dog faster retrieved"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1092,
+    "fields": {
+     "title": {
+      "Text": "Signal bearing piano retrieval"
+     },
+     "body": {
+      "Text": "Quantum lattice island drum reactor switch valve valley kernel signal lattice glacier canyon quantum harp cello heap quantum lattice tensor switch banjo."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 76471
+     },
+     "rank": {
+      "I64": 6
+     },
+     "quality": {
+      "F64": 0.7743
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065520000
+     },
+     "summary": {
+      "Text": "running dogs engines engines searched queries engines faster"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1093,
+    "fields": {
+     "title": {
+      "Text": "Forest bitmap bearing island"
+     },
+     "body": {
+      "Text": "Quantum lattice buffer fusion mountain island cache forest mountain matrix quantum banjo kernel island desert score chime bearing field engine guitar glacier."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 52547
+     },
+     "rank": {
+      "I64": -9
+     },
+     "quality": {
+      "F64": 0.8391
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065580000
+     },
+     "summary": {
+      "Text": "running dogs indexing ranked indexed retrieval queries engineered"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1094,
+    "fields": {
+     "title": {
+      "Text": "Reactor matrix index harp"
+     },
+     "body": {
+      "Text": "Quantum lattice island signal heap axle field forest score kernel packet axle signal buffer score flute corpus harp kernel query meadow lattice."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 16015
+     },
+     "rank": {
+      "I64": 15
+     },
+     "quality": {
+      "F64": 0.736
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065640000
+     },
+     "summary": {
+      "Text": "running dogs engineered quickly ran retrieval indexed quickly"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1095,
+    "fields": {
+     "title": {
+      "Text": "Query thread guitar field"
+     },
+     "body": {
+      "Text": "Quantum lattice query commit buffer river field fusion index tensor plasma query search switch lagoon piano filter piano forest orbit analyzer field."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 56279
+     },
+     "rank": {
+      "I64": -32
+     },
+     "quality": {
+      "F64": 0.0196
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065700000
+     },
+     "summary": {
+      "Text": "running dogs indexed ran indexed searches engineered engineered"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1096,
+    "fields": {
+     "title": {
+      "Text": "Chime thread engine kernel"
+     },
+     "body": {
+      "Text": "Quantum lattice canyon engine island graph postings flute tensor retrieval fusion trumpet stack trumpet chime cello score cache packet delta tensor reactor."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 21473
+     },
+     "rank": {
+      "I64": -12
+     },
+     "quality": {
+      "F64": 0.9004
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065760000
+     },
+     "summary": {
+      "Text": "running dogs documented dogs documented searched documents ranking"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1097,
+    "fields": {
+     "title": {
+      "Text": "Memory trumpet harbor filter"
+     },
+     "body": {
+      "Text": "Quantum lattice valley brake memory tensor score cello matrix packet lagoon buffer cello corpus chassis canyon quantum drum queue piston mountain heap."
+     },
+     "source": {
+      "Keyword": "forum"
+     },
+     "views": {
+      "U64": 6256
+     },
+     "rank": {
+      "I64": -22
+     },
+     "quality": {
+      "F64": 0.3542
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065820000
+     },
+     "summary": {
+      "Text": "running dogs retrieved engineered ran running documented queried"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1098,
+    "fields": {
+     "title": {
+      "Text": "Reactor index canyon filter"
+     },
+     "body": {
+      "Text": "Quantum lattice tensor valley commit island axle filter cello orbit desert canyon chime orbit query bearing trumpet quantum gear harp socket commit."
+     },
+     "source": {
+      "Keyword": "paper"
+     },
+     "views": {
+      "U64": 27138
+     },
+     "rank": {
+      "I64": 30
+     },
+     "quality": {
+      "F64": 0.2584
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065880000
+     },
+     "summary": {
+      "Text": "running dogs dog engines indexed indexing indexing ranked"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   },
+   {
+    "id": 1099,
+    "fields": {
+     "title": {
+      "Text": "Search analyzer vector socket"
+     },
+     "body": {
+      "Text": "Quantum lattice packet thread buffer flute bugle guitar river postings desert axle harbor quantum chassis meadow lagoon piano commit corpus bitmap desert."
+     },
+     "source": {
+      "Keyword": "web"
+     },
+     "views": {
+      "U64": 28971
+     },
+     "rank": {
+      "I64": 30
+     },
+     "quality": {
+      "F64": 0.474
+     },
+     "published": {
+      "Bool": true
+     },
+     "ts": {
+      "DateMillis": 1700065940000
+     },
+     "summary": {
+      "Text": "running dogs runs retrieval engineered fastest engines engines"
+     },
+     "tags": {
+      "Keyword": "alpha"
+     }
+    },
+    "chunk": null
+   }
+  ],
+  "delete_ids": [
+   1000,
+   1001,
+   1002,
+   1003,
+   1004,
+   1005,
+   1006,
+   1007,
+   1008,
+   1009,
+   1010,
+   1011,
+   1012,
+   1013,
+   1014,
+   1015,
+   1016,
+   1017,
+   1018,
+   1019,
+   1020,
+   1021,
+   1022,
+   1023,
+   1024,
+   1025,
+   1026,
+   1027,
+   1028,
+   1029,
+   1030,
+   1031,
+   1032,
+   1033,
+   1034,
+   1035,
+   1036,
+   1037,
+   1038,
+   1039,
+   1040,
+   1041,
+   1042,
+   1043,
+   1044,
+   1045,
+   1046,
+   1047,
+   1048,
+   1049,
+   1050,
+   1051,
+   1052,
+   1053,
+   1054,
+   1055,
+   1056,
+   1057,
+   1058,
+   1059,
+   1060,
+   1061,
+   1062,
+   1063,
+   1064,
+   1065,
+   1066,
+   1067,
+   1068,
+   1069,
+   1070,
+   1071,
+   1072,
+   1073,
+   1074,
+   1075,
+   1076,
+   1077,
+   1078,
+   1079,
+   1080,
+   1081,
+   1082,
+   1083,
+   1084,
+   1085,
+   1086,
+   1087,
+   1088,
+   1089,
+   1090,
+   1091,
+   1092,
+   1093,
+   1094,
+   1095,
+   1096,
+   1097,
+   1098,
+   1099
+  ],
+  "divergence_query": "phrase_exact",
+  "note": "live-only stats after add+delete must equal stats.json exactly (SC-011); scores before merge are expected to diverge (research D8), recorded in report.md"
+ }
+}

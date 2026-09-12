@@ -1,0 +1,12 @@
+{
+ "generator": "gen_002_fixtures.py",
+ "seed": 2,
+ "files": {
+  "schema.json": "6b9efb022301009ff36f5fca74e499827083d72ff13acad76b68df0716d80705",
+  "corpus.json": "03b1c882c63bcbf0278c7b2daf50ae34b1726f6c72c5194d6c21b6ed18b00045",
+  "queries.json": "98f80d097aedd5faed0b53581673c7cd5f08f03e080edaa4bd3a8cc6f059e488",
+  "filters.json": "b033e024378c4bb54c3f63aa94971ccc185464948e900f01d6a1f8aa84a0a41c",
+  "stats.json": "32a7efc338ac9a5bb0422fcd2f4c1e2dd0e7695412623646a5a50577ba643884",
+  "mutations.json": "e2a333e8dccd1efb843d234ccc5f9f38ac71238ebac5d1d35c29c2a430ae86a0"
+ }
+}
