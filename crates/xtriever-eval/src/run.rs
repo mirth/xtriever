@@ -12,7 +12,7 @@ use xtriever_core::{
     LexicalQuery, Schema, TextKind, Value, VectorIndex,
 };
 
-use crate::dataset::Dataset;
+use crate::dataset::{Corpus, Dataset};
 use crate::error::{Error, Result};
 
 /// Which BEIR document field a schema field is built from.
@@ -134,21 +134,10 @@ pub fn build(dataset: &Dataset, cfg: &EvalConfig) -> Result<(Schema, Vec<Documen
     for i in 0..corpus.ids.len() {
         let id =
             u32::try_from(i).map_err(|_| Error::Run("corpus exceeds u32 document ids".into()))?;
-        let mut fields = BTreeMap::new();
-        for f in &cfg.fields {
-            let value = match f.from {
-                Source::Title => &corpus.titles[i],
-                Source::Text => &corpus.texts[i],
-            };
-            if cfg.omit_empty_fields && value.is_empty() {
-                continue;
-            }
-            fields.insert(FieldName::from(f.name.as_str()), Value::Text(value.clone()));
-        }
         // The BEIR string id lives only in the IdMap — never in a document (FR-014).
         docs.push(Document {
             id: DocId(id),
-            fields,
+            fields: document_fields(corpus, i, cfg),
             chunk: None,
         });
     }
@@ -398,4 +387,134 @@ impl EmbeddingCacheKey {
             .and_then(|text| serde_json::from_str::<Self>(&text).ok())
             .is_some_and(|stored| stored == *self)
     }
+}
+
+// ── Feature 005: the hybrid configuration and the stage-agnostic runner ────────────────────
+
+/// The hybrid recipe: the 003 lexical fields, the 004 passage recipe, RRF (data-model 005).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HybridConfig {
+    /// Cited by reports.
+    pub name: String,
+    /// Lexical fields and boosts.
+    pub lexical: EvalConfig,
+    /// Dense passage construction.
+    pub dense: DenseConfig,
+    /// Candidates per stage.
+    pub candidate_depth: usize,
+    /// Reciprocal rank fusion constant.
+    pub rrf_k: u32,
+    /// Retrieval depth of the fused list; ≥ 100.
+    pub k: usize,
+}
+
+impl HybridConfig {
+    /// `k ≥ 100`, `candidate_depth ≥ k`, and both sub-configurations valid.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Run`.
+    pub fn validate(&self) -> Result<()> {
+        if self.k < 100 {
+            return Err(Error::Run(format!(
+                "k = {} but Recall@100 needs k ≥ 100",
+                self.k
+            )));
+        }
+        if self.candidate_depth < self.k {
+            return Err(Error::Run(format!(
+                "candidate_depth = {} is below k = {}; a stage could not fill the fused list",
+                self.candidate_depth, self.k
+            )));
+        }
+        self.lexical.validate()?;
+        self.dense.validate()
+    }
+
+    /// `hybrid-baseline-v1`: `lexical-baseline-v1` + `dense-baseline-v1`, depth 100, `rrf_k` 60,
+    /// `k` 100.
+    pub fn hybrid_baseline_v1() -> Self {
+        Self {
+            name: "hybrid-baseline-v1".into(),
+            lexical: EvalConfig::lexical_baseline_v1(),
+            dense: DenseConfig::dense_baseline_v1(),
+            candidate_depth: 100,
+            rrf_k: 60,
+            k: 100,
+        }
+    }
+}
+
+/// The lexical fields of document `i` under `cfg` (shared by `build` and `build_external`).
+fn document_fields(corpus: &Corpus, i: usize, cfg: &EvalConfig) -> BTreeMap<FieldName, Value> {
+    let mut fields = BTreeMap::new();
+    for f in &cfg.fields {
+        let value = match f.from {
+            Source::Title => &corpus.titles[i],
+            Source::Text => &corpus.texts[i],
+        };
+        if cfg.omit_empty_fields && value.is_empty() {
+            continue;
+        }
+        fields.insert(FieldName::from(f.name.as_str()), Value::Text(value.clone()));
+    }
+    fields
+}
+
+/// `(external id, fields)` per corpus document in corpus order, fields built as `build` does.
+///
+/// # Errors
+///
+/// `Error::Run` when the configuration is invalid.
+pub fn build_external(
+    dataset: &Dataset,
+    cfg: &EvalConfig,
+) -> Result<Vec<(String, BTreeMap<FieldName, Value>)>> {
+    cfg.validate()?;
+    let corpus = &dataset.corpus;
+    Ok(corpus
+        .ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.clone(), document_fields(corpus, i, cfg)))
+        .collect())
+}
+
+/// Run every judged query (ascending id) through `retrieve(query_id, text)`, which returns
+/// external ids in rank order; the library names no retriever type. Judged queries without a
+/// text (dangling, reported by `Dataset::load`) are skipped without a call.
+///
+/// # Errors
+///
+/// `Error::Run`, or whatever `retrieve` returns (wrapped as `Error::Core`).
+pub fn execute_external(
+    dataset: &Dataset,
+    config_name: &str,
+    k: usize,
+    retrieve: &mut dyn FnMut(&str, &str) -> xtriever_core::Result<Vec<String>>,
+) -> Result<Run> {
+    if k < 100 {
+        return Err(Error::Run(format!("k = {k} but Recall@100 needs k ≥ 100")));
+    }
+    let texts: BTreeMap<&str, &str> = dataset
+        .queries
+        .queries
+        .iter()
+        .map(|(id, t)| (id.as_str(), t.as_str()))
+        .collect();
+    let mut results = BTreeMap::new();
+    for query_id in dataset.qrels.grades.keys() {
+        let Some(text) = texts.get(query_id.as_str()) else {
+            continue;
+        };
+        let mut ids = retrieve(query_id, text)?;
+        ids.truncate(k);
+        results.insert(query_id.clone(), ids);
+    }
+    Ok(Run {
+        config: config_name.to_owned(),
+        dataset: dataset.name.clone(),
+        results,
+        unjudged_queries: 0,
+    })
 }

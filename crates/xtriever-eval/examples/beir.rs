@@ -9,6 +9,8 @@
 //! beir verify [--cache DIR] <dataset...>
 //! beir run    --dataset D [--config lexical-baseline-v1] [--out F] [--export-run F] [--index-dir DIR] [--cache DIR]
 //! beir run    --dataset D --config dense-baseline-v1 [--model-dir M] [--cache-dir C] [--load-path buffered|mmap] [--out F] [--export-run F]
+//! beir run    --dataset D --config hybrid-baseline-v1 [--model-dir M] [--cache-dir C] [--index-dir DIR] [--load-path P] [--out F] [--export-run F] [--export-explain F]
+//! beir compare a.json b.json                        (cross-configuration table, no ADR line)
 //! beir delta  before.json... -- after.json...      (or two single files; same configuration only)
 //! beir smoke  --dataset scifact --baseline F [--cache DIR]
 //! beir model-memory [--model-dir M] --load-path buffered|mmap
@@ -28,11 +30,13 @@ use anyhow::{Context, bail};
 use xtriever_core::{DocId, Embedder, LexicalIndex, TextKind, VectorIndex};
 use xtriever_dense::{FlatIndex, LoadPath, MiniLmEmbedder};
 use xtriever_eval::dataset::{Dataset, Manifest};
-use xtriever_eval::report::{EvalReport, StageInfo, delta, score, smoke};
+use xtriever_eval::report::{EvalReport, StageInfo, compare, delta, score, smoke};
 use xtriever_eval::run::{
-    DenseConfig, EmbeddingCacheKey, EvalConfig, build, build_passages, execute, execute_dense,
+    DenseConfig, EmbeddingCacheKey, EvalConfig, HybridConfig, build, build_external,
+    build_passages, execute, execute_dense, execute_external,
 };
 use xtriever_lexical::TantivyIndex;
+use xtriever_pipeline::{HybridIndex, SearchOptions, SourceDocument};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -90,6 +94,7 @@ fn git_head() -> String {
 enum Config {
     Lexical(EvalConfig),
     Dense(DenseConfig),
+    Hybrid(HybridConfig),
 }
 
 fn config(a: &Args) -> anyhow::Result<Config> {
@@ -101,8 +106,11 @@ fn config(a: &Args) -> anyhow::Result<Config> {
     {
         "lexical-baseline-v1" => Ok(Config::Lexical(EvalConfig::lexical_baseline_v1())),
         "dense-baseline-v1" => Ok(Config::Dense(DenseConfig::dense_baseline_v1())),
+        "hybrid-baseline-v1" => Ok(Config::Hybrid(HybridConfig::hybrid_baseline_v1())),
         other => {
-            bail!("unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1")
+            bail!(
+                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1"
+            )
         }
     }
 }
@@ -332,11 +340,182 @@ fn export_vectors(a: &Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The hybrid baseline: a `HybridIndex` fed from the 004 embedding cache by value (0 documents
+/// embedded), every judged query searched with explanation, scored in the 003 format
+/// (spec 005 FR-022; research D10).
+fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Result<EvalReport> {
+    cfg.validate()?;
+    let ds = load_dataset(dataset, a)?;
+    let load_path = load_path(a)?;
+    let embedder = MiniLmEmbedder::load(&model_dir(a), load_path).context("loading the model")?;
+    let thread_count = MiniLmEmbedder::thread_count();
+
+    // The 004 cache must match exactly; never re-embed silently (research R2).
+    let cache_dir = dense_cache_dir(a).join(dataset);
+    let corpus_sha256 = ds
+        .hashes
+        .get("corpus.jsonl")
+        .cloned()
+        .context("dataset hashes lack corpus.jsonl")?;
+    let key = EmbeddingCacheKey {
+        format_version: 1,
+        config: cfg.dense.name.clone(),
+        dataset: dataset.to_owned(),
+        embedder_fingerprint: embedder.fingerprint().to_owned(),
+        corpus_sha256,
+        documents: ds.corpus.ids.len() as u64,
+    };
+    if !key.matches(&cache_dir) {
+        bail!(
+            "the Feature 004 embedding cache at {} does not match (config {}, fingerprint, corpus \
+             hash or count differ); run `beir run --dataset {dataset} --config dense-baseline-v1` first",
+            cache_dir.display(),
+            cfg.dense.name
+        );
+    }
+    let cache = FlatIndex::open_for(&cache_dir, &embedder)
+        .with_context(|| format!("opening the cache at {}", cache_dir.display()))?;
+    if cache.len() != ds.corpus.ids.len() as u64 {
+        bail!(
+            "cache holds {} rows but the corpus has {}",
+            cache.len(),
+            ds.corpus.ids.len()
+        );
+    }
+
+    let keep;
+    let index_dir = match a.flags.get("index-dir") {
+        Some(dir) => {
+            let dir = PathBuf::from(dir);
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir)?;
+            }
+            dir
+        }
+        None => {
+            keep = tempfile::tempdir()?;
+            keep.path().join("hybrid")
+        }
+    };
+    let (schema, _, _) = build(&ds, &cfg.lexical)?;
+    let dense_fields = vec![
+        xtriever_core::FieldName::from("title"),
+        xtriever_core::FieldName::from("text"),
+    ];
+    let mut hybrid_cfg = xtriever_pipeline::HybridConfig::new(schema, dense_fields);
+    hybrid_cfg.candidate_depth = cfg.candidate_depth;
+    hybrid_cfg.rrf_k = cfg.rrf_k;
+    let mut index = HybridIndex::create(&index_dir, hybrid_cfg, Box::new(embedder))?;
+
+    let started = Instant::now();
+    let docs = build_external(&ds, &cfg.lexical)?;
+    let mut batch = Vec::with_capacity(1000);
+    for (i, (external_id, fields)) in docs.into_iter().enumerate() {
+        let id = DocId(u32::try_from(i)?);
+        let vector = cache
+            .vector(id)
+            .with_context(|| format!("cache row {i} ({external_id}) missing"))?;
+        batch.push((
+            SourceDocument {
+                external_id,
+                fields,
+                chunk: None,
+            },
+            vector,
+        ));
+        if batch.len() == 1000 {
+            index.add_embedded(&batch)?;
+            batch.clear();
+        }
+    }
+    index.add_embedded(&batch)?;
+    index.commit()?;
+    eprintln!(
+        "embedded 0 documents (004 cache); ingested {} documents in {:.1} s",
+        index.len(),
+        started.elapsed().as_secs_f64()
+    );
+
+    let mut explain_out = a
+        .flags
+        .get("export-explain")
+        .map(|p| std::fs::File::create(p).map(std::io::BufWriter::new))
+        .transpose()?;
+    let mut lex_ms = 0.0f64;
+    let mut queries = 0usize;
+    let started = Instant::now();
+    let opts = SearchOptions {
+        explain: true,
+        ..SearchOptions::default()
+    };
+    let mut retrieve = |query_id: &str, text: &str| -> xtriever_core::Result<Vec<String>> {
+        let t = Instant::now();
+        let r = index.search(text, None, cfg.k, &opts)?;
+        lex_ms += t.elapsed().as_secs_f64() * 1000.0;
+        queries += 1;
+        if r.stages.degraded.is_some() {
+            eprintln!("warning: query degraded: {:?}", r.stages.degraded);
+        }
+        if let Some(out) = explain_out.as_mut() {
+            // The stage lists must be complete for the oracle: a second search with k large
+            // enough to hold the union of both candidate lists (2 × depth) exposes every
+            // candidate's rank through its explanation.
+            let full = index.search(text, None, 2 * cfg.candidate_depth, &opts)?;
+            let mut lexical: Vec<(u32, &str)> = Vec::new();
+            let mut dense: Vec<(u32, &str)> = Vec::new();
+            for h in &full.hits {
+                if let Some(e) = &h.explain {
+                    if let Some(rk) = e.bm25_rank {
+                        lexical.push((rk, &h.external_id));
+                    }
+                    if let Some(rk) = e.dense_rank {
+                        dense.push((rk, &h.external_id));
+                    }
+                }
+            }
+            lexical.sort_unstable();
+            dense.sort_unstable();
+            let line = serde_json::json!({
+                "query_id": query_id,
+                "lexical": lexical.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
+                "dense": dense.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
+                "fused": r.hits.iter().map(|h| h.external_id.as_str()).collect::<Vec<_>>(),
+            });
+            writeln!(out, "{line}").map_err(xtriever_core::Error::Io)?;
+        }
+        Ok(r.hits.into_iter().map(|h| h.external_id).collect())
+    };
+    let run = execute_external(&ds, &cfg.name, cfg.k, &mut retrieve)?;
+    if let Some(mut out) = explain_out {
+        out.flush()?;
+    }
+    eprintln!(
+        "searched {queries} queries in {:.1} s ({:.1} ms per query end to end, incl. query embedding)",
+        started.elapsed().as_secs_f64(),
+        lex_ms / queries.max(1) as f64
+    );
+    if let Some(path) = a.flags.get("export-run") {
+        run.export_jsonl(Path::new(path))?;
+        eprintln!("exported run to {path}");
+    }
+    let mut report = score(&run, &ds, &git_head())?;
+    report.stage = Some(StageInfo {
+        kind: "hybrid".into(),
+        embedder_fingerprint: index.embedder().fingerprint().to_owned(),
+        load_path: load_path_name(load_path).into(),
+        thread_count,
+        baseline: "guarded".into(),
+    });
+    report_line(dataset, &cfg.name, &report);
+    Ok(report)
+}
+
 /// Index, retrieve and score one dataset. Returns the report.
 fn evaluate(dataset: &str, a: &Args) -> anyhow::Result<EvalReport> {
     let cfg = match config(a)? {
         Config::Lexical(cfg) => cfg,
         Config::Dense(cfg) => return evaluate_dense(dataset, &cfg, a),
+        Config::Hybrid(cfg) => return evaluate_hybrid(dataset, &cfg, a),
     };
     let ds = load_dataset(dataset, a)?;
     let (schema, docs, ids) = build(&ds, &cfg)?;
@@ -382,7 +561,7 @@ fn write_report(path: &str, report: &EvalReport) -> anyhow::Result<()> {
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let Some((sub, rest)) = argv.split_first() else {
-        eprintln!("usage: beir <verify|run|delta|smoke|model-memory|export-vectors> ...");
+        eprintln!("usage: beir <verify|run|delta|compare|smoke|model-memory|export-vectors> ...");
         return ExitCode::from(1);
     };
     let a = parse(rest);
@@ -456,6 +635,18 @@ fn main() -> ExitCode {
                     Ok(ExitCode::from(2))
                 }
             }
+        }
+        "compare" => {
+            if a.positional.len() != 2 {
+                bail!("usage: beir compare a.json b.json");
+            }
+            let x = read_report(&a.positional[0])?;
+            let y = read_report(&a.positional[1])?;
+            print!(
+                "{}",
+                compare(std::slice::from_ref(&x), std::slice::from_ref(&y)).to_markdown()
+            );
+            Ok(ExitCode::SUCCESS)
         }
         "model-memory" => {
             model_memory(&a)?;
