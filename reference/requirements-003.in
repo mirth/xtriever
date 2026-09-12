@@ -1,0 +1,7 @@
+# Direct dependencies for reference/gen_003_fixtures.py (Feature 003 metric goldens).
+#
+# The metric oracle is pytrec_eval — the trec_eval binding BEIR's own evaluation wrapper uses —
+# so every published BEIR number and every golden here share one definition of nDCG@10 and
+# Recall@100 (research D3). Deliberately NOT the 001/002 torch stack: this environment is tiny.
+pytrec_eval==0.5
+numpy==2.5.3

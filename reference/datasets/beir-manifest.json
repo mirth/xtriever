@@ -1,0 +1,35 @@
+{
+  "note": "Pinned BEIR datasets for xtriever-eval (Feature 003, research D1). Content is fetched by scripts/fetch-beir.sh and never committed; every hash here is verified by the script after download and by the Rust loader before parsing. Measured 2026-09-12.",
+  "datasets": {
+    "scifact": {
+      "url": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/scifact.zip",
+      "archive": { "bytes": 2816079, "sha256": "536e14446a0ba56ed1398ab1055f39fe852686ecad24a6306c80c490fa8e0165" },
+      "files": {
+        "corpus.jsonl":   { "bytes": 8106566, "sha256": "dec31c8182f3d744c7d2c09423756fd1d17cbef75808db13ba01cc0aab4d1ac6", "lines": 5183 },
+        "queries.jsonl":  { "bytes": 209731,  "sha256": "8ff84a7c903f722981cd8d595c022660140c51867b27608a6d4910db86080313", "lines": 1109 },
+        "qrels/test.tsv": { "bytes": 5389,    "sha256": "0864bb985e0ca2367ba217977e72004d549054b2b06666ed9d4825ac7c21284c", "lines": 340 }
+      },
+      "counts": { "documents": 5183, "queries": 1109, "judged_queries": 300, "judgement_pairs": 339 }
+    },
+    "nfcorpus": {
+      "url": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/nfcorpus.zip",
+      "archive": { "bytes": 2448432, "sha256": "efe5be03f8c5b86a5870102d0599d227c8c6e2484328e68c6522560385671b0b" },
+      "files": {
+        "corpus.jsonl":   { "bytes": 6219364, "sha256": "10cc83ef1826b1425e6a87090b5140b39b27755d5a27e48215a88611c899991f", "lines": 3633 },
+        "queries.jsonl":  { "bytes": 441466,  "sha256": "d024e6621b84925d485ae473d316a0c3af31c62c8068a59fb29d22f7613aef2a", "lines": 3237 },
+        "qrels/test.tsv": { "bytes": 279572,  "sha256": "f8fba6ef3d4dd9c3a242a8ba4ae38276fc3622fce7dcbae764766d564542fd2a", "lines": 12335 }
+      },
+      "counts": { "documents": 3633, "queries": 3237, "judged_queries": 323, "judgement_pairs": 12334 }
+    },
+    "fiqa": {
+      "url": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/fiqa.zip",
+      "archive": { "bytes": 17948027, "sha256": "32c7df99ed21252fdfb2cf3f5673502a8d245ee0c44c4a133570d92ce2b3ad02" },
+      "files": {
+        "corpus.jsonl":   { "bytes": 47949497, "sha256": "ff593e4df9933955dc3af83be0c3fa28ac7465f627e08c2e53593e734d506517", "lines": 57638 },
+        "queries.jsonl":  { "bytes": 706247,   "sha256": "eede1e61d4a0188940239b53ebc2da91f577a6a34679c812d1eb9090c29877bc", "lines": 6648 },
+        "qrels/test.tsv": { "bytes": 25256,    "sha256": "6adc2a640dcdd22bb8b3858f89107adef2a7c3db20a63550dfa7a0f71e379e44", "lines": 1707 }
+      },
+      "counts": { "documents": 57638, "queries": 6648, "judged_queries": 648, "judgement_pairs": 1706 }
+    }
+  }
+}

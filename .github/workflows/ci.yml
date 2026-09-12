@@ -29,3 +29,49 @@ jobs:
       # iOS build, so SC-001's verdicts would silently rot after the PR merges.
       - run: cargo check -p xtriever-ffi --features spike --target aarch64-apple-ios
       - run: cargo check -p xtriever-ffi --features spike --target aarch64-apple-ios-sim
+  # Feature 003: the constitution's "eval smoke (SciFact)" gate, blocking (spec FR-023; restores
+  # the gate ADR-0006 deferred). Runs only when a ranking crate changes. SciFact is fetched into a
+  # hash-verified cache keyed by the manifest's archive hash, so a cache hit downloads nothing and
+  # every file is still re-verified by scripts/fetch-beir.sh and by the Rust loader.
+  #
+  # FR-023 escape hatch, verbatim: "if download or cache flakiness makes the job unreliable, it MAY
+  # be demoted to non-blocking for one feature cycle only, by a commit that states the reason and
+  # the commit at which it becomes blocking again." Demoting means adding `continue-on-error: true`
+  # to the smoke step below WITH that statement in the same commit — never silently.
+  eval-smoke:
+    runs-on: ubuntu-latest
+    # dorny/paths-filter lists a PR's changed files through the GitHub API on pull_request events
+    # (on push it uses `git diff` and needs nothing). With the repository's restricted default
+    # token this fails with "Resource not accessible by integration" unless the job is granted
+    # pull-requests: read. contents: read is what checkout and the cache need.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ranking:
+              - 'crates/xtriever-lexical/**'
+              - 'crates/xtriever-dense/**'
+              - 'crates/xtriever-rerank/**'
+              - 'crates/xtriever-ltr/**'
+              - 'crates/xtriever-pipeline/**'
+              - 'crates/xtriever-eval/**'
+              - 'reference/datasets/beir-manifest.json'
+              - 'specs/003-eval-harness/baselines/**'
+      - if: steps.filter.outputs.ranking == 'true'
+        run: rustup toolchain install
+      - if: steps.filter.outputs.ranking == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            reference/datasets/beir/scifact.zip
+            reference/datasets/beir/scifact
+          key: beir-scifact-${{ hashFiles('reference/datasets/beir-manifest.json') }}
+      - if: steps.filter.outputs.ranking == 'true'
+        run: ./scripts/fetch-beir.sh scifact
+      - if: steps.filter.outputs.ranking == 'true'
+        run: cargo run --release -p xtriever-eval --example beir -- smoke --dataset scifact --baseline specs/003-eval-harness/baselines/lexical-baseline-v1.scifact.json

@@ -8,10 +8,10 @@
 set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Feature 002 uses the same device: `xtriever-lexical`'s scaffold module returns
+# Features 002 and 003 use the same device: `xtriever-lexical`'s scaffold module returns
 # `Error::backend(NotImplemented(..))` from every method until the real modules replace it (T060).
 status=0
-for crate in xtriever-ffi xtriever-lexical; do
+for crate in xtriever-ffi xtriever-lexical xtriever-eval; do
     if grep -rq 'NotImplemented' "$repo_root/crates/$crate/src/"; then
         printf 'check-no-stubs: FAIL — NotImplemented scaffolding still present in crates/%s/src/:\n' "$crate" >&2
         grep -rn 'NotImplemented' "$repo_root/crates/$crate/src/" | sed 's/^/  /' >&2
@@ -22,4 +22,4 @@ if [ "$status" -ne 0 ]; then
     printf '  The operations are implemented; the scaffold must be removed.\n' >&2
     exit 1
 fi
-printf 'check-no-stubs: PASS — no scaffolding left in crates/{xtriever-ffi,xtriever-lexical}/src/\n'
+printf 'check-no-stubs: PASS — no scaffolding left in crates/{xtriever-ffi,xtriever-lexical,xtriever-eval}/src/\n'
