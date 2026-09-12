@@ -1,0 +1,89 @@
+{
+ "fields": [
+  {
+   "name": "title",
+   "kind": {
+    "Text": "standard"
+   },
+   "indexed": true,
+   "stored": true,
+   "boost": 2.0
+  },
+  {
+   "name": "body",
+   "kind": {
+    "Text": "standard"
+   },
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "summary",
+   "kind": {
+    "Text": "standard_en"
+   },
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "source",
+   "kind": "Keyword",
+   "indexed": true,
+   "stored": true,
+   "boost": 1.0
+  },
+  {
+   "name": "tags",
+   "kind": "Keyword",
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "views",
+   "kind": "U64",
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "rank",
+   "kind": "I64",
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "quality",
+   "kind": "F64",
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "published",
+   "kind": "Bool",
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "ts",
+   "kind": "DateMillis",
+   "indexed": true,
+   "stored": false,
+   "boost": 1.0
+  },
+  {
+   "name": "note",
+   "kind": {
+    "Text": "standard"
+   },
+   "indexed": false,
+   "stored": true,
+   "boost": 1.0
+  }
+ ]
+}

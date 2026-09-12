@@ -93,7 +93,7 @@ Listed here because its validation rules are the spec's FR-018:
 | `U64` | `U64(_)` |
 | `I64` | `I64(_)` |
 | `F64` | `F64(_)` |
-| `Bool` | `Bool(_)` (`Range` on bool is accepted; it is a well-defined ordered type) |
+| `Bool` | `Bool(_)` for `Eq`/`In`; **`Range` on `Bool` is `InvalidQuery`** — the backend's fast-field range weight rejects bool terms (found at T042; use `Eq`) |
 | `DateMillis` | `DateMillis(_)` |
 | `Text(_)` | none — `Exists` only |
 

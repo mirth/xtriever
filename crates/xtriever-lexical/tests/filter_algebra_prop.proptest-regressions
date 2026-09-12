@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 12bd23c67e5a68cffa02cd0b2001b207d4fe114a8876e3f18d62b300d5e451df # shrinks to f = Eq(FieldName("source"), Keyword("web"))
+cc 34e4717c93742c8e819b2ae8d26e32b378285aaff39eeee0007ae08b9a237c3d # shrinks to a = Eq(FieldName("source"), Keyword("web")), b = Eq(FieldName("source"), Keyword("web")), c = Eq(FieldName("source"), Keyword("web"))
+cc aa87e3ab36405b91562041cce01ff2884136b85cfaad077110bc85838f1ad6fc # shrinks to a = Eq(FieldName("source"), Keyword("web"))
+cc 756b11f6bbfbf0256eabfbcc12d87a020d53aeae54b799e8ffa28f409b76f1a0 # shrinks to a = Eq(FieldName("source"), Keyword("web")), b = Eq(FieldName("source"), Keyword("web")), c = Eq(FieldName("source"), Keyword("web"))
+cc a67bc793a8af2764759b3591947d3b4e6caed8d45170104306d93753614d28ec # shrinks to a = Eq(FieldName("source"), Keyword("web")), b = Eq(FieldName("source"), Keyword("web"))

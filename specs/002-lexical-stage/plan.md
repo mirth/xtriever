@@ -112,9 +112,14 @@ new violation. *(Historical: superseded by the re-evaluation below.)*
 - [ADR-0005 amendment](../../docs/adr/0005-tie-breaking-contract.md) — Accepted. The k-boundary is
   backend-ordered; the `search` doc-comment change is authorised.
 
-**All 14 rows now PASS.** Two obligations carry into implementation: PR 4 lands the core doc
-comment with the amendment text, and every PR description carries the "eval delta: N/A — ADR-0006"
-line (quickstart Step 7).
+**All 14 rows now PASS.** One obligation carries into implementation: every PR description carries
+the "eval delta: N/A — ADR-0006" line (quickstart Step 7).
+
+**Implementation revision (2026-09-12)**: the ADR-0005 amendment was superseded during
+implementation — the backend's k-boundary ordering proved random per process (see the ADR's
+"Resolution" and research D12 as revised), and the fix keys the top-k collector on
+`(score, DocId)`. Principle V's row is now a plain PASS with **zero** `xtriever-core` changes; its
+Complexity Tracking row is retired.
 
 ## Spec corrections made during planning
 
@@ -212,4 +217,4 @@ find the code for a requirement by name; none is a trait or generic — they are
 | Violation | Principle / Rule | Why Needed | Simpler Alternative Rejected Because | ADR |
 |-----------|------------------|------------|--------------------------------------|-----|
 | BEIR eval clause not met for a ranking-creating change | II | `xtriever-eval` is a placeholder and there is no baseline to delta against | Building a SciFact smoke here doubles scope and ships an unreviewed harness; N/A-ing it (001's route) is dishonest for a change that creates ranking | [ADR-0006](../../docs/adr/0006-defer-beir-eval-gate.md) — Accepted 2026-09-12 |
-| Doc-comment narrowing of `LexicalIndex::search` / `VectorIndex::search` | V | FR-014 accepts the backend's k-boundary; the unqualified promise in core would otherwise be false | Leaving the comment as-is documents a promise the implementation cannot keep; over-fetching to keep it was rejected in clarification Q1 | [ADR-0005 amendment](../../docs/adr/0005-tie-breaking-contract.md) — Accepted 2026-09-12 |
+| ~~Doc-comment narrowing of `LexicalIndex::search` / `VectorIndex::search`~~ **Retired 2026-09-12** | V | FR-014 as revised keys the collector on `(score, DocId)`, so core's unqualified promise is literally true and no core change is made | — | [ADR-0005 resolution](../../docs/adr/0005-tie-breaking-contract.md) — amendment superseded |

@@ -1,0 +1,11 @@
+# Direct dependencies for reference/gen_002_fixtures.py (Feature 002 golden fixtures).
+#
+# Feature 001's pins, unchanged, plus snowballstemmer for the `standard_en` analyzer oracle.
+# tantivy's `en_stem` chain uses rust-stemmers 1.2.0, which is generated from the same Snowball
+# sources snowballstemmer ships, so the two are expected to agree on every English word; any
+# disagreement is a finding on the golden, not a tolerance (research R1, Rule 6).
+#
+# Compiled to requirements-002.txt with hashes for the same reason as 001: these fixtures ARE
+# the oracle.
+-r requirements-001.in
+snowballstemmer==3.0.1

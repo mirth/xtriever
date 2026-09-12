@@ -90,3 +90,13 @@ a real defect here, not a documented deviation.
   Net effect: 37 requirements became 39, 10 success criteria became 13, and a sixth user story was
   added. Renumbering moved the old FR-024–FR-037 up by one or two; all internal cross-references
   were re-checked and FR-001–FR-039 is gapless with no duplicates.
+- **Iteration 3 — implementation** (2026-09-12): the shipped behaviour was checked against every
+  requirement. Two requirements changed wording during implementation, both openly and with the
+  reason recorded: **FR-004** (threads — planning found the constitution never required a stage
+  crate to be thread-free and the backend cannot be; plan.md "Spec corrections") and **FR-014** (the
+  k-boundary — implementation found the backend's boundary ordering random per process; resolved by
+  keying the collector on `(score, DocId)`, which makes the tie-break hold everywhere and removes
+  the need for any `xtriever-core` change; report.md F-001). One data-model row was corrected
+  (`Range` on `Bool` is `InvalidQuery`; report.md F-003). No other requirement needed
+  interpretation. Checklist state unchanged: 12/16, the four technology-agnosticism items remain
+  the documented deviation.

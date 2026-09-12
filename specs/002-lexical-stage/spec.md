@@ -24,9 +24,12 @@ on or extended.
 
 ### Session 2026-09-11
 
-- Q: How should a score tie spanning the `k`-th and `k+1`-th positions be handled? → A: Accept the
-  backend's ordering at the boundary; do not over-fetch. FR-013's `DocId` tie-break guarantees the
-  *order* of the returned set, not its *membership* (FR-014).
+- Q: How should a score tie spanning the `k`-th and `k+1`-th positions be handled? → A: *(first
+  answer, 2026-09-11)* accept the backend's ordering at the boundary. **Superseded 2026-09-12** during
+  implementation: the backend's boundary ordering is segment-ordinal-major and equal-size segments
+  are ordered by `HashMap` iteration — random per process — so "stable" was false. Resolved by
+  keying the backend's top-k collector on `(score, DocId)`, which makes the `DocId` tie-break hold
+  *including at the boundary* with no over-fetch (FR-014). The core doc comment needs no change.
 - Q: Should `term_stats` and `stats` count deleted-but-not-merged documents? → A: No — live documents
   only, one rule for both (FR-024). `IndexStats::num_docs` is already documented in `xtriever-core`
   as "Live (non-deleted) documents", so this extends an existing core decision to `term_stats` rather
@@ -128,10 +131,9 @@ evidence for ADR-0005.
    results are identical.
 4. **Given** an index where a merge has occurred, **When** the same query runs before and after the
    merge, **Then** the results are identical.
-5. **Given** a tie that spans the `k`-th and `k+1`-th positions, **When** the query runs, **Then**
-   *which* of the tied documents come back is the backend's choice (FR-014), while *the order of
-   those that do* is still ascending `DocId`. The test asserts exactly that, and not a
-   `DocId`-minimal selection the stage does not promise.
+5. **Given** a tie that spans the `k`-th and `k+1`-th positions, **When** the query runs in any
+   segment layout, **Then** the returned members are the `k` lowest `DocId`s of the tie group, in
+   ascending order (FR-014) — identical across layouts and process restarts.
 
 ---
 
@@ -294,8 +296,8 @@ assert on what the readers see. Separately, open the same directory twice and as
   `stats`.
 - **FR-002**: The `xtriever-core` traits, types and error semantics MUST NOT change. If the
   implementation cannot satisfy the contract as written, the work stops and an ADR is raised rather
-  than the contract being adjusted to fit. The single exception is the doc-comment amendment FR-014
-  requires, which changes no signature, type or behaviour and is itself ADR-gated.
+  than the contract being adjusted to fit. *(An earlier revision of FR-014 carved out a doc-comment
+  amendment; the revised FR-014 needs none, so there is no exception.)*
 - **FR-003**: All errors MUST be `xtriever-core`'s existing `Error` variants. A failure mode with no
   suitable variant is a contract question, not a licence to invent one locally.
 - **FR-004**: The crate MUST remain pure Rust with no C/C++ build dependencies, no `async`, no
@@ -363,19 +365,19 @@ assert on what the readers see. Separately, open the same directory twice and as
 - **FR-013**: `search` MUST return at most `k` hits ordered by descending score, with ties broken by
   **ascending `DocId`** (ADR-0005), regardless of how many segments the index has or how documents
   are distributed across them.
-- **FR-014**: A score tie spanning the `k`-th and `k+1`-th positions MUST be resolved by the
-  backend's own ordering, not by `DocId`. The stage MUST NOT over-fetch to close this gap. FR-013's
-  `DocId` tie-break is therefore a guarantee about the **order of the returned set**, not about
-  **which documents are in it**: given a tie group straddling the boundary, the members that appear
-  are whichever the backend selected, and those that appear are ordered by ascending `DocId`. This
-  MUST be tested as specified behaviour, not left undefined.
+- **FR-014**: A score tie spanning the `k`-th and `k+1`-th positions MUST be broken by ascending
+  `DocId` exactly like any other tie: the returned members are the `k` lowest `DocId`s of the tie
+  group, in every segment layout and across process restarts. The stage MUST NOT over-fetch to
+  achieve this; it MUST instead make the backend's own top-k selection use `(score, DocId)` as its
+  sort key, so the boundary is decided by `DocId` inside the collector. This MUST be tested across
+  at least three segment layouts.
 
-  This narrows a promise `xtriever-core` currently states without qualification, so it MUST be
-  recorded before the implementation lands: ADR-0005 is amended with the decision and its rationale,
-  and `LexicalIndex::search`'s doc comment is amended to state the boundary caveat. That doc comment
-  is the **only** permitted change to `xtriever-core` in this feature — documentation only, no
-  change to any signature, type or behaviour — and it is permitted solely because the ADR amendment
-  satisfies Principle V's gate. Any other core change stops the work (FR-002).
+  *History*: the first accepted answer (2026-09-11) let the backend decide boundary membership on
+  the premise that its ordering was stable. Implementation showed it is not — equal-size segments
+  are ordered by `HashMap` iteration, i.e. randomly per process — which would have violated
+  Principle VI and FR-015. The revised rule keeps `xtriever-core`'s unqualified promise literally
+  true, so **no `xtriever-core` change is made in this feature** (FR-002 applies without
+  exception) and the ADR-0005 amendment is retired as superseded.
 - **FR-015**: The same index, query, filter and `k` MUST produce identical results across repeated
   calls, across process restarts, and across segment layouts that contain the same live documents
   **reached by the same mutation history**. Whether two indexes holding identical live documents but
@@ -477,7 +479,7 @@ assert on what the readers see. Separately, open the same directory twice and as
 **Scope boundaries**
 
 - **FR-036**: This feature MUST NOT implement the pipeline, fusion, dense retrieval, re-ranking,
-  or LTR, and MUST NOT modify `xtriever-core` beyond the single doc-comment amendment FR-014 permits.
+  or LTR, and MUST NOT modify `xtriever-core`.
 - **FR-037**: This feature MUST NOT build on Feature 001's FFI surface, which **Feature 001's**
   FR-031 declares provisional. Nothing in `xtriever-ffi` is a dependency of this work.
 - **FR-038**: Index memory scaling is **explicitly deferred** and MUST NOT be measured here. Feature

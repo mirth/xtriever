@@ -224,7 +224,7 @@ the `Searcher`, which applies alive bitsets.
 the algebra in the backend and needs `AllQuery`+`MustNot` gymnastics for `Not`. Rejected. Scanning
 fast-field columns directly in Rust — reimplements what `TermQuery`/`RangeQuery` do. Rejected.
 
-## D11. Filtered search: `FilterCollector` over `__xt_id` wrapping `TopDocs`
+## D11. Filtered search: `FilterCollector` over `__xt_id` wrapping the keyed `TopDocs` (see D12 for the key)
 
 **Decision**: `search(q, Some(filter), k)` resolves the filter to a `DocSet` (D10), wraps the bitmap
 in an `Arc`, and searches with `FilterCollector::new("__xt_id".into(), move |xid: u64|
@@ -247,13 +247,32 @@ re-sorts.
 scores but needs the whole filter as a backend query (D10's rejected path) and a second evaluation
 route to test for agreement. Rejected.
 
-## D12. Re-sort after collection; accept the k-boundary
+## D12. Tie-break inside the collector: `TopDocs::tweak_score` keyed on `(score, Reverse(DocId))` — revised 2026-09-12
 
-**Decision**: After `TopDocs` returns `Vec<(Score, DocAddress)>`, map each address to `DocId` via
-`__xt_id` and `sort_by(|a, b| b.score.total_cmp(&a.score).then(a.id.cmp(&b.id)))`. No over-fetch
-(FR-014). `f32::total_cmp` avoids the `PartialOrd` `unwrap` and orders NaN deterministically.
+**Decision** (supersedes the original D12 "re-sort after collection; accept the k-boundary"):
+build the top-k collector as `TopDocs::with_limit(k).tweak_score(|segment| { let ids =
+segment.fast_fields().u64("__xt_id")…; move |doc, score| (score, Reverse(id)) })`
+(`T/src/collector/top_score_collector.rs:426-437`; closure contract `:443-449`). Larger key wins, so
+equal scores order by ascending id — across segments and at the k-boundary. A final
+`sort_by(total_cmp, then id)` is kept as a local restatement of the contract.
 
-**Rationale**: ADR-0005 as accepted; the k-boundary is the spec's clarification Q1.
+**Why the original decision was wrong**: it assumed the backend's `DocAddress` tie-break was stable.
+At every commit tantivy sorts segments by descending `max_doc` with a *stable* sort over a `Vec`
+collected from a **`HashMap`** (`T/src/indexer/segment_updater.rs:406-407`,
+`T/src/indexer/segment_register.rs:18,66-70`). Equal-size segments therefore take `HashMap`
+iteration order — randomised per process by std's `RandomState` — so boundary membership was random
+across restarts. Caught by `determinism::k_boundary_tie_membership_and_order` failing on one run and
+passing on the next.
+
+**Second effect**: `TopDocs::order_by_score` collects through block-WAND pruning
+(`T/src/collector/sort_key/sort_by_score.rs:41-50`, `weight.for_each_pruning`), while any wrapping
+collector such as `FilterCollector` falls back to `default_collect_segment_impl` → `weight.for_each`
+(`T/src/collector/mod.rs:186-220`). The two paths sum BM25 clauses in different orders and differed
+by one ulp (`4.227677` vs `4.2276764`). `tweak_score` collectors take the plain path, so filtered and
+unfiltered searches now share one strategy and FR-022's "unchanged scores" holds bit-for-bit.
+
+**Cost**: one fast-field read per scored candidate; block-WAND pruning is forgone. No performance
+budget is set; recorded as a known cost.
 
 ## D13. On-disk descriptor for FR-012
 

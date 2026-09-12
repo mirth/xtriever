@@ -37,11 +37,17 @@ Research D17 moves the BM25 transcription into `reference/xtref/`. The proof tha
 nothing is that Feature 001's fixtures regenerate identically:
 
 ```bash
-python3 reference/gen_001_fixtures.py --seed 1 --out /tmp/xt001-check/
-diff <(jq -S .files /tmp/xt001-check/manifest.json) <(jq -S .files reference/fixtures/001/manifest.json)
+# The 001 generator requires --out under the repo root (it prints paths relative to it).
+reference/.venv-002/bin/python reference/gen_001_fixtures.py --seed 1 --out "$PWD/target/xt001-check/"
+diff <(jq -S '.files | del(."ranking.json")' target/xt001-check/manifest.json) \
+     <(jq -S '.files | del(."ranking.json")' reference/fixtures/001/manifest.json)
 ```
 
-Expected: empty diff. **Any difference stops the work** — the refactor changed an oracle (Rule 6).
+Expected: empty diff over the five Python-generated files — `bm25_reference.json` is the one that
+exercises the moved code. `ranking.json` is excluded because the generator writes an empty
+placeholder for it and the committed file is Rust-minted (`provenance: host-tantivy-run`); it never
+went through the refactored code. **Any other difference stops the work** — the refactor changed an
+oracle (Rule 6). *(Run 2026-09-12: empty diff.)*
 
 ## Step 3 — Generate the 002 fixtures
 
@@ -123,5 +129,5 @@ cargo tree -p xtriever-lexical -e normal --prefix none | grep -Ei '(-sys|^cc |on
 
 - SC-001…SC-013 each have a test that names them.
 - `report.md` carries the divergence measurement and any findings.
-- ADR-0005 amended, `xtriever-core` doc comment updated in the same PR.
+- ADR-0005 resolution recorded; `xtriever-core` untouched (the amendment was superseded — the tie-break holds at the boundary).
 - ADR-0006's three conditions honoured (baseline commit in `report.md`, N/A line in every PR).

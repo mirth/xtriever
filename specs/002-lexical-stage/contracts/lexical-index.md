@@ -36,22 +36,20 @@ registry (FR-006), no builder.
 | `add(docs)` | for each: validate against schema; `delete_term(__xt_id)` then `add_document` — replace-by-id within the batch and across commits (FR-008); `chunk` ignored (FR-008b); `stored` values written (FR-008a); length columns written for present text fields | `UnknownField`, `Schema`, `Backend` |
 | `delete(ids)` | `delete_term(__xt_id)` per id; unknown ids are a no-op (FR-009) | `Backend` |
 | `commit()` | backend commit, then reader reload; no-op if nothing was ever mutated (FR-010) | `Backend` |
-| `search(q, filter, k)` | `k == 0` ⇒ `Ok(vec![])`. Translate `q` (D9); resolve `filter` (D10) if present; `TopDocs(k)` optionally wrapped in `FilterCollector` on `__xt_id` (D11); map to `DocId`; re-sort `(score DESC, id ASC)` (D12). Scores are BM25 × field boost × query boost (FR-005/FR-017) | `UnknownField`, `InvalidQuery`, `Backend` |
+| `search(q, filter, k)` | `k == 0` ⇒ `Ok(vec![])`. Translate `q` (D9); resolve `filter` (D10) if present; `TopDocs(k).tweak_score` keyed on `(score, Reverse(DocId))` from `__xt_id`, optionally wrapped in `FilterCollector` (D11/D12 revised) — the same collector on both paths, so scores are bit-identical filtered or not. Scores are BM25 × field boost × query boost (FR-005/FR-017) | `UnknownField`, `InvalidQuery`, `Backend` |
 | `resolve_filter(f)` | leaves through backend queries, algebra through `roaring` (D10); live documents only (FR-020) | `UnknownField`, `InvalidQuery`, `Backend` |
 | `term_stats(field, term)` | `None` if the term is absent from every segment (FR-026); otherwise live-only `doc_freq` and `total_term_freq` by walking postings and skipping deleted docs (FR-024, D8) | `UnknownField`, `InvalidQuery` (non-text/keyword field), `Backend` |
 | `stats()` | `num_docs` = live count; `avg_field_len[f]` = Σ `__xt_len_f` over live docs ÷ live docs that carry `f` (FR-027, D7); a text field carried by no live doc is absent from the map | `Backend` |
 
-## Contract caveat recorded by this feature (FR-014)
+## The tie-break, including at the k-boundary (FR-014, revised 2026-09-12)
 
-`LexicalIndex::search`'s doc comment in `xtriever-core` currently promises the `DocId` tie-break
-without qualification. After this feature it reads, in addition:
-
-> The tie-break governs the **order** of the returned hits, not their **membership**: when a score
-> tie spans the `k`-th and `(k+1)`-th positions, which of the tied documents are returned is
-> backend-defined and stable. See ADR-0005 (amended 2026-09-11).
-
-This is the only `xtriever-core` change in the feature, it is documentation-only, and it lands in
-the same PR as the ADR-0005 amendment that authorises it.
+`LexicalIndex::search`'s doc comment in `xtriever-core` promises *"ties broken by ascending
+`DocId`"* without qualification, and this implementation makes that literally true: the backend's
+top-k collector is keyed on `(score, DocId)` rather than on its default `(score, DocAddress)`, so a
+tie group straddling the boundary yields its `k` lowest ids in every segment layout. **No
+`xtriever-core` change is made.** (An earlier draft of this contract carried a boundary caveat; it
+was retired when implementation showed the backend's boundary ordering is random per process — see
+ADR-0005, "Resolution".)
 
 ## Analyzer table (FR-006)
 

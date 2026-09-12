@@ -1,7 +1,7 @@
 target/
 
 # Python reference generator (Constitution §II goldens) — see reference/
-reference/.venv-001/
+reference/.venv-*/
 __pycache__/
 *.py[cod]
 
