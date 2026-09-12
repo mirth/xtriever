@@ -275,3 +275,33 @@ fn smoke_reports_a_mixed_configuration_before_any_metric_comparison() {
         "{err}"
     );
 }
+
+// Feature 005: `compare` is the cross-configuration table; `delta` keeps refusing mixed pairs.
+#[test]
+fn compare_names_both_configurations_and_has_no_adr_trigger() {
+    use xtriever_eval::report::compare;
+    let lexical = report_with("scifact", 0.6, 0.9);
+    let mut hybrid = report_with("scifact", 0.65, 0.95);
+    hybrid.config = "hybrid-baseline-v1".into();
+    let c = compare(
+        std::slice::from_ref(&lexical),
+        std::slice::from_ref(&hybrid),
+    );
+    assert_eq!(c.a_config, "lexical-baseline-v1");
+    assert_eq!(c.b_config, "hybrid-baseline-v1");
+    assert_eq!(c.rows.len(), 2);
+    assert!((c.rows[0].abs - 0.05).abs() < 1e-12);
+    let md = c.to_markdown();
+    assert!(
+        md.contains("lexical-baseline-v1") && md.contains("hybrid-baseline-v1"),
+        "{md}"
+    );
+    assert!(!md.contains("ADR"), "{md}");
+    assert!(
+        delta(
+            std::slice::from_ref(&lexical),
+            std::slice::from_ref(&hybrid)
+        )
+        .is_err()
+    );
+}

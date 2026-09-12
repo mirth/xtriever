@@ -1,0 +1,2276 @@
+{
+  "dense_fields": [
+    "title",
+    "text"
+  ],
+  "dim": 8,
+  "documents": [
+    {
+      "chunk": null,
+      "external_id": "d001",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "kiln segment embed lantern score saltmarsh zephyr meadow riverbed beacon posting filter saltmarsh merge passage orchard saltmarsh harbour"
+        },
+        "title": {
+          "Text": "Trellis cinder"
+        }
+      },
+      "passage": "Trellis cinder kiln segment embed lantern score saltmarsh zephyr meadow riverbed beacon posting filter saltmarsh merge passage orchard saltmarsh harbour",
+      "vector": [
+        -0.8019314408302307,
+        -1.3243589401245117,
+        -0.24836161732673645,
+        0.4204452335834503,
+        1.1360465288162231,
+        0.10970640182495117,
+        -0.5526472926139832,
+        -0.7847803831100464
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d002",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "merge riverbed granite quarry query quarry quarry harbour harbour parapet parapet riverbed quasar riverbed brackish bitmap gantry passage parapet cinder gantry"
+        },
+        "title": {
+          "Text": "Lantern posting"
+        }
+      },
+      "passage": "Lantern posting merge riverbed granite quarry query quarry quarry harbour harbour parapet parapet riverbed quasar riverbed brackish bitmap gantry passage parapet cinder gantry",
+      "vector": [
+        0.7487457990646362,
+        1.6347830295562744,
+        0.2727687656879425,
+        -1.2333287000656128,
+        -0.9582651853561401,
+        1.600019097328186,
+        0.20288243889808655,
+        -1.7321348190307617
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d003",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "riverbed thicket kiln granite cursor weir harbour cursor granite weir segment weir filter bitmap"
+        },
+        "title": {
+          "Text": "Filter"
+        }
+      },
+      "passage": "Filter riverbed thicket kiln granite cursor weir harbour cursor granite weir segment weir filter bitmap",
+      "vector": [
+        -0.08369619399309158,
+        -1.1632260084152222,
+        -0.6292880773544312,
+        -0.4880058169364929,
+        -0.7133134007453918,
+        0.5533784627914429,
+        -0.06308597326278687,
+        -0.5894312858581543
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d004",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "cinder meadow kiln lantern segment commit lantern corpus reader marlin posting merge harbour query compass cinder"
+        },
+        "title": {
+          "Text": "Beacon"
+        }
+      },
+      "passage": "Beacon cinder meadow kiln lantern segment commit lantern corpus reader marlin posting merge harbour query compass cinder",
+      "vector": [
+        0.40963783860206604,
+        0.8298553228378296,
+        -1.6430233716964722,
+        -0.2567301392555237,
+        -0.9807473421096802,
+        -0.17315521836280823,
+        -1.2894186973571777,
+        0.020690394565463066
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d005",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "saltmarsh score segment fusion segment embed kiln score sextant orchard posting brackish compass writer tunnel parapet cursor fusion posting thicket cursor"
+        },
+        "title": {
+          "Text": "Passage tunnel weir"
+        }
+      },
+      "passage": "Passage tunnel weir saltmarsh score segment fusion segment embed kiln score sextant orchard posting brackish compass writer tunnel parapet cursor fusion posting thicket cursor",
+      "vector": [
+        -0.03788574039936066,
+        -0.304337739944458,
+        -1.0479265451431274,
+        -0.396190345287323,
+        -1.0913288593292236,
+        -1.3552087545394897,
+        0.2247857302427292,
+        -1.1093499660491943
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d006",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "bitmap weir cinder tunnel thicket weir filter riverbed meadow tunnel passage commit compass saltmarsh segment kiln score reader"
+        },
+        "title": {
+          "Text": ""
+        }
+      },
+      "passage": "bitmap weir cinder tunnel thicket weir filter riverbed meadow tunnel passage commit compass saltmarsh segment kiln score reader",
+      "vector": [
+        1.1702960729599,
+        0.7165876626968384,
+        -1.9978166818618774,
+        0.2721288800239563,
+        -1.1017166376113892,
+        0.03305722028017044,
+        0.04363199323415756,
+        -1.9884297847747803
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d007",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "compass rank cursor parapet quarry quarry reader orchard riverbed writer posting thicket meadow reader brackish thicket quasar score riverbed"
+        },
+        "title": {
+          "Text": "Rank bitmap"
+        }
+      },
+      "passage": "Rank bitmap compass rank cursor parapet quarry quarry reader orchard riverbed writer posting thicket meadow reader brackish thicket quasar score riverbed",
+      "vector": [
+        -0.23342251777648926,
+        -0.25579002499580383,
+        0.9620005488395691,
+        -1.1814467906951904,
+        0.738041877746582,
+        -1.0989727973937988,
+        -0.3312909007072449,
+        -0.8404731750488281
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d008",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "trellis brackish filter commit thicket beacon merge passage obsidian cinder rank cursor cinder tunnel rank trellis"
+        },
+        "title": {
+          "Text": "Fusion posting granite"
+        }
+      },
+      "passage": "Fusion posting granite trellis brackish filter commit thicket beacon merge passage obsidian cinder rank cursor cinder tunnel rank trellis",
+      "vector": [
+        1.4487313032150269,
+        0.5682131052017212,
+        2.431732416152954,
+        0.6419163942337036,
+        0.8449927568435669,
+        0.840682864189148,
+        -0.6066115498542786,
+        -0.07002844661474228
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d009",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "segment compass weir posting corpus trellis rank kiln brackish cursor cinder harbour filter corpus kiln bitmap trellis score brackish fusion"
+        },
+        "title": {
+          "Text": "Segment segment trellis"
+        }
+      },
+      "passage": "Segment segment trellis segment compass weir posting corpus trellis rank kiln brackish cursor cinder harbour filter corpus kiln bitmap trellis score brackish fusion",
+      "vector": [
+        1.3503888845443726,
+        -0.3965507745742798,
+        0.18879953026771545,
+        -0.021223461255431175,
+        0.6092165112495422,
+        -0.36490875482559204,
+        -0.1523618847131729,
+        0.24238142371177673
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d010",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "segment reader segment cinder query posting cursor embed thicket embed riverbed gantry posting filter brackish tunnel sextant reader riverbed"
+        },
+        "title": {
+          "Text": "Reader weir corpus"
+        }
+      },
+      "passage": "Reader weir corpus segment reader segment cinder query posting cursor embed thicket embed riverbed gantry posting filter brackish tunnel sextant reader riverbed",
+      "vector": [
+        0.10302314162254333,
+        -0.8649727702140808,
+        0.8957830667495728,
+        -1.2984812259674072,
+        -1.201115608215332,
+        -1.2824918031692505,
+        0.966972291469574,
+        -0.36060836911201477
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d011",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "trellis zephyr lantern gantry riverbed query cinder furrow cinder compass filter furrow riverbed meadow quarry beacon bitmap cinder filter gantry corpus"
+        },
+        "title": {
+          "Text": "Score segment"
+        }
+      },
+      "passage": "Score segment trellis zephyr lantern gantry riverbed query cinder furrow cinder compass filter furrow riverbed meadow quarry beacon bitmap cinder filter gantry corpus",
+      "vector": [
+        -0.9710363745689392,
+        -1.136021375656128,
+        0.4211311340332031,
+        -1.0548406839370728,
+        -1.2720781564712524,
+        0.6139930486679077,
+        -1.1967077255249023,
+        -0.32243815064430237
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d012",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "granite parapet saltmarsh posting harbour segment commit trellis reader beacon corpus posting compass corpus"
+        },
+        "title": {
+          "Text": "Weir orchard brackish"
+        }
+      },
+      "passage": "Weir orchard brackish granite parapet saltmarsh posting harbour segment commit trellis reader beacon corpus posting compass corpus",
+      "vector": [
+        -0.006761540193110704,
+        -0.44533535838127136,
+        -0.05409396067261696,
+        1.338773488998413,
+        -0.5168941617012024,
+        -1.2593071460723877,
+        -1.8367457389831543,
+        -0.20476610958576202
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d013",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "fusion cursor obsidian brackish segment quarry reader reader passage posting score thicket riverbed merge filter gantry quarry"
+        },
+        "title": {
+          "Text": "Harbour merge"
+        }
+      },
+      "passage": "Harbour merge fusion cursor obsidian brackish segment quarry reader reader passage posting score thicket riverbed merge filter gantry quarry",
+      "vector": [
+        -0.35225701332092285,
+        0.2650909125804901,
+        -0.4642446041107178,
+        -0.4786384701728821,
+        -0.7213157415390015,
+        -0.5197597742080688,
+        0.1602267026901245,
+        -0.3803527355194092
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d014",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "bitmap passage thicket bitmap marlin merge writer writer furrow rank"
+        },
+        "title": {
+          "Text": "Merge merge"
+        }
+      },
+      "passage": "Merge merge bitmap passage thicket bitmap marlin merge writer writer furrow rank",
+      "vector": [
+        0.10044185072183609,
+        1.9011871814727783,
+        0.47911813855171204,
+        -1.576089859008789,
+        1.7335295677185059,
+        0.3478103578090668,
+        -0.9414132833480835,
+        0.9070489406585693
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d015",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "kiln weir rank kiln reader lantern bitmap weir rank brackish"
+        },
+        "title": {
+          "Text": "Filter"
+        }
+      },
+      "passage": "Filter kiln weir rank kiln reader lantern bitmap weir rank brackish",
+      "vector": [
+        0.017655611038208008,
+        -0.6152185201644897,
+        -0.6335089206695557,
+        -0.993431806564331,
+        0.04811898246407509,
+        1.0688166618347168,
+        -0.3250521123409271,
+        0.4208241105079651
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d016",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "beacon query saltmarsh brackish compass quarry commit zephyr harbour"
+        },
+        "title": {
+          "Text": "Corpus trellis saltmarsh"
+        }
+      },
+      "passage": "Corpus trellis saltmarsh beacon query saltmarsh brackish compass quarry commit zephyr harbour",
+      "vector": [
+        1.8756459951400757,
+        -1.2145906686782837,
+        0.257522314786911,
+        -0.3064369261264801,
+        -1.0592560768127441,
+        -1.0258471965789795,
+        -0.015285143628716469,
+        0.43386340141296387
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d017",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "compass saltmarsh rank trellis thicket brackish brackish rank quasar filter embed beacon lantern quarry weir brackish"
+        },
+        "title": {
+          "Text": "Cursor brackish embed"
+        }
+      },
+      "passage": "Cursor brackish embed compass saltmarsh rank trellis thicket brackish brackish rank quasar filter embed beacon lantern quarry weir brackish",
+      "vector": [
+        -0.5315898060798645,
+        0.054390545934438705,
+        0.7222086787223816,
+        0.29656124114990234,
+        0.8686701655387878,
+        0.46139562129974365,
+        0.488005667924881,
+        1.8266340494155884
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d018",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "score segment posting quarry compass harbour kiln corpus"
+        },
+        "title": {
+          "Text": ""
+        }
+      },
+      "passage": "score segment posting quarry compass harbour kiln corpus",
+      "vector": [
+        0.623171865940094,
+        0.12947113811969757,
+        0.7099438309669495,
+        -0.919123649597168,
+        -0.33770477771759033,
+        0.7932208776473999,
+        0.6307867169380188,
+        1.5483616590499878
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d019",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "harbour writer writer filter marlin merge filter commit gantry brackish score granite"
+        },
+        "title": {
+          "Text": "Writer"
+        }
+      },
+      "passage": "Writer harbour writer writer filter marlin merge filter commit gantry brackish score granite",
+      "vector": [
+        0.010473028756678104,
+        -1.4623278379440308,
+        1.9472469091415405,
+        1.0928927659988403,
+        -1.0587373971939087,
+        1.3758236169815063,
+        0.032402798533439636,
+        -1.8139287233352661
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d020",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "brackish filter sextant weir thicket riverbed filter corpus rank cursor passage thicket writer passage meadow granite furrow trellis"
+        },
+        "title": {
+          "Text": "Lantern"
+        }
+      },
+      "passage": "Lantern brackish filter sextant weir thicket riverbed filter corpus rank cursor passage thicket writer passage meadow granite furrow trellis",
+      "vector": [
+        -0.4203539192676544,
+        -0.5089038610458374,
+        1.5908482074737549,
+        -0.7920687198638916,
+        -0.2536173462867737,
+        -0.2767608165740967,
+        -0.37897276878356934,
+        -0.9140740633010864
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d021",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "writer granite commit rank meadow beacon beacon furrow beacon quarry brackish query thicket"
+        },
+        "title": {
+          "Text": "Cinder"
+        }
+      },
+      "passage": "Cinder writer granite commit rank meadow beacon beacon furrow beacon quarry brackish query thicket",
+      "vector": [
+        -0.9710363745689392,
+        -1.136021375656128,
+        0.4211311340332031,
+        -1.0548406839370728,
+        -1.2720781564712524,
+        0.6139930486679077,
+        -1.1967077255249023,
+        -0.32243815064430237
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d022",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "riverbed granite parapet compass corpus orchard quasar merge granite trellis meadow beacon commit quarry harbour"
+        },
+        "title": {
+          "Text": "Bitmap"
+        }
+      },
+      "passage": "Bitmap riverbed granite parapet compass corpus orchard quasar merge granite trellis meadow beacon commit quarry harbour",
+      "vector": [
+        -1.6796945333480835,
+        1.9504915475845337,
+        0.9166191816329956,
+        -0.9739073514938354,
+        0.908210277557373,
+        1.342487096786499,
+        -2.3895533084869385,
+        -0.5489447712898254
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d023",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "rank rank segment posting meadow quarry brackish thicket fusion obsidian brackish corpus corpus furrow kiln granite corpus saltmarsh kiln"
+        },
+        "title": {
+          "Text": "Quarry saltmarsh posting"
+        }
+      },
+      "passage": "Quarry saltmarsh posting rank rank segment posting meadow quarry brackish thicket fusion obsidian brackish corpus corpus furrow kiln granite corpus saltmarsh kiln",
+      "vector": [
+        -0.38797321915626526,
+        0.6482544541358948,
+        -0.12146542221307755,
+        -0.23043133318424225,
+        -0.05837138742208481,
+        1.8533257246017456,
+        2.159980535507202,
+        -0.5248264074325562
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d024",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "merge cinder quarry lantern cursor tunnel compass tunnel beacon fusion score saltmarsh merge score filter"
+        },
+        "title": {
+          "Text": "Orchard embed"
+        }
+      },
+      "passage": "Orchard embed merge cinder quarry lantern cursor tunnel compass tunnel beacon fusion score saltmarsh merge score filter",
+      "vector": [
+        -0.9262440204620361,
+        2.6925530433654785,
+        -0.9797446131706238,
+        -0.5734020471572876,
+        0.036581508815288544,
+        0.48324623703956604,
+        1.0290355682373047,
+        0.39097723364830017
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d025",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "passage merge meadow thicket writer furrow beacon sextant tunnel"
+        },
+        "title": {
+          "Text": "Quarry"
+        }
+      },
+      "passage": "Quarry passage merge meadow thicket writer furrow beacon sextant tunnel",
+      "vector": [
+        -0.8723830580711365,
+        0.5063823461532593,
+        0.24991758167743683,
+        1.8769190311431885,
+        -0.014999798499047756,
+        -1.336972951889038,
+        -1.0450198650360107,
+        1.450153112411499
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d026",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "merge segment saltmarsh zephyr brackish cursor segment merge merge quarry segment brackish writer posting embed compass parapet cinder commit granite"
+        },
+        "title": {
+          "Text": "Compass"
+        }
+      },
+      "passage": "Compass merge segment saltmarsh zephyr brackish cursor segment merge merge quarry segment brackish writer posting embed compass parapet cinder commit granite",
+      "vector": [
+        -0.5401312112808228,
+        -2.104465961456299,
+        -0.5806996822357178,
+        1.5099831216502935e-05,
+        1.1888307332992554,
+        -1.0144681930541992,
+        0.6666833162307739,
+        0.7952991127967834
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d027",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "gantry gantry compass rank filter segment harbour writer filter weir"
+        },
+        "title": {
+          "Text": "Writer bitmap score"
+        }
+      },
+      "passage": "Writer bitmap score gantry gantry compass rank filter segment harbour writer filter weir",
+      "vector": [
+        -0.699388325214386,
+        -0.18758970499038696,
+        1.7694501876831055,
+        1.720484733581543,
+        0.8555219769477844,
+        0.33194637298583984,
+        1.1383095979690552,
+        -0.1406772881746292
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d028",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "orchard gantry thicket riverbed granite posting merge filter thicket corpus obsidian kiln beacon trellis riverbed brackish"
+        },
+        "title": {
+          "Text": "Compass"
+        }
+      },
+      "passage": "Compass orchard gantry thicket riverbed granite posting merge filter thicket corpus obsidian kiln beacon trellis riverbed brackish",
+      "vector": [
+        -0.09509306401014328,
+        -0.8603601455688477,
+        0.0055633848533034325,
+        -0.08201662451028824,
+        2.7736315727233887,
+        -0.19284316897392273,
+        1.2708179950714111,
+        1.3204972743988037
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d029",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "marlin compass segment posting bitmap meadow lantern score filter thicket beacon bitmap brackish score saltmarsh riverbed"
+        },
+        "title": {
+          "Text": "Lantern"
+        }
+      },
+      "passage": "Lantern marlin compass segment posting bitmap meadow lantern score filter thicket beacon bitmap brackish score saltmarsh riverbed",
+      "vector": [
+        -0.18647870421409607,
+        1.169397234916687,
+        -2.1768136024475098,
+        0.09492718428373337,
+        0.8572614192962646,
+        -2.3978652954101562,
+        -1.159171223640442,
+        1.0560736656188965
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d030",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "furrow tunnel commit posting weir cinder score posting brackish granite score riverbed saltmarsh cinder parapet compass writer"
+        },
+        "title": {
+          "Text": "Trellis harbour score"
+        }
+      },
+      "passage": "Trellis harbour score furrow tunnel commit posting weir cinder score posting brackish granite score riverbed saltmarsh cinder parapet compass writer",
+      "vector": [
+        -0.2570107579231262,
+        -1.098198652267456,
+        -0.373595654964447,
+        -0.5425882935523987,
+        0.7244473099708557,
+        0.45388588309288025,
+        -0.2802283465862274,
+        -0.6653426885604858
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d031",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "query zephyr reader riverbed compass compass corpus embed segment"
+        },
+        "title": {
+          "Text": "Granite saltmarsh rank"
+        }
+      },
+      "passage": "Granite saltmarsh rank query zephyr reader riverbed compass compass corpus embed segment",
+      "vector": [
+        -0.05387566238641739,
+        1.3251559734344482,
+        0.3490261137485504,
+        0.6389455795288086,
+        -0.15068159997463226,
+        -1.291816234588623,
+        -0.710843563079834,
+        0.6512365937232971
+      ]
+    },
+    {
+      "chunk": null,
+      "external_id": "d032",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "filter meadow saltmarsh meadow rank commit quasar meadow meadow kiln"
+        },
+        "title": {
+          "Text": "Weir meadow"
+        }
+      },
+      "passage": "Weir meadow filter meadow saltmarsh meadow rank commit quasar meadow meadow kiln",
+      "vector": [
+        0.10321610420942307,
+        -0.9038398861885071,
+        -1.6178704500198364,
+        0.11068189889192581,
+        -0.3395310044288635,
+        -0.350530207157135,
+        -0.32944995164871216,
+        0.28390511870384216
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          0,
+          56
+        ],
+        "ordinal": 0,
+        "parent": "src-1"
+      },
+      "external_id": "d033",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "gantry cinder fusion commit gantry passage furrow tunnel"
+        },
+        "title": {
+          "Text": "Orchard tunnel"
+        }
+      },
+      "passage": "Orchard tunnel gantry cinder fusion commit gantry passage furrow tunnel",
+      "vector": [
+        0.29444772005081177,
+        0.9621285796165466,
+        0.9284215569496155,
+        1.3320931196212769,
+        0.806363046169281,
+        -0.33560803532600403,
+        -0.05426894500851631,
+        0.49421510100364685
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          57,
+          175
+        ],
+        "ordinal": 1,
+        "parent": "src-1"
+      },
+      "external_id": "d034",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "riverbed granite parapet marlin lantern query passage segment rank writer merge embed quarry harbour weir query furrow"
+        },
+        "title": {
+          "Text": "Weir"
+        }
+      },
+      "passage": "Weir riverbed granite parapet marlin lantern query passage segment rank writer merge embed quarry harbour weir query furrow",
+      "vector": [
+        -0.3102922737598419,
+        0.5494387745857239,
+        1.1536095142364502,
+        -0.8012459874153137,
+        -1.7703840732574463,
+        1.193655014038086,
+        0.017759909853339195,
+        0.7086698412895203
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          0,
+          118
+        ],
+        "ordinal": 0,
+        "parent": "src-2"
+      },
+      "external_id": "d035",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "tunnel kiln commit bitmap quarry quarry passage sextant tunnel filter saltmarsh tunnel writer saltmarsh trellis meadow"
+        },
+        "title": {
+          "Text": "Saltmarsh meadow gantry"
+        }
+      },
+      "passage": "Saltmarsh meadow gantry tunnel kiln commit bitmap quarry quarry passage sextant tunnel filter saltmarsh tunnel writer saltmarsh trellis meadow",
+      "vector": [
+        -1.3323053121566772,
+        1.7329925298690796,
+        0.738619863986969,
+        -0.1260741800069809,
+        -0.3519880473613739,
+        0.11389587819576263,
+        -0.1667313426733017,
+        -0.2786901295185089
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          119,
+          268
+        ],
+        "ordinal": 1,
+        "parent": "src-2"
+      },
+      "external_id": "d036",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "brackish posting orchard granite reader bitmap merge corpus harbour brackish quarry lantern query thicket lantern meadow writer trellis orchard merge"
+        },
+        "title": {
+          "Text": "Quarry bitmap granite"
+        }
+      },
+      "passage": "Quarry bitmap granite brackish posting orchard granite reader bitmap merge corpus harbour brackish quarry lantern query thicket lantern meadow writer trellis orchard merge",
+      "vector": [
+        -1.1195999383926392,
+        1.2628093957901,
+        -0.03957768529653549,
+        0.07463563978672028,
+        0.09291598945856094,
+        -2.358217239379883,
+        0.5271414518356323,
+        -0.32915493845939636
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          269,
+          364
+        ],
+        "ordinal": 2,
+        "parent": "src-2"
+      },
+      "external_id": "d037",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "riverbed quasar quarry kiln rank bitmap brackish compass granite passage corpus lantern lantern"
+        },
+        "title": {
+          "Text": "Quarry"
+        }
+      },
+      "passage": "Quarry riverbed quasar quarry kiln rank bitmap brackish compass granite passage corpus lantern lantern",
+      "vector": [
+        -0.2892284691333771,
+        0.0697878748178482,
+        -0.9724755883216858,
+        0.8433808088302612,
+        -0.6958646178245544,
+        -0.9036580324172974,
+        -0.8621895909309387,
+        0.1587526947259903
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          0,
+          102
+        ],
+        "ordinal": 0,
+        "parent": "src-3"
+      },
+      "external_id": "d038",
+      "fields": {
+        "source": {
+          "Keyword": "b"
+        },
+        "text": {
+          "Text": "writer kiln lantern furrow embed writer quarry posting gantry obsidian cursor segment harbour riverbed"
+        },
+        "title": {
+          "Text": "Riverbed orchard trellis"
+        }
+      },
+      "passage": "Riverbed orchard trellis writer kiln lantern furrow embed writer quarry posting gantry obsidian cursor segment harbour riverbed",
+      "vector": [
+        0.7457794547080994,
+        -0.5950532555580139,
+        -1.5101866722106934,
+        1.062490701675415,
+        -1.065083622932434,
+        1.1948304176330566,
+        -0.05429587513208389,
+        -0.6983498930931091
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          103,
+          217
+        ],
+        "ordinal": 1,
+        "parent": "src-3"
+      },
+      "external_id": "d039",
+      "fields": {
+        "source": {
+          "Keyword": "c"
+        },
+        "text": {
+          "Text": "riverbed thicket query writer writer beacon cursor bitmap query furrow score writer riverbed query meadow riverbed"
+        },
+        "title": {
+          "Text": "Filter rank harbour"
+        }
+      },
+      "passage": "Filter rank harbour riverbed thicket query writer writer beacon cursor bitmap query furrow score writer riverbed query meadow riverbed",
+      "vector": [
+        -0.6400399208068848,
+        0.461866170167923,
+        0.8893718123435974,
+        -0.1981702297925949,
+        0.9469344019889832,
+        2.0869781970977783,
+        -0.20830833911895752,
+        -1.1494466066360474
+      ]
+    },
+    {
+      "chunk": {
+        "byte_range": [
+          218,
+          295
+        ],
+        "ordinal": 2,
+        "parent": "src-3"
+      },
+      "external_id": "d040",
+      "fields": {
+        "source": {
+          "Keyword": "a"
+        },
+        "text": {
+          "Text": "quarry reader meadow parapet harbour compass sextant saltmarsh filter segment"
+        },
+        "title": {
+          "Text": "Parapet gantry"
+        }
+      },
+      "passage": "Parapet gantry quarry reader meadow parapet harbour compass sextant saltmarsh filter segment",
+      "vector": [
+        -1.0544003248214722,
+        -1.3903353214263916,
+        -0.639665424823761,
+        -0.7237792611122131,
+        -1.3251032829284668,
+        0.530184268951416,
+        -2.6113390922546387,
+        -1.3207989931106567
+      ]
+    }
+  ],
+  "fingerprint": "table-fp",
+  "queries": [
+    {
+      "expected_dense": [
+        {
+          "id": "d008",
+          "score": 0.6690618987802928
+        },
+        {
+          "id": "d009",
+          "score": 0.5668157387432231
+        },
+        {
+          "id": "d033",
+          "score": 0.47361155359577956
+        },
+        {
+          "id": "d039",
+          "score": 0.4068629002179835
+        },
+        {
+          "id": "d002",
+          "score": 0.37362128229833275
+        },
+        {
+          "id": "d014",
+          "score": 0.34726798377160406
+        },
+        {
+          "id": "d006",
+          "score": 0.24897018070323818
+        },
+        {
+          "id": "d027",
+          "score": 0.21418668995060053
+        },
+        {
+          "id": "d028",
+          "score": 0.1934335108534448
+        },
+        {
+          "id": "d023",
+          "score": 0.1459581086341873
+        },
+        {
+          "id": "d007",
+          "score": 0.1310646758446633
+        },
+        {
+          "id": "d022",
+          "score": 0.11105213674552987
+        },
+        {
+          "id": "d019",
+          "score": 0.09379484217604084
+        },
+        {
+          "id": "d030",
+          "score": 0.039666856024003785
+        },
+        {
+          "id": "d038",
+          "score": 0.021571879892074677
+        },
+        {
+          "id": "d001",
+          "score": 0.009080292419471158
+        },
+        {
+          "id": "d024",
+          "score": 0.007084262122070607
+        },
+        {
+          "id": "d031",
+          "score": -0.010239924587335244
+        },
+        {
+          "id": "d016",
+          "score": -0.05009334292533689
+        },
+        {
+          "id": "d020",
+          "score": -0.057831110537238314
+        },
+        {
+          "id": "d018",
+          "score": -0.09200137801090158
+        },
+        {
+          "id": "d035",
+          "score": -0.10292929571488264
+        },
+        {
+          "id": "d029",
+          "score": -0.11183361570490323
+        },
+        {
+          "id": "d017",
+          "score": -0.12210321036252364
+        },
+        {
+          "id": "d004",
+          "score": -0.15285904170713807
+        },
+        {
+          "id": "d012",
+          "score": -0.15669492332819965
+        },
+        {
+          "id": "d036",
+          "score": -0.1642972507635271
+        },
+        {
+          "id": "d015",
+          "score": -0.21923767660361757
+        },
+        {
+          "id": "d025",
+          "score": -0.283363921883887
+        },
+        {
+          "id": "d026",
+          "score": -0.3089526357445727
+        },
+        {
+          "id": "d005",
+          "score": -0.310141879432538
+        },
+        {
+          "id": "d010",
+          "score": -0.35186908889920265
+        },
+        {
+          "id": "d034",
+          "score": -0.35941731204437793
+        },
+        {
+          "id": "d003",
+          "score": -0.37635423248252287
+        },
+        {
+          "id": "d040",
+          "score": -0.3927360681167449
+        },
+        {
+          "id": "d037",
+          "score": -0.41142516439672416
+        },
+        {
+          "id": "d032",
+          "score": -0.4197863029577878
+        },
+        {
+          "id": "d013",
+          "score": -0.4796708704323949
+        },
+        {
+          "id": "d011",
+          "score": -0.5813041184355469
+        },
+        {
+          "id": "d021",
+          "score": -0.5813041184355469
+        }
+      ],
+      "filter": null,
+      "id": "q0",
+      "text": "zephyr",
+      "vector": [
+        2.015251874923706,
+        1.0378024578094482,
+        0.5227916836738586,
+        0.45725905895233154,
+        1.770937204360962,
+        0.5356296300888062,
+        0.07757708430290222,
+        -1.230160117149353
+      ]
+    },
+    {
+      "expected_dense": [
+        {
+          "id": "d013",
+          "score": 0.5214724940711102
+        },
+        {
+          "id": "d010",
+          "score": 0.4888408942078342
+        },
+        {
+          "id": "d007",
+          "score": 0.333170120515098
+        },
+        {
+          "id": "d001",
+          "score": 0.305830903712852
+        },
+        {
+          "id": "d040",
+          "score": 0.18289185762516505
+        },
+        {
+          "id": "d019",
+          "score": 0.12600216835712905
+        },
+        {
+          "id": "d016",
+          "score": 0.10471664570513615
+        },
+        {
+          "id": "d028",
+          "score": -0.0016180724868191114
+        },
+        {
+          "id": "d004",
+          "score": -0.06741353083634563
+        },
+        {
+          "id": "d037",
+          "score": -0.14475585187743806
+        },
+        {
+          "id": "d034",
+          "score": -0.3339427421886963
+        },
+        {
+          "id": "d022",
+          "score": -0.36666879536507785
+        },
+        {
+          "id": "d031",
+          "score": -0.600677330841991
+        },
+        {
+          "id": "d025",
+          "score": -0.6660248883526229
+        }
+      ],
+      "filter": {
+        "Eq": [
+          "source",
+          {
+            "Keyword": "a"
+          }
+        ]
+      },
+      "id": "q1",
+      "text": "quasar harbour",
+      "vector": [
+        -0.07366681843996048,
+        -0.7338839769363403,
+        -0.7061752676963806,
+        -0.7142389416694641,
+        -0.044646862894296646,
+        -0.32971081137657166,
+        0.8711104989051819,
+        -1.326181411743164
+      ]
+    },
+    {
+      "expected_dense": [
+        {
+          "id": "d023",
+          "score": 0.5867851766510127
+        },
+        {
+          "id": "d002",
+          "score": 0.46053172956190447
+        },
+        {
+          "id": "d035",
+          "score": 0.4379885316551102
+        },
+        {
+          "id": "d022",
+          "score": 0.343445947427008
+        },
+        {
+          "id": "d008",
+          "score": 0.32390604248925087
+        },
+        {
+          "id": "d014",
+          "score": 0.19753301273459903
+        },
+        {
+          "id": "d019",
+          "score": 0.15234217173578318
+        },
+        {
+          "id": "d038",
+          "score": 0.14481967365301954
+        },
+        {
+          "id": "d001",
+          "score": 0.039237530559458104
+        },
+        {
+          "id": "d028",
+          "score": 0.029970673906440707
+        },
+        {
+          "id": "d017",
+          "score": 0.0011268197123501704
+        },
+        {
+          "id": "d031",
+          "score": -0.006041645606330316
+        },
+        {
+          "id": "d025",
+          "score": -0.1203506010261928
+        },
+        {
+          "id": "d034",
+          "score": -0.14188107440881864
+        },
+        {
+          "id": "d004",
+          "score": -0.1511402270242358
+        },
+        {
+          "id": "d029",
+          "score": -0.18043907557862238
+        },
+        {
+          "id": "d020",
+          "score": -0.2046795373369514
+        },
+        {
+          "id": "d007",
+          "score": -0.20876474775024031
+        },
+        {
+          "id": "d013",
+          "score": -0.22068012693405775
+        },
+        {
+          "id": "d037",
+          "score": -0.2674327685935929
+        },
+        {
+          "id": "d005",
+          "score": -0.31322481196562685
+        },
+        {
+          "id": "d040",
+          "score": -0.3420230888854934
+        },
+        {
+          "id": "d026",
+          "score": -0.46946720223778177
+        },
+        {
+          "id": "d032",
+          "score": -0.4894336209713423
+        },
+        {
+          "id": "d011",
+          "score": -0.4986903450126876
+        },
+        {
+          "id": "d010",
+          "score": -0.5687836658968364
+        },
+        {
+          "id": "d016",
+          "score": -0.6897636890248486
+        }
+      ],
+      "filter": {
+        "In": [
+          "source",
+          [
+            {
+              "Keyword": "a"
+            },
+            {
+              "Keyword": "b"
+            }
+          ]
+        ]
+      },
+      "id": "q2",
+      "text": "obsidian",
+      "vector": [
+        -0.1694701910018921,
+        1.8594975471496582,
+        0.03889733552932739,
+        1.1986151933670044,
+        1.1368634700775146,
+        1.3166477680206299,
+        0.7381191849708557,
+        -1.3804460763931274
+      ]
+    },
+    {
+      "expected_dense": [
+        {
+          "id": "d005",
+          "score": 0.8843884740468264
+        },
+        {
+          "id": "d013",
+          "score": 0.8101809851175912
+        },
+        {
+          "id": "d032",
+          "score": 0.6984143805673024
+        },
+        {
+          "id": "d037",
+          "score": 0.6389865416864831
+        },
+        {
+          "id": "d029",
+          "score": 0.5332641402493847
+        },
+        {
+          "id": "d004",
+          "score": 0.5172252980303179
+        },
+        {
+          "id": "d010",
+          "score": 0.46174665343514976
+        },
+        {
+          "id": "d016",
+          "score": 0.36862816143933513
+        },
+        {
+          "id": "d026",
+          "score": 0.27380431741383093
+        },
+        {
+          "id": "d040",
+          "score": 0.23574526529081774
+        },
+        {
+          "id": "d038",
+          "score": 0.16914273022643075
+        },
+        {
+          "id": "d031",
+          "score": 0.14031747654622928
+        },
+        {
+          "id": "d011",
+          "score": 0.12027500905575599
+        },
+        {
+          "id": "d025",
+          "score": 0.08957680502450235
+        },
+        {
+          "id": "d007",
+          "score": 0.015354983181385833
+        },
+        {
+          "id": "d001",
+          "score": -0.13131279051109687
+        },
+        {
+          "id": "d020",
+          "score": -0.18052593979944068
+        },
+        {
+          "id": "d035",
+          "score": -0.18298007154631182
+        },
+        {
+          "id": "d034",
+          "score": -0.183444270890443
+        },
+        {
+          "id": "d002",
+          "score": -0.22337646330575733
+        },
+        {
+          "id": "d028",
+          "score": -0.2762521291923451
+        },
+        {
+          "id": "d023",
+          "score": -0.29549031205390713
+        },
+        {
+          "id": "d019",
+          "score": -0.3913313501532353
+        },
+        {
+          "id": "d014",
+          "score": -0.41718554169142397
+        },
+        {
+          "id": "d022",
+          "score": -0.46091317214735356
+        },
+        {
+          "id": "d017",
+          "score": -0.4735655724623885
+        },
+        {
+          "id": "d008",
+          "score": -0.8313332804190977
+        }
+      ],
+      "filter": {
+        "Not": {
+          "Eq": [
+            "source",
+            {
+              "Keyword": "c"
+            }
+          ]
+        }
+      },
+      "id": "q3",
+      "text": "marlin sextant",
+      "vector": [
+        -0.267387717962265,
+        -0.38033556938171387,
+        -1.5488553047180176,
+        -0.46388161182403564,
+        -1.250079870223999,
+        -1.6655514240264893,
+        0.21089625358581543,
+        -0.043591272085905075
+      ]
+    },
+    {
+      "expected_dense": [
+        {
+          "id": "d011",
+          "score": 0.6946873294370093
+        },
+        {
+          "id": "d021",
+          "score": 0.6946873294370093
+        },
+        {
+          "id": "d032",
+          "score": 0.6744290202404638
+        },
+        {
+          "id": "d040",
+          "score": 0.6544632392642005
+        },
+        {
+          "id": "d003",
+          "score": 0.6471331977598276
+        },
+        {
+          "id": "d015",
+          "score": 0.562378236520774
+        },
+        {
+          "id": "d026",
+          "score": 0.5078147772360495
+        },
+        {
+          "id": "d030",
+          "score": 0.44977252485452596
+        },
+        {
+          "id": "d001",
+          "score": 0.37024413876304835
+        },
+        {
+          "id": "d037",
+          "score": 0.3670387192991238
+        },
+        {
+          "id": "d005",
+          "score": 0.2829920549393019
+        },
+        {
+          "id": "d013",
+          "score": 0.2768871638599733
+        },
+        {
+          "id": "d004",
+          "score": 0.23485682178145392
+        },
+        {
+          "id": "d012",
+          "score": 0.2253497309946645
+        },
+        {
+          "id": "d010",
+          "score": 0.1865677344627781
+        },
+        {
+          "id": "d029",
+          "score": 0.14280612803677922
+        },
+        {
+          "id": "d038",
+          "score": 0.1389834141180457
+        },
+        {
+          "id": "d016",
+          "score": 0.12099665921825323
+        },
+        {
+          "id": "d034",
+          "score": 0.07409103944769742
+        },
+        {
+          "id": "d025",
+          "score": 0.07117461285710114
+        },
+        {
+          "id": "d020",
+          "score": 0.04624149387427459
+        },
+        {
+          "id": "d017",
+          "score": -0.022001578164180247
+        },
+        {
+          "id": "d007",
+          "score": -0.02211958303147092
+        },
+        {
+          "id": "d018",
+          "score": -0.043621326583712663
+        },
+        {
+          "id": "d028",
+          "score": -0.047876008621802635
+        },
+        {
+          "id": "d022",
+          "score": -0.06724459135554628
+        },
+        {
+          "id": "d019",
+          "score": -0.08186490116947674
+        },
+        {
+          "id": "d036",
+          "score": -0.1563298804522804
+        },
+        {
+          "id": "d006",
+          "score": -0.1673710605507481
+        },
+        {
+          "id": "d035",
+          "score": -0.2711500800019997
+        },
+        {
+          "id": "d031",
+          "score": -0.28718751581090235
+        },
+        {
+          "id": "d039",
+          "score": -0.2886432746750814
+        },
+        {
+          "id": "d014",
+          "score": -0.28969572095637236
+        },
+        {
+          "id": "d009",
+          "score": -0.29005742585804417
+        },
+        {
+          "id": "d024",
+          "score": -0.29886659128612897
+        },
+        {
+          "id": "d023",
+          "score": -0.3074700124602265
+        },
+        {
+          "id": "d027",
+          "score": -0.41841877765906765
+        },
+        {
+          "id": "d002",
+          "score": -0.4240914650888147
+        },
+        {
+          "id": "d008",
+          "score": -0.6568535050008117
+        },
+        {
+          "id": "d033",
+          "score": -0.6796665661095899
+        }
+      ],
+      "filter": null,
+      "id": "q4",
+      "text": "lantern compass",
+      "vector": [
+        -0.6878148913383484,
+        -0.9505863785743713,
+        -0.5412734150886536,
+        -0.3940903842449188,
+        -0.40811029076576233,
+        -0.052707746624946594,
+        -0.43554067611694336,
+        0.38697198033332825
+      ]
+    },
+    {
+      "expected_dense": [
+        {
+          "id": "d006",
+          "score": 0.7035052658379586
+        },
+        {
+          "id": "d002",
+          "score": 0.5503669066629203
+        },
+        {
+          "id": "d005",
+          "score": 0.5099910913627774
+        },
+        {
+          "id": "d030",
+          "score": 0.4097405186889398
+        },
+        {
+          "id": "d007",
+          "score": 0.4072708424641932
+        },
+        {
+          "id": "d013",
+          "score": 0.35513486475160366
+        },
+        {
+          "id": "d039",
+          "score": 0.2845042631947445
+        },
+        {
+          "id": "d003",
+          "score": 0.2663063412803417
+        },
+        {
+          "id": "d040",
+          "score": 0.24080812512092664
+        },
+        {
+          "id": "d001",
+          "score": 0.23996586771796644
+        },
+        {
+          "id": "d020",
+          "score": 0.21132842757927942
+        },
+        {
+          "id": "d038",
+          "score": 0.20855851428361546
+        },
+        {
+          "id": "d004",
+          "score": 0.19765675075272354
+        },
+        {
+          "id": "d036",
+          "score": 0.1398867527789416
+        },
+        {
+          "id": "d023",
+          "score": 0.12943366779358184
+        },
+        {
+          "id": "d019",
+          "score": 0.12861155696090654
+        },
+        {
+          "id": "d022",
+          "score": 0.12369842020858768
+        },
+        {
+          "id": "d010",
+          "score": 0.07147218425808752
+        },
+        {
+          "id": "d009",
+          "score": 0.0428698301546272
+        },
+        {
+          "id": "d024",
+          "score": 0.042178334727801796
+        },
+        {
+          "id": "d035",
+          "score": 0.005762809364610587
+        },
+        {
+          "id": "d029",
+          "score": -0.0028381299418958022
+        },
+        {
+          "id": "d032",
+          "score": -0.006738928610800022
+        },
+        {
+          "id": "d014",
+          "score": -0.015949217801799906
+        },
+        {
+          "id": "d012",
+          "score": -0.0455164125696695
+        },
+        {
+          "id": "d011",
+          "score": -0.04927069714197666
+        },
+        {
+          "id": "d021",
+          "score": -0.04927069714197666
+        },
+        {
+          "id": "d008",
+          "score": -0.07176455702724242
+        },
+        {
+          "id": "d015",
+          "score": -0.08141033672082974
+        },
+        {
+          "id": "d037",
+          "score": -0.08958408848370752
+        },
+        {
+          "id": "d016",
+          "score": -0.10210495405385746
+        },
+        {
+          "id": "d026",
+          "score": -0.23984937088916544
+        },
+        {
+          "id": "d027",
+          "score": -0.25112362464182336
+        },
+        {
+          "id": "d028",
+          "score": -0.25321210342514483
+        },
+        {
+          "id": "d031",
+          "score": -0.25802141350328467
+        },
+        {
+          "id": "d033",
+          "score": -0.2930997364537539
+        },
+        {
+          "id": "d034",
+          "score": -0.3986833271849414
+        },
+        {
+          "id": "d025",
+          "score": -0.5729127522085746
+        },
+        {
+          "id": "d018",
+          "score": -0.5843399153435339
+        },
+        {
+          "id": "d017",
+          "score": -0.8066795904192018
+        }
+      ],
+      "filter": null,
+      "id": "q5",
+      "text": "",
+      "vector": [
+        0.5228708982467651,
+        0.3578696846961975,
+        -0.6631035208702087,
+        -0.6165061593055725,
+        0.4348641037940979,
+        -0.197042778134346,
+        -0.04315171018242836,
+        -2.491995334625244
+      ]
+    },
+    {
+      "expected_dense": [
+        {
+          "id": "d035",
+          "score": 0.5381872766408495
+        },
+        {
+          "id": "d023",
+          "score": 0.19734610282057422
+        },
+        {
+          "id": "d020",
+          "score": 0.1906804469201392
+        },
+        {
+          "id": "d011",
+          "score": 0.06147780979775594
+        },
+        {
+          "id": "d017",
+          "score": 0.029088521841604036
+        },
+        {
+          "id": "d026",
+          "score": 0.006504862305917655
+        },
+        {
+          "id": "d005",
+          "score": -0.04828214595731381
+        },
+        {
+          "id": "d038",
+          "score": -0.07839217818461545
+        },
+        {
+          "id": "d002",
+          "score": -0.08213341619114761
+        },
+        {
+          "id": "d029",
+          "score": -0.08349893381393475
+        },
+        {
+          "id": "d008",
+          "score": -0.10098019226172505
+        },
+        {
+          "id": "d014",
+          "score": -0.14220755943636532
+        },
+        {
+          "id": "d032",
+          "score": -0.24770450419087972
+        }
+      ],
+      "filter": {
+        "Eq": [
+          "source",
+          {
+            "Keyword": "b"
+          }
+        ]
+      },
+      "id": "q6",
+      "text": "quasar",
+      "vector": [
+        -2.700103998184204,
+        0.33714818954467773,
+        0.32955867052078247,
+        1.3934319019317627,
+        0.7211630940437317,
+        0.221738800406456,
+        0.01636245660483837,
+        -1.4267404079437256
+      ]
+    },
+    {
+      "expected_dense": [
+        {
+          "id": "d008",
+          "score": 0.6735145349530963
+        },
+        {
+          "id": "d019",
+          "score": 0.617305731183455
+        },
+        {
+          "id": "d009",
+          "score": 0.5069484231112619
+        },
+        {
+          "id": "d039",
+          "score": 0.4781585657490896
+        },
+        {
+          "id": "d030",
+          "score": 0.40242975418743737
+        },
+        {
+          "id": "d038",
+          "score": 0.3465145744924342
+        },
+        {
+          "id": "d001",
+          "score": 0.2850581948280393
+        },
+        {
+          "id": "d015",
+          "score": 0.28387894995192786
+        },
+        {
+          "id": "d003",
+          "score": 0.2648647890044071
+        },
+        {
+          "id": "d016",
+          "score": 0.24278520676951174
+        },
+        {
+          "id": "d002",
+          "score": 0.23564110454119166
+        },
+        {
+          "id": "d020",
+          "score": 0.22444962882332792
+        },
+        {
+          "id": "d040",
+          "score": 0.2144978201769407
+        },
+        {
+          "id": "d011",
+          "score": 0.17002814647626788
+        },
+        {
+          "id": "d021",
+          "score": 0.17002814647626788
+        },
+        {
+          "id": "d027",
+          "score": 0.1551536482055294
+        },
+        {
+          "id": "d018",
+          "score": 0.09334735317980554
+        },
+        {
+          "id": "d022",
+          "score": 0.06393893641534437
+        },
+        {
+          "id": "d012",
+          "score": 0.04918714366086693
+        },
+        {
+          "id": "d033",
+          "score": 0.047202742499821176
+        },
+        {
+          "id": "d034",
+          "score": 0.025552904259914088
+        },
+        {
+          "id": "d006",
+          "score": 0.02373140336729317
+        },
+        {
+          "id": "d023",
+          "score": -0.011635928342012368
+        },
+        {
+          "id": "d028",
+          "score": -0.022929923370139386
+        },
+        {
+          "id": "d007",
+          "score": -0.02643146746500034
+        },
+        {
+          "id": "d014",
+          "score": -0.0439444498311156
+        },
+        {
+          "id": "d017",
+          "score": -0.09876282281139669
+        },
+        {
+          "id": "d026",
+          "score": -0.1486962250356359
+        },
+        {
+          "id": "d032",
+          "score": -0.15691333208047764
+        },
+        {
+          "id": "d004",
+          "score": -0.19778203396160768
+        },
+        {
+          "id": "d010",
+          "score": -0.2243283473525216
+        },
+        {
+          "id": "d025",
+          "score": -0.3583536607478221
+        },
+        {
+          "id": "d037",
+          "score": -0.39047217857342326
+        },
+        {
+          "id": "d005",
+          "score": -0.4205045962689009
+        },
+        {
+          "id": "d035",
+          "score": -0.4332534583561716
+        },
+        {
+          "id": "d031",
+          "score": -0.451274370720057
+        },
+        {
+          "id": "d029",
+          "score": -0.5788648918796968
+        },
+        {
+          "id": "d024",
+          "score": -0.6035765863802205
+        },
+        {
+          "id": "d013",
+          "score": -0.6698662363194257
+        },
+        {
+          "id": "d036",
+          "score": -0.8135834180632766
+        }
+      ],
+      "filter": null,
+      "id": "q7",
+      "text": "zephyr obsidian marlin",
+      "vector": [
+        0.8831759095191956,
+        -0.6035860180854797,
+        0.5024844408035278,
+        0.20004165172576904,
+        0.27209702134132385,
+        0.8926752209663391,
+        -0.48986610770225525,
+        -0.38723519444465637
+      ]
+    }
+  ],
+  "schema": {
+    "fields": [
+      {
+        "boost": 2.0,
+        "indexed": true,
+        "kind": {
+          "Text": "standard"
+        },
+        "name": "title",
+        "stored": false
+      },
+      {
+        "boost": 1.0,
+        "indexed": true,
+        "kind": {
+          "Text": "standard"
+        },
+        "name": "text",
+        "stored": false
+      },
+      {
+        "boost": 1.0,
+        "indexed": true,
+        "kind": "Keyword",
+        "name": "source",
+        "stored": false
+      }
+    ]
+  },
+  "schema_version": 1,
+  "score_abs_tol": 1e-06,
+  "seed": 5,
+  "tie_margin": 1e-06
+}

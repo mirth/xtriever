@@ -1,13 +1,30 @@
 [package]
 name = "xtriever-pipeline"
-description = "Xtriever: pipeline (placeholder until its spec lands)"
+description = "Xtriever: hybrid pipeline — lexical + dense fusion, id mapping, degradation, explain"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0.151"
+thiserror.workspace = true
 xtriever-core = { path = "../xtriever-core" }
+xtriever-dense = { path = "../xtriever-dense" }
+xtriever-lexical = { path = "../xtriever-lexical" }
 
 [lints]
 workspace = true
+
+[features]
+default = []
+# Opens the dense stage memory-mapped (docs/adr/0007-unsafe-readonly-mmap-in-dense.md); the
+# pipeline itself contains no `unsafe`.
+mmap = ["xtriever-dense/mmap"]
+
+[dev-dependencies]
+proptest = "1.11.0"
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+tempfile = "3.27.0"
