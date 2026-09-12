@@ -1,0 +1,7 @@
+{
+ "generator": "gen_003_fixtures.py",
+ "seed": 3,
+ "files": {
+  "metrics.json": "4115f68501ed433886ced27fbd1c8e836a351c58c97d454331045944405bbdb2"
+ }
+}

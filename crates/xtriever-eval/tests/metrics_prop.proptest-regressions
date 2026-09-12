@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4057a1e74e856a5406969cbf0e86711f2e75233f021879c6657976faa2c12441 # shrinks to grades = {"d0": 0}, ranked = []
+cc 513573c439f85aa74ecee58891dd5c46030325b791a3ac4a3c29f17619552a42 # shrinks to qrels = {"q0": {"d0": 0}}, runs = [[], [], [], [], [], [], [], [], [], []]

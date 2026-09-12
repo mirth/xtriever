@@ -54,3 +54,9 @@ and every success criterion is a count, a tolerance or a byte-equality.
   the figures marked provisional until pinned at planning; FR-023 → blocking CI smoke in scope with
   a recorded one-cycle escape hatch. **14 of 16 items pass**; the 2 remaining are the accepted
   technology-agnosticism deviation.
+- **Iteration 3 — implementation** (2026-09-12): the shipped behaviour was checked against every
+  requirement. One design detail moved between modules with the reason recorded (report.md
+  F-001: BEIR's identical-id pop is applied at scoring time, where BEIR applies it, not in the
+  runner); no requirement's wording needed interpretation. The spec's "≈" dataset counts became
+  exact at planning (research D1) and are asserted by the loader. Checklist state unchanged:
+  12/16, the four technology-agnosticism items remain the documented deviation.
