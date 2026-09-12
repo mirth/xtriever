@@ -28,3 +28,7 @@ harness/ios/XtrieverSpike/Sources/XtrieverSpike/Generated/
 harness/ios/XtrieverSpike/.build/
 harness/ios/XtrieverSpike/Sources/XtrieverSpike/XtrieverData/
 harness/ios/XtrieverSpikeApp/XtrieverSpikeApp.xcodeproj/
+
+# BEIR evaluation datasets: ~23 MB fetched by scripts/fetch-beir.sh, pinned by hash in
+# reference/datasets/beir-manifest.json, never committed (Feature 003 FR-008).
+reference/datasets/beir/

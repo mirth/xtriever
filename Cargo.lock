@@ -2643,7 +2643,15 @@ dependencies = [
 name = "xtriever-eval"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.20",
  "xtriever-core",
+ "xtriever-lexical",
 ]
 
 [[package]]
