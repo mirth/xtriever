@@ -39,7 +39,7 @@ depth 20**; both models loaded buffered, `RAYON_NUM_THREADS=4`. Every dataset in
 Feature 004 embedding cache by value: **0 documents embedded**; only queries and query–passage
 pairs were scored.
 
-> **Baseline commit**: _(fill in after merge — the commit the three baseline files land in)_
+> **Baseline commit**: `94975a8996981a0d00bf56c817f164fd5fd05c44`
 
 | dataset | nDCG@10 | Recall@100 | BEIR-rounded | scored | `--verify-run` | `--verify-rerank` |
 |---|---|---|---|---|---|---|
