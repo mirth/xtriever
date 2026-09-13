@@ -14,7 +14,9 @@ import Xtriever
 /// valid `task_info` readings, and `untested` otherwise (a simulator number is not a device
 /// number). Select the load path with `TEST_RUNNER_XTRIEVER_LOAD_PATH=buffered|mmap`.
 final class DeviceMeasurementTests: XCTestCase {
-    static let ceilingBytes: UInt64 = 300 * 1_000_000
+    /// Constitution v1.4.0 Principle III default (ADR-0010): 600 MB for the full pipeline. The
+    /// three 007 runs were judged against the pre-amendment 300 MB and are kept as recorded.
+    static let ceilingBytes: UInt64 = 600 * 1_000_000
     static let depths: [UInt32] = [0, 5, 20]
     static let toleranceAbs: Float = 1e-3
 
@@ -269,7 +271,7 @@ final class DeviceMeasurementTests: XCTestCase {
             notes: notes)
         try emit(record)
         if verdict == "FAIL" {
-            XCTFail("peak footprint \(peak) B exceeds the 300 MB ceiling — stop and report (Rule 6)")
+            XCTFail("peak footprint \(peak) B exceeds the \(Self.ceilingBytes / 1_000_000) MB ceiling (ADR-0010) — stop and report (Rule 6)")
         }
     }
 

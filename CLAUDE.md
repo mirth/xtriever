@@ -2,7 +2,7 @@
 
 Xtriever is a cross-platform hybrid retrieval engine for RAG: BM25 → dense → fusion → re-rank → LTR.
 
-**`.specify/memory/constitution.md` (v1.3.0) is the highest authority in this repository.** It
+**`.specify/memory/constitution.md` (v1.4.0) is the highest authority in this repository.** It
 supersedes this file, the templates, and the README. Read it before planning or implementing
 anything. If this file and the constitution ever disagree, the constitution wins and this file is
 the bug — fix it rather than following it.

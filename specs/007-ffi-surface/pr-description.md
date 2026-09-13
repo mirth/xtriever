@@ -44,7 +44,7 @@ unlinkable).
 **Device measurement (iPhone 16e, iOS 26.6.2, Release; SciFact + both models; 20 queries ×
 depths 0 / 5 / 20)** — three records under `specs/007-ffi-surface/runs/`:
 
-| run | load path | threads | ledger peak | verdict vs 300 MB | per pair | depth 5 | depth 20 |
+| run | load path | threads | ledger peak | verdict vs 300 MB (v1.3.0) | per pair | depth 5 | depth 20 |
 |---|---|---|---:|---|---:|---:|---:|
 | 1 | mmap | 1 | **376.4 MB** | **FAIL** | 464 ms | 2.67 s | 9.60 s |
 | 2 | buffered | 1 | **383.0 MB** | **FAIL** | 462 ms | 2.64 s | 9.55 s |
@@ -68,6 +68,12 @@ Android · no stubs · `check-containment` · toolchain · `index.rs` re-denies 
 first push the Ubuntu test job ran out of disk (lld SIGBUS while linking a candle-bearing test
 binary — report F-007): `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=line-tables-only`
 in the workflow env, plus a `df -h` step on Linux; nothing compiled or tested changes.
+
+**Constitution amended to v1.4.0 (ADR-0010)** on F-002, by owner decision: Principle III's
+default on-device RSS ceiling becomes 600 MB for the full pipeline (100k-chunk index with
+both models loaded), MINOR bump. The three run records keep their 300 MB FAIL verdict as
+recorded; under 600 MB the same peaks pass. `DeviceMeasurementTests.ceilingBytes` → 600 MB;
+CLAUDE.md and the plan template follow the wording. Nothing in the pipeline changed.
 
 **Review round 1** (Copilot, nine comments, all taken — report table): retired
 `gen_001_fixtures.py --emit-ranking`; exactly-20 query check and a clean resource tree in

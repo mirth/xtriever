@@ -14,7 +14,7 @@ As in Features 001–006 the "user" is an Xtriever developer, here one writing S
 deliverable is the boundary between the Rust engine and an iOS app: which operations cross it,
 what they return, how errors and time budgets behave on the far side, and what it costs on a
 phone. The constitution fixes much of the vocabulary — `xtriever-ffi` is the one crate allowed to
-carry async wrappers, the 300 MB on-device ceiling, the determinism promise, the C/C++-free rule
+carry async wrappers, the on-device RSS ceiling, the determinism promise, the C/C++-free rule
 — so the requirements name those things. No crate or binding-generator items are cited; they
 belong in `plan.md` under Rule 1. Feature 001 already proved the three stacks build, link and
 run on a device; this feature builds the real surface on that proof.
@@ -148,7 +148,8 @@ simulator.
 A developer runs the measurement harness on a physical iPhone against a small real index
 (SciFact: 5,183 documents, shipped with the harness) with both models memory-mapped and records:
 open time, model load times, peak footprint, and per-query latency at re-rank depths 0, 5 and 20
-— with the verdict against the constitution's 300 MB ceiling.
+— with the verdict against the constitution's ceiling (300 MB when this spec was written and
+the runs were taken; 600 MB since v1.4.0 / ADR-0010, decided on this feature's F-002).
 
 **Why this priority**: 006 F-001 measured 116–163 ms per pair on a laptop; the phone number
 decides the demo's default depth and budget, and the 001 memory headline (mapped weights) has
@@ -160,7 +161,8 @@ iPhone reaches the same verdict.
 **Acceptance Scenarios**:
 
 1. **Given** the harness on a device, **When** it opens the index with both models mapped and
-   runs the measurement queries, **Then** peak footprint is recorded and compared with 300 MB.
+   runs the measurement queries, **Then** peak footprint is recorded and compared with the
+   constitution's ceiling.
 2. **Given** the same run, **When** latency per query is recorded at depths 0, 5 and 20, **Then**
    the per-pair re-rank cost on the device is derived and recorded beside 006's laptop number.
 3. **Given** the lexical hits on device, **When** compared with the host's for the same
@@ -236,7 +238,7 @@ iPhone reaches the same verdict.
 
 - **FR-013**: The measurement harness MUST record, on a physical device, with a SciFact index
   built on the host and both models mapped: open time, each model's load time, peak footprint
-  against the 300 MB ceiling, and per-query latency at re-rank depths 0, 5 and 20 over a fixed
+  against the constitution's ceiling, and per-query latency at re-rank depths 0, 5 and 20 over a fixed
   query set, with run records committed verbatim.
 - **FR-014**: The device's lexical hits MUST be bit-identical to the host's; dense and re-rank
   scores MUST be within the goldens' tolerances; a miss is a finding.
@@ -288,7 +290,7 @@ iPhone reaches the same verdict.
 - **SC-004**: One script produces the package on a clean Mac checkout; the Swift tests pass on
   the simulator; the CI workflow diff adds no job.
 - **SC-005**: On a physical device with SciFact and both models mapped, peak footprint is
-  recorded with the 300 MB verdict; latency at depths 0 / 5 / 20 is recorded per query with the
+  recorded with the ceiling verdict; latency at depths 0 / 5 / 20 is recorded per query with the
   derived per-pair cost; run records are committed.
 - **SC-006**: Device lexical hits are bit-identical to the host's on 100 % of the measurement
   queries; dense and re-rank scores within tolerance on 100 %.

@@ -31,7 +31,7 @@ public enum Measure {
         /// `false` when `task_info` failed, so the footprint fields are not real readings.
         ///
         /// Load-bearing: without it a failed syscall reports 0 bytes, and a run maximum computed
-        /// over zeros is a **false PASS** against the 300 MB ceiling — the single worst thing this
+        /// over zeros is a **false PASS** against the constitution's ceiling — the single worst thing this
         /// harness could do (FR-028).
         public let isValid: Bool
 
@@ -39,7 +39,7 @@ public enum Measure {
         ///
         /// Apple publishes no per-device limits and does not document this sum as a supported way
         /// to obtain one, so it is recorded as an observation. It is a **different threshold** from
-        /// the constitution's 300 MB ceiling and must never be conflated with it.
+        /// the constitution's RSS ceiling and must never be conflated with it.
         public var observedLimitBytes: UInt64 { footprintBytes &+ availableBytes }
     }
 
@@ -131,7 +131,7 @@ public enum Measure {
 
         /// Milliseconds, for humans reading the report.
         public var wallMillis: Double { Double(wallNanos) / 1_000_000 }
-        /// Mebibytes, for comparing against the 300 MB ceiling.
+        /// Mebibytes, for comparing against the constitution's ceiling.
         public var cumulativePeakMiB: Double { Double(cumulativePeakBytes) / (1024 * 1024) }
     }
 
@@ -140,7 +140,7 @@ public enum Measure {
     /// ``Measurement/cumulativePeakBytes`` takes the **larger** of the kernel's ledger high-water
     /// mark and the sampled maximum — deliberately the conservative choice. Sampling only sees
     /// before and after, so it misses a transient spike inside the operation; the ledger catches
-    /// those. Under-reporting the peak is the one error that would turn a real 300 MB breach into
+    /// those. Under-reporting the peak is the one error that would turn a real ceiling breach into
     /// a false pass (FR-028).
     public static func measure<T>(
         _ operation: String,
