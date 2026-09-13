@@ -2673,17 +2673,15 @@ name = "xtriever-ffi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "candle-core",
- "candle-nn",
- "candle-transformers",
+ "serde",
  "serde_json",
- "sha2",
- "tantivy",
  "tempfile",
  "thiserror 2.0.20",
- "tokenizers",
  "uniffi",
  "xtriever-core",
+ "xtriever-dense",
+ "xtriever-pipeline",
+ "xtriever-rerank",
 ]
 
 [[package]]

@@ -9,9 +9,12 @@ Two oracles, deliberately kept separate because one fixture cannot serve both (r
 * **BM25 parity** -- ``bm25_reference.json`` is an *independent* Python transcription of tantivy's
   documented BM25. Compared ids-and-order exact, scores within ``score_rel_tol`` (1e-5). Answers
   "is our BM25 the BM25?".
-* **Host<->device determinism** -- ``ranking.json`` is minted from a real host tantivy run and
-  compared bit-exact. Answers "does iOS produce the same bits as macOS?". This script writes a
-  placeholder for it until the Rust side lands (PR 2).
+* **Host<->device determinism** -- ``ranking.json`` was minted from a real host tantivy run and
+  compared bit-exact. Answers "does iOS produce the same bits as macOS?". **Frozen since Feature
+  007**: the spike that minted it (``xtriever-ffi --features spike --example gen_ranking``) was
+  deleted under 007's FR-018, so ``--emit-ranking`` now refuses; the committed ``ranking.json``
+  and ``manifest.json`` stay as the spike's evidence, and the surviving sections (corpus, bm25,
+  tokens, embedding, model) still regenerate.
 
 Run via the pinned virtualenv:
 
@@ -27,7 +30,6 @@ import json
 import math
 import os
 import random
-import subprocess
 import sys
 from pathlib import Path
 
@@ -415,54 +417,20 @@ def ranking_placeholder(k: int = 10) -> dict:
 
 
 def mint_ranking(corpus: dict, out: Path, k: int) -> dict:
-    """Mint ``ranking.json`` from a real host tantivy run, and refuse if it disagrees with us.
+    """Retired: ``ranking.json`` was minted from a real host tantivy run and cross-checked, hit by
+    hit, against ``gen_bm25_reference`` (ids and order exact, scores within ``SCORE_REL_TOL``)
+    before being written — Principle II's verification for BM25.
 
-    This is where Principle II's Python verification actually lands for BM25: rather than
-    hand-copying numbers, we run the real engine and check its output against this script's
-    independent transcription before accepting it. If they disagree, nothing is written.
+    The minter was the 001 spike's ``gen_ranking`` example, deleted by Feature 007 (FR-018).
+    The committed ``ranking.json`` is frozen; this refuses rather than invoking code that no
+    longer exists. Re-minting would need a generator over ``xtriever-lexical`` — a new decision,
+    not a silent substitution.
     """
-    corpus_path = out / "corpus.json"
-    cmd = [
-        "cargo", "run", "-q", "-p", "xtriever-ffi", "--features", "spike",
-        "--example", "gen_ranking", "--", str(corpus_path), str(k),
-    ]
-    print(f"  minting via: {' '.join(cmd[:8])} ...")
-    env = dict(os.environ, RAYON_NUM_THREADS="1")
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT, env=env, check=False)
-    if proc.returncode != 0:
-        raise SystemExit(f"gen_ranking failed:\n{proc.stderr.strip()}")
-    minted = json.loads(proc.stdout)
-
-    if minted["segment_count"] != 1:
-        raise SystemExit(f"host index produced {minted['segment_count']} segments, expected 1")
-
-    reference = gen_bm25_reference(corpus, k=k)
-    ref_hits, got_hits = reference["hits"], minted["hits"]
-    if len(ref_hits) != len(got_hits):
-        raise SystemExit(f"host returned {len(got_hits)} hits, reference has {len(ref_hits)}")
-
-    for rank, (ref, got) in enumerate(zip(ref_hits, got_hits)):
-        if ref["external_id"] != got["external_id"]:
-            raise SystemExit(
-                f"rank {rank}: host says {got['external_id']}, "
-                f"independent reference says {ref['external_id']} -- NOT minting"
-            )
-        rel = abs(got["score"] - ref["score"]) / abs(ref["score"])
-        if rel > SCORE_REL_TOL:
-            raise SystemExit(
-                f"rank {rank} ({got['external_id']}): host scored {got['score']}, reference "
-                f"{ref['score']} (relative {rel:.3e} > {SCORE_REL_TOL:.0e}) -- NOT minting"
-            )
-
-    worst = max(
-        abs(g["score"] - r["score"]) / abs(r["score"])
-        for r, g in zip(ref_hits, got_hits)
+    del corpus, out, k
+    raise SystemExit(
+        "gen_001_fixtures: --emit-ranking is retired — the 001 spike's gen_ranking example was "
+        "deleted by Feature 007 (FR-018); reference/fixtures/001/ranking.json is frozen as minted"
     )
-    print(f"  cross-check OK: {len(got_hits)} hits, order identical, worst relative score "
-          f"difference {worst:.3e} (tolerance {SCORE_REL_TOL:.0e})")
-    minted["cross_checked_against"] = "bm25_reference.json"
-    minted["worst_relative_score_difference"] = worst
-    return minted
 
 
 SECTIONS = ("model", "corpus", "bm25", "tokens", "embedding", "ranking")

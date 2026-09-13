@@ -1,109 +1,104 @@
-//! Shared fixture loading for the Feature 001 acceptance tests.
-//!
-//! Compiled into several test binaries, each using only part of it, hence `dead_code` is allowed.
-//! `missing_docs` is on workspace-wide and applies to test crates too, so every item is documented.
-#![allow(dead_code)]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+//! Shared helpers for the Feature 007 acceptance suite: model directories, the 005 fixture
+//! corpus, a fixture index built with the real embedder, and bit helpers.
+#![allow(dead_code, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
-/// Absolute path to `reference/fixtures/001`.
-///
-/// Resolved from `CARGO_MANIFEST_DIR` so the tests do not depend on the working directory.
-pub fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../reference/fixtures/001")
-        .canonicalize()
-        .expect("reference/fixtures/001 is missing — run reference/gen_001_fixtures.py")
+use serde::Deserialize;
+use xtriever_core::{ChunkInfo, FieldName, Filter, Schema, Value};
+use xtriever_dense::{LoadPath, MiniLmEmbedder};
+use xtriever_pipeline::{HybridConfig, HybridIndex, SourceDocument};
+
+pub fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Absolute path to the gitignored model cache, overridable with `XTRIEVER_MODEL_DIR`.
-///
-/// The weights are 87.1 MiB and are never committed; they are downloaded and verified by
-/// `reference/gen_001_fixtures.py`.
-pub fn model_dir() -> PathBuf {
+/// The git-ignored embedder directory, overridable with `XTRIEVER_MODEL_DIR`.
+pub fn embedder_dir() -> PathBuf {
     std::env::var_os("XTRIEVER_MODEL_DIR").map_or_else(
-        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../reference/models/001"),
+        || repo_root().join("reference/models/all-MiniLM-L6-v2"),
         PathBuf::from,
     )
 }
 
-/// Load and parse one fixture file by name.
-///
-/// # Panics
-///
-/// Panics if the file is missing or is not valid JSON. Both mean the fixtures were not generated,
-/// which is a setup failure rather than a test failure, and must not be silently skipped (FR-028).
-pub fn load(name: &str) -> serde_json::Value {
-    let path = fixtures_dir().join(name);
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-        panic!(
-            "cannot read {}: {e} — run reference/gen_001_fixtures.py",
-            path.display()
-        )
-    });
-    serde_json::from_str(&text)
-        .unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()))
+/// The git-ignored re-rank model directory, overridable with `XTRIEVER_RERANK_MODEL_DIR`.
+pub fn reranker_dir() -> PathBuf {
+    std::env::var_os("XTRIEVER_RERANK_MODEL_DIR").map_or_else(
+        || repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2"),
+        PathBuf::from,
+    )
 }
 
-/// Cosine similarity between two equal-length vectors.
-pub fn cosine(a: &[f32], b: &[f32]) -> f64 {
-    assert_eq!(a.len(), b.len(), "vectors must have equal length");
-    let (mut dot, mut na, mut nb) = (0.0f64, 0.0f64, 0.0f64);
-    for (x, y) in a.iter().zip(b) {
-        dot += f64::from(*x) * f64::from(*y);
-        na += f64::from(*x) * f64::from(*x);
-        nb += f64::from(*y) * f64::from(*y);
+// ── the 005 fixture corpus ──────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize, Clone)]
+pub struct FixtureDoc {
+    pub external_id: String,
+    pub fields: BTreeMap<FieldName, Value>,
+    pub chunk: Option<ChunkInfo>,
+    pub passage: String,
+}
+
+#[derive(Deserialize)]
+pub struct FixtureQuery {
+    pub id: String,
+    pub text: String,
+    pub filter: Option<Filter>,
+}
+
+#[derive(Deserialize)]
+pub struct Hybrid {
+    pub dense_fields: Vec<FieldName>,
+    pub schema: Schema,
+    pub documents: Vec<FixtureDoc>,
+    pub queries: Vec<FixtureQuery>,
+}
+
+pub fn fixture_docs() -> Hybrid {
+    let path = repo_root().join("reference/fixtures/005/hybrid.json");
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+}
+
+/// Every fixture document embedded with the real embedder (buffered), one commit.
+pub fn build_fixture_index(dir: &Path) -> HybridIndex {
+    let h = fixture_docs();
+    let embedder = MiniLmEmbedder::load(&embedder_dir(), LoadPath::Buffered).expect("embedder");
+    let mut index = HybridIndex::create(
+        dir,
+        HybridConfig::new(h.schema.clone(), h.dense_fields.clone()),
+        Box::new(embedder),
+    )
+    .expect("create");
+    let docs: Vec<SourceDocument> = h
+        .documents
+        .iter()
+        .map(|d| SourceDocument {
+            external_id: d.external_id.clone(),
+            fields: d.fields.clone(),
+            chunk: d.chunk.clone(),
+        })
+        .collect();
+    index.add(&docs).expect("add");
+    index.commit().expect("commit");
+    index
+}
+
+pub fn bits(x: f64) -> u64 {
+    x.to_bits()
+}
+
+pub fn bits32(x: f32) -> u32 {
+    x.to_bits()
+}
+
+/// A writable copy of a model directory for tamper tests.
+pub fn model_copy(src: &Path) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["config.json", "tokenizer.json", "model.safetensors"] {
+        std::fs::copy(src.join(name), dir.path().join(name)).unwrap();
     }
-    dot / (na.sqrt() * nb.sqrt())
-}
-
-/// Largest absolute element-wise difference between two equal-length vectors.
-pub fn max_abs_diff(a: &[f32], b: &[f32]) -> f64 {
-    assert_eq!(a.len(), b.len(), "vectors must have equal length");
-    a.iter()
-        .zip(b)
-        .map(|(x, y)| f64::from(*x - *y).abs())
-        .fold(0.0, f64::max)
-}
-
-/// Read a JSON array of numbers as `Vec<f32>`.
-pub fn as_f32_vec(value: &serde_json::Value) -> Vec<f32> {
-    value
-        .as_array()
-        .expect("expected a JSON array")
-        .iter()
-        .map(|v| v.as_f64().expect("expected a number") as f32)
-        .collect()
-}
-
-/// Read a JSON array of numbers as `Vec<u32>`.
-pub fn as_u32_vec(value: &serde_json::Value) -> Vec<u32> {
-    value
-        .as_array()
-        .expect("expected a JSON array")
-        .iter()
-        .map(|v| {
-            u32::try_from(v.as_u64().expect("expected a non-negative integer"))
-                .expect("fits in u32")
-        })
-        .collect()
-}
-
-/// Load the corpus as `(external_id, text)` pairs, in insertion order.
-///
-/// Order is significant: it is what makes tantivy's internal `DocId` assignment deterministic and
-/// therefore what makes the golden ranking comparable at all (research D5).
-pub fn corpus_documents() -> Vec<(String, String)> {
-    load("corpus.json")["documents"]
-        .as_array()
-        .expect("documents array")
-        .iter()
-        .map(|d| {
-            (
-                d["external_id"].as_str().expect("external_id").to_owned(),
-                d["text"].as_str().expect("text").to_owned(),
-            )
-        })
-        .collect()
+    dir
 }
