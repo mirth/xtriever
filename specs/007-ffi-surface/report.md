@@ -144,6 +144,21 @@ the valid wildcard iOS profile on this Mac belongs to team `J483F464F3`, which i
 `security cms -D -i <profile>` on the installed `.mobileprovision` files gives the team that
 works. Recorded for the next person running the harness.
 
+### F-007 — The Ubuntu CI runner ran out of disk on the workspace test build
+
+First push of this branch: `ld terminated with signal 7 [Bus error]` while linking
+`xtriever-dense`'s `model_pins` test. Rust 1.91 links x86_64 Linux with lld, which writes its
+output through a memory-mapped file, so a full disk surfaces as SIGBUS rather than as `ENOSPC`.
+The cause is volume, not code: the 001 spike kept uniffi/candle/tantivy behind the non-default
+`spike` feature, so this branch is the first to link the FFI crate in full on Linux, and the
+workspace now has 69 test executables, ~35 of them carrying candle + tantivy — on Linux each
+embeds the full DWARF of that tree, against ~14 GB of runner disk. Fix in `ci.yml`, environment
+only: `CARGO_INCREMENTAL=0` (a fresh runner never reuses the cache; 800 MB of a 3.7 GB fresh
+build locally) and `CARGO_PROFILE_DEV_DEBUG=line-tables-only` (backtraces keep file:line; the
+type/variable DWARF goes). Nothing compiled, tested or linted changes; the macOS and Windows
+jobs are unaffected. A `df -h` / `du -sh target` step after nextest on Linux records the
+headroom for the next time.
+
 ## Success criteria → evidence
 
 | SC | evidence |

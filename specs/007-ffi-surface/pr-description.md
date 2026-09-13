@@ -64,6 +64,9 @@ pipeline's.
 Android · no stubs · `check-containment` · toolchain · `index.rs` re-denies `unsafe`
 (ADR-0003 layout kept) · eval graph pure · FFI graph C-free · `xtriever-core`, `-lexical`,
 `-dense`, `-rerank`, `-pipeline`, `deny.toml` unchanged. No ADR, no new dependency class, no new
-`unsafe`. CI: two `--features spike` lines removed, nothing added (standing rule).
+`unsafe`. CI: two `--features spike` lines removed; no job added (standing rule). After the
+first push the Ubuntu test job ran out of disk (lld SIGBUS while linking a candle-bearing test
+binary — report F-007): `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=line-tables-only`
+in the workflow env, plus a `df -h` step on Linux; nothing compiled or tested changes.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

@@ -1,6 +1,23 @@
 name: ci
 on: [push, pull_request]
-env: { CARGO_TERM_COLOR: always, RUSTFLAGS: "-D warnings" }
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  # Feature 007 (first full Linux link of the FFI crate): the ubuntu runner has ~14 GB of disk
+  # and the workspace test build filled it — lld writes its output through a memory-mapped
+  # file, so the disk running out surfaced as `ld terminated with signal 7 [Bus error]` on
+  # whichever test binary was linking at the time (xtriever-dense/model_pins). The workspace
+  # has 69 test executables, ~35 of them linking candle + tantivy; on Linux each embeds the full
+  # DWARF of that tree. Neither setting changes what is compiled, tested or linted:
+  #   CARGO_INCREMENTAL=0        a fresh runner never reuses the incremental cache (800 MB of a
+  #                              3.7 GB build locally; only ever adds time and disk here)
+  #   CARGO_PROFILE_DEV_DEBUG    line-tables-only keeps file:line in panic backtraces and drops
+  #                              the type/variable DWARF that dominates test-binary size
+  # (`test` inherits from `dev`). If the disk is still short, the next lever is removing the
+  # runner's unused preinstalled SDKs (/usr/share/dotnet, /usr/local/lib/android) — the
+  # `df -h` step below is the evidence for that call.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 jobs:
   test:
     strategy: { matrix: { os: [ubuntu-latest, macos-latest, windows-latest] } }
@@ -13,6 +30,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets
       - run: cargo nextest run --workspace
+      - run: df -h . && du -sh target
+        if: runner.os == 'Linux'
       - run: cargo deny check
         if: runner.os == 'Linux'
   cross-check:                                    # Constitution §III — no linking, so no NDK/Xcode needed yet
