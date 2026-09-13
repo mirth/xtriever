@@ -18,8 +18,9 @@ import Foundation
 /// `loadPath: .mmap` maps both models' weight files **and** the dense index's vectors
 /// (`dense/index.bin`) read-only (ADR-0007, ADR-0009); the caller owns the precondition that no
 /// other process modifies or truncates any of those files while the instance lives. The index
-/// content is never modified (see ``open(indexDir:embedderDir:rerankerDir:loadPath:)`` for the
-/// lock-file caveat).
+/// directory is opened read-only in every sense — nothing in it is modified or created — so an
+/// index shipped inside the app bundle is opened **in place** (Feature 008 D11; the 007
+/// lock-file caveat, report F-001, is gone).
 public final class XtrieverIndex: @unchecked Sendable {
     /// Identity and configuration of the open index, read once at open.
     public let info: IndexInfo
@@ -34,13 +35,7 @@ public final class XtrieverIndex: @unchecked Sendable {
 
     /// Open a hybrid index read-only with the pinned embedder and, optionally, the pinned
     /// re-ranker. Model loading (~100 ms per model when mapped, more when buffered) runs off the
-    /// caller's thread.
-    ///
-    /// **The index directory must be writable** even though its content is never modified: the
-    /// lexical backend opens a zero-byte lock file (`lexical/.tantivy-meta.lock`) for writing at
-    /// every open, and refuses a directory where it cannot (007 report F-001). An index shipped
-    /// inside the app bundle — read-only on a device — must first be copied out with
-    /// ``writableCopy(of:named:)``.
+    /// caller's thread. The directory may be read-only (an app bundle): nothing is created in it.
     public static func open(
         indexDir: URL,
         embedderDir: URL,
@@ -91,55 +86,6 @@ public final class XtrieverIndex: @unchecked Sendable {
     }
 }
 
-public extension XtrieverIndex {
-    /// Copy a bundled index directory into Application Support (once), returning the writable
-    /// location to pass to ``open(indexDir:embedderDir:rerankerDir:loadPath:)``.
-    ///
-    /// The copy is keyed by `name` and the source descriptor's bytes: a bundle that ships a
-    /// newer index (a different `xtriever-pipeline.json`) replaces the old copy; the same index
-    /// is not copied twice. Models need no copy — they are opened read-only.
-    ///
-    /// `name` is one path component (no separators, not `.` or `..`, not empty); anything else
-    /// throws `CocoaError.fileWriteInvalidFileName`, since the copy's directory is removed and
-    /// replaced under that name. Calls are serialised process-wide.
-    static func writableCopy(of source: URL, named name: String) throws -> URL {
-        guard !name.isEmpty, name != ".", name != "..",
-              !name.contains("/"), !name.contains("\\"), !name.contains("\0")
-        else { throw CocoaError(.fileWriteInvalidFileName) }
-        copyLock.lock(); defer { copyLock.unlock() }
-
-        let fm = FileManager.default
-        let base = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
-                              appropriateFor: nil, create: true)
-            .appendingPathComponent("Xtriever", isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
-        let descriptor = "xtriever-pipeline.json"
-        let sourceDescriptor = try Data(contentsOf: source.appendingPathComponent(descriptor))
-        if let existing = try? Data(contentsOf: base.appendingPathComponent(descriptor)),
-           existing == sourceDescriptor {
-            return base
-        }
-        // Copy into a uniquely named sibling first and swap it in only once it is complete: a
-        // disk-full error or a kill mid-copy leaves the previous complete copy untouched, never
-        // a partial tree whose descriptor the check above would take for a finished one.
-        // `replaceItemAt` keeps the old tree until the swap; the staging tree is removed by it
-        // (or by the move) on success and by the `defer` on failure.
-        let staging = base.deletingLastPathComponent()
-            .appendingPathComponent("\(name).staging-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: base.deletingLastPathComponent(), withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: staging) }
-        try fm.copyItem(at: source, to: staging)
-        if fm.fileExists(atPath: base.path) {
-            _ = try fm.replaceItemAt(base, withItemAt: staging)
-        } else {
-            try fm.moveItem(at: staging, to: base)
-        }
-        return base
-    }
-
-    private static let copyLock = NSLock()
-}
-
 public extension HitExplain {
     /// The explanation under the pipeline's seven feature names, `.nan` where a stage did not
     /// see the hit — the same names and order as `xtriever_pipeline::HitExplain::features()`.
@@ -153,6 +99,39 @@ public extension HitExplain {
             ("rerank.score", rerankScore ?? .nan),
             ("rerank.rank", rerankRank.map(Float.init) ?? .nan),
         ]
+    }
+}
+
+public extension Hit {
+    /// The article title and the passage body — `text` split at its first blank line, the
+    /// Feature 008 corpus convention (contracts/artefact.md). `nil` when the text has no blank
+    /// line (an index built by someone else).
+    var titleAndPassage: (title: String, passage: String)? {
+        guard let range = text.range(of: "\n\n") else { return nil }
+        return (String(text[..<range.lowerBound]), String(text[range.upperBound...]))
+    }
+
+    /// The Simple English Wikipedia URL of this passage's article, derived from the title line
+    /// exactly as the build verified it against the snapshot (008 D6).
+    var wikipediaURL: URL? {
+        titleAndPassage.flatMap { Hit.wikipediaURL(forTitle: $0.title) }
+    }
+
+    /// `https://simple.wikipedia.org/wiki/` + the title with every UTF-8 byte outside
+    /// `A–Z a–z 0–9 - _ . ~ /` percent-encoded (upper-case hex).
+    static func wikipediaURL(forTitle title: String) -> URL? {
+        var encoded = ""
+        for byte in Array(title.utf8) {
+            switch byte {
+            case UInt8(ascii: "A")...UInt8(ascii: "Z"), UInt8(ascii: "a")...UInt8(ascii: "z"),
+                 UInt8(ascii: "0")...UInt8(ascii: "9"),
+                 UInt8(ascii: "-"), UInt8(ascii: "_"), UInt8(ascii: "."), UInt8(ascii: "~"), UInt8(ascii: "/"):
+                encoded.append(Character(UnicodeScalar(byte)))
+            default:
+                encoded.append(String(format: "%%%02X", byte))
+            }
+        }
+        return URL(string: "https://simple.wikipedia.org/wiki/" + encoded)
     }
 }
 
@@ -191,6 +170,18 @@ public enum HarnessResources {
     public static var scifactIndexDirectory: URL? { data?.appendingPathComponent("scifact/index") }
     public static var scifactQueries: URL? { data?.appendingPathComponent("scifact/queries.json") }
     public static var scifactExpected: URL? { data?.appendingPathComponent("scifact/expected-scifact.json") }
+
+    /// `XtrieverData/wikipedia/{index,queries.json,expected.json}` (Feature 008).
+    public static var wikipediaIndexDirectory: URL? { data?.appendingPathComponent("wikipedia/index") }
+    public static var wikipediaQueries: URL? { data?.appendingPathComponent("wikipedia/queries.json") }
+    public static var wikipediaExpected: URL? { data?.appendingPathComponent("wikipedia/expected.json") }
+    public static var wikipediaAttribution: URL? { data?.appendingPathComponent("wikipedia/ATTRIBUTION.txt") }
+
+    public static var wikipediaIsBundled: Bool {
+        guard let i = wikipediaIndexDirectory, let q = wikipediaQueries else { return false }
+        return FileManager.default.fileExists(atPath: i.appendingPathComponent("xtriever-pipeline.json").path)
+            && FileManager.default.fileExists(atPath: q.path)
+    }
 
     public static var modelsAreBundled: Bool {
         guard let e = embedderDirectory, let r = rerankerDirectory else { return false }

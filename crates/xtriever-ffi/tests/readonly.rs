@@ -152,3 +152,84 @@ fn open_failures_name_what_failed() {
         other => panic!("{other:?}"),
     }
 }
+
+/// Feature 008 D11: the surface opens an index in a directory nobody can write — the shape an
+/// iOS app bundle has — creates nothing, and searches it like a writable one.
+#[cfg(unix)]
+#[test]
+#[ignore = "needs both models"]
+fn a_read_only_directory_opens_in_place() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    drop(support::build_fixture_index(tmp.path()));
+    let q = support::fixture_docs().queries[0].text.clone();
+    let options = SearchOptions {
+        k: 10,
+        depth: None,
+        rerank_depth: Some(5),
+        max_time_ms: None,
+        max_items: None,
+        strict: false,
+        explain: true,
+    };
+    let want: Vec<(String, u64)> = {
+        let ffi = open(
+            tmp.path(),
+            &support::embedder_dir(),
+            Some(&support::reranker_dir()),
+        )
+        .unwrap();
+        ffi.search(q.clone(), options.clone())
+            .unwrap()
+            .hits
+            .iter()
+            .map(|h| (h.external_id.clone(), h.score.to_bits()))
+            .collect()
+    };
+    // dirs 0o555, files 0o444, restored at the end so the tempdir can be removed.
+    let mut entries = vec![(tmp.path().to_path_buf(), true)];
+    let mut stack = vec![tmp.path().to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).unwrap() {
+            let p = entry.unwrap().path();
+            if p.is_dir() {
+                stack.push(p.clone());
+            }
+            entries.push((p.clone(), p.is_dir()));
+        }
+    }
+    for (p, is_dir) in &entries {
+        std::fs::set_permissions(
+            p,
+            std::fs::Permissions::from_mode(if *is_dir { 0o555 } else { 0o444 }),
+        )
+        .unwrap();
+    }
+    let before = snapshot(tmp.path());
+    let got: Vec<(String, u64)> = {
+        let ffi = open(
+            tmp.path(),
+            &support::embedder_dir(),
+            Some(&support::reranker_dir()),
+        )
+        .expect("a read-only directory must open");
+        ffi.search(q, options)
+            .unwrap()
+            .hits
+            .iter()
+            .map(|h| (h.external_id.clone(), h.score.to_bits()))
+            .collect()
+    };
+    let after = snapshot(tmp.path());
+    for (p, is_dir) in &entries {
+        let _ = std::fs::set_permissions(
+            p,
+            std::fs::Permissions::from_mode(if *is_dir { 0o755 } else { 0o644 }),
+        );
+    }
+    assert_eq!(
+        got, want,
+        "read-only hits must equal the writable ones bit for bit"
+    );
+    assert_eq!(after, before, "nothing may be created or touched");
+}

@@ -1,0 +1,26 @@
+{
+  "note": "Pinned Simple English Wikipedia snapshot for Feature 008 (research D1, D2). Fetched by scripts/fetch-wiki.sh into reference/datasets/wiki/ (gitignored, never committed); the parquet is verified after download and the derived JSONL after conversion, and the build verifies both again before reading a line. The jsonl entry is pinned by a human from the first fetch's output (see fetch-wiki.sh). Measured 2026-09-13.",
+  "edition": "simple",
+  "snapshot_date": "2023-11-01",
+  "source": "https://huggingface.co/datasets/wikimedia/wikipedia",
+  "licence": { "name": "CC BY-SA 4.0", "url": "https://creativecommons.org/licenses/by-sa/4.0/" },
+  "parquet": {
+    "url": "https://huggingface.co/datasets/wikimedia/wikipedia/resolve/main/20231101.simple/train-00000-of-00001.parquet",
+    "bytes": 156885218,
+    "sha256": "31bded16768a47c286becd292079122f5d7d4397a17b87d4250a00ccd581e6f0",
+    "rows": 241787
+  },
+  "jsonl": {
+    "file": "simple.jsonl",
+    "bytes": 303703690,
+    "sha256": "bf69f110c5a7cf5adfbb607c4f65bd81839e27a05e6a603c1e3cbc4736db295f",
+    "lines": 241787,
+    "converter": "reference/wiki_to_jsonl.py",
+    "converter_sha256": "665c1823414636803e849f1c5d89beb84ae005df8a197f9c66ba2e60c9007768"
+  },
+  "exclusions": [
+    { "rule": "title_suffix", "value": " (disambiguation)" },
+    { "rule": "lead_contains", "value": "may refer to", "within_chars": 300 },
+    { "rule": "lead_contains", "value": "may mean", "within_chars": 300 }
+  ]
+}

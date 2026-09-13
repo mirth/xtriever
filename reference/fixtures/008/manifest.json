@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "generator_sha256": "6e4f008a1862d90527792f6abdf444479a3d50967e05b9f18c78d144cf8c40bc",
+ "files": {
+  "chunk_a.json": "86f1b77404df48e70df75ccd2d81af6522bf65f885d959afe8cf03ba2ae6f3de",
+  "chunk_b.json": "8400ee407c676606ef358db87ebead546eeef5ee9648b6dcc8185f64e894f1f7"
+ },
+ "set_b_ids": [
+  "2124",
+  "3427",
+  "700210",
+  "1",
+  "13",
+  "4329",
+  "3518",
+  "3259",
+  "synthetic-fragments"
+ ]
+}

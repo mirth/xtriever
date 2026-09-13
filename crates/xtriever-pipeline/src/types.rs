@@ -5,6 +5,18 @@ use std::time::Duration;
 
 use xtriever_core::{Budget, ChunkInfo, DocId, FeatureName, FieldName, Schema, Value, features};
 
+/// How [`HybridIndex::open_with`](crate::HybridIndex::open_with) opens a directory (Feature 008
+/// D11). `Default` is the plain `open`: buffered dense stage, writable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OpenOptions {
+    /// Memory-map the dense stage (feature `mmap`; the dense stage's precondition on external
+    /// writers applies). Without the feature this is `Error::Backend` at open.
+    pub mapped: bool,
+    /// Open without the lexical backend's lock file so a directory nobody can write opens;
+    /// every mutation then returns `Error::Io` "read-only index".
+    pub read_only: bool,
+}
+
 /// Creation-time configuration of a hybrid index.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HybridConfig {

@@ -164,7 +164,7 @@ person runs, not an evaluation. `clap` is the boring choice for a real CLI (Rule
 **Decision**: the build streams: read JSONL → exclude → chunk (D5) → group passages into
 shards of 4,096 in corpus order → for each shard, look up
 `<cache>/<embedder-fingerprint-sha256[..16]>/shard-<NNNNN>.f32` whose sidecar
-`shard-<NNNNN>.json` records `{ "key": sha256(passage texts joined by "\0"), "count" }`; on a
+`shard-<NNNNN>.json` records `{ "key": sha256(length-prefixed passage texts), "count" }`; on a
 key match the vectors (`count × dim` little-endian `f32`) are read, else the shard is embedded
 one passage at a time (`Embedder::embed(&[text], TextKind::Passage)`, the determinism path)
 and written (`.tmp` + rename) → `HybridIndex::add_embedded(&batch)` → next shard. After the

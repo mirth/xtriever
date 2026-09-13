@@ -12,6 +12,7 @@ use xtriever_core::{
 };
 
 use crate::error::{corrupt, map, schema_err};
+use crate::readonly::{ReadOnlyDirectory, read_only_io_error};
 use crate::schema::{Descriptor, FieldMap};
 use crate::{filter, query, search, stats};
 
@@ -53,6 +54,8 @@ pub struct TantivyIndex {
     index: Index,
     reader: IndexReader,
     writer: Option<IndexWriter>,
+    /// Opened through [`TantivyIndex::open_read_only`]: no lock file, every mutation refused.
+    read_only: bool,
 }
 
 // FR-030: the index must be safely shareable under a caller-supplied lock. The backend's `Index`,
@@ -96,6 +99,7 @@ impl TantivyIndex {
             index,
             reader,
             writer: None,
+            read_only: false,
         })
     }
 
@@ -105,6 +109,32 @@ impl TantivyIndex {
         let descriptor = Descriptor::read(dir)?;
         let fields = FieldMap::build(&descriptor.schema)?;
         let index = Index::open_in_dir(dir).map_err(map)?;
+        Self::finish_open(dir, descriptor, fields, index, false)
+    }
+
+    /// Open an existing index **read-only**: no lock file is created, nothing in the directory
+    /// is written, and `add`, `delete`, `commit` and `merge` return `Error::Io` with the message
+    /// `read-only index`. This is how an index inside a read-only location (an app bundle) is
+    /// opened — Feature 008 D11; `crate::readonly` explains why the lock is not needed.
+    ///
+    /// # Errors
+    ///
+    /// As [`open`](Self::open).
+    pub fn open_read_only(dir: &Path) -> Result<Self> {
+        let descriptor = Descriptor::read(dir)?;
+        let fields = FieldMap::build(&descriptor.schema)?;
+        let directory = ReadOnlyDirectory::open(dir).map_err(map)?;
+        let index = Index::open(directory).map_err(map)?;
+        Self::finish_open(dir, descriptor, fields, index, true)
+    }
+
+    fn finish_open(
+        dir: &Path,
+        descriptor: Descriptor,
+        fields: FieldMap,
+        index: Index,
+        read_only: bool,
+    ) -> Result<Self> {
         if index.schema() != *fields.backend() {
             return Err(corrupt(format!(
                 "{}: descriptor schema does not match the index schema",
@@ -118,7 +148,14 @@ impl TantivyIndex {
             index,
             reader,
             writer: None,
+            read_only,
         })
+    }
+
+    /// Whether this handle was opened through [`open_read_only`](Self::open_read_only).
+    #[must_use]
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
     }
 
     /// Merge all segments into one and make the result visible. Commits pending mutations first.
@@ -126,6 +163,9 @@ impl TantivyIndex {
     /// Operational compaction, and the controlled "after a merge" step the determinism and
     /// statistics tests need (research D15). A no-op on zero or one segment.
     pub fn merge(&mut self) -> Result<()> {
+        if self.read_only {
+            return Err(read_only_io_error().into());
+        }
         self.commit()?;
         // The backend's own merge policy runs in the background, so the segment list read from
         // `meta.json` can be stale by the time `merge` is called; the backend then reports the
@@ -169,6 +209,11 @@ impl TantivyIndex {
     /// Acquiring the directory lock fails with `Error::Backend(LockFailure)` if another writer
     /// holds it, in this or any process (D14).
     fn writer(&mut self) -> Result<&mut IndexWriter> {
+        if self.read_only {
+            // Refused here so the message is ours; the directory would refuse the writer's
+            // lock file anyway.
+            return Err(read_only_io_error().into());
+        }
         if self.writer.is_none() {
             let options = IndexWriterOptions::builder()
                 .num_worker_threads(1)
@@ -268,6 +313,9 @@ impl LexicalIndex for TantivyIndex {
     }
 
     fn commit(&mut self) -> Result<()> {
+        if self.read_only {
+            return Err(read_only_io_error().into());
+        }
         if let Some(writer) = self.writer.as_mut() {
             writer.commit().map_err(map)?;
             self.reader.reload().map_err(map)?;

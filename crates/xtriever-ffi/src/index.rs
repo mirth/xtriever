@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use xtriever_dense::MiniLmEmbedder;
-use xtriever_pipeline::{HybridIndex, Response};
+use xtriever_pipeline::{HybridIndex, OpenOptions, Response};
 use xtriever_rerank::MiniLmCrossEncoder;
 
 use crate::ffi::error::{XtrieverError, poisoned};
@@ -46,9 +46,9 @@ impl From<LoadPath> for xtriever_rerank::LoadPath {
 }
 
 /// Open read-only: the embedder, then the pipeline directory, then the optional re-ranker.
-/// The index content is never modified — the pipeline's lexical stage creates its writer lazily,
-/// on a mutation this surface never issues — but the lexical backend does open its lock file
-/// for writing, so the directory itself must be writable (see [`crate::IndexHandle::open`]).
+/// Read-only means the directory too: the pipeline is opened with `read_only: true`, so the
+/// lexical backend takes no lock file and an index inside a read-only app bundle opens in place
+/// (Feature 008 D11; resolves 007 F-001).
 pub(crate) fn open(
     index_dir: &str,
     embedder_dir: &str,
@@ -60,10 +60,14 @@ pub(crate) fn open(
     let embedder_load = t.elapsed();
 
     let dir = std::path::Path::new(index_dir);
-    let mut index = match load_path {
-        LoadPath::Buffered => HybridIndex::open(dir, Box::new(embedder))?,
-        LoadPath::Mmap => HybridIndex::open_mapped(dir, Box::new(embedder))?,
-    };
+    let mut index = HybridIndex::open_with(
+        dir,
+        Box::new(embedder),
+        OpenOptions {
+            mapped: matches!(load_path, LoadPath::Mmap),
+            read_only: true,
+        },
+    )?;
 
     let reranker_load = match reranker_dir {
         Some(rdir) => {

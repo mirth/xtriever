@@ -54,7 +54,7 @@ embedded shards.
 ## Step 4 — The full build (one unattended run, resumable; ~12 h estimated)
 
 ```bash
-RAYON_NUM_THREADS=1 cargo run --release -p xtriever-cli -- wiki build … --out target/xt-wiki --cache-dir target/xt-wiki-cache 2>&1 | tee target/xt-wiki-build.log
+RAYON_NUM_THREADS=4 cargo run --release -p xtriever-cli -- wiki build … --out target/xt-wiki --cache-dir target/xt-wiki-cache 2>&1 | tee target/xt-wiki-build.log   # 4 threads: 004 F-005 — bit-identical at any count, fastest at ~4
 cp target/xt-wiki/wiki-build.json specs/008-wiki-corpus/build-record.json
 cargo run --release -p xtriever-cli -- wiki expected --index target/xt-wiki/index --embedder-dir … --reranker-dir reference/models/ms-marco-MiniLM-L-6-v2 \
   --queries reference/fixtures/008/queries.json --out target/xt-wiki/expected.json

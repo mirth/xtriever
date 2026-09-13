@@ -1,0 +1,8 @@
+# Direct dependencies for reference/wiki_to_jsonl.py and reference/gen_008_fixtures.py
+# (Feature 008: the Wikipedia snapshot converter and the chunker's golden fixtures).
+#
+# tokenizers is pinned to the SAME version as the Rust crate in crates/xtriever-dense/Cargo.toml,
+# so set B's word-piece costs are the costs the build sees (research D5). pyarrow reads the
+# pinned parquet; the JSONL it writes is itself pinned by hash in wiki-manifest.json (D2).
+pyarrow==22.0.0
+tokenizers==0.23.2
