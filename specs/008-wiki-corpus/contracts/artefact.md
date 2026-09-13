@@ -36,8 +36,12 @@ expected.json               # host goldens for the device parity check
   With `read_only: true` the lexical backend takes no lock and creates no file; `add`, `commit`,
   `merge` on such an index return `Error::Io` with message `"read-only index"`. `open` and
   `open_mapped` are unchanged and equal `open_with(.., OpenOptions { mapped, read_only: false })`.
-- `xtriever_ffi::IndexHandle::open` always opens `read_only: true`. Opening an index inside a
-  read-only directory (an app bundle) succeeds; the 007 docs' "must be writable" caveat and
+- `xtriever_ffi::IndexHandle::open` opens **with the lock** when the directory permits (the
+  reader's protection against a concurrent writer's garbage collection stays wherever it can
+  exist) and retries `read_only: true` only when the directory refuses the lock file
+  (`Error::Io` `PermissionDenied` — an app bundle, a read-only mount). `xtriever-lexical` maps
+  that lock failure to `Error::Io` (a busy lock stays `Backend`, 002 D14). Opening an index
+  inside a read-only directory therefore succeeds; the 007 "must be writable" caveat and
   `XtrieverIndex.writableCopy` are removed; 007 report F-001 is marked resolved by 008.
 - Tests: `xtriever-lexical` opens a `chmod 0o555` copy read-only and searches; mutation errors;
   the directory's file list and mtimes are unchanged after open + search (the 007 snapshot

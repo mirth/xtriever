@@ -188,8 +188,9 @@ if [ -n "$with_wiki" ]; then
     # The bundle budget (contracts/artefact.md "Staging"): 2,000,000,000 bytes for everything
     # staged. A miss is a build failure with the number, never a quiet oversize app.
     budget=2000000000
-    staged_kb="$(du -sk "$resources" | cut -f1)"
-    staged_bytes=$((staged_kb * 1024))
+    # Logical file sizes (what the bundle carries), not allocated blocks: APFS compression,
+    # clones and block rounding make `du` the wrong instrument for a byte contract.
+    staged_bytes="$(find "$resources" -type f -exec stat -f%z {} + | awk '{s += $1} END {print s + 0}')"
     if [ "$staged_bytes" -gt "$budget" ]; then
         printf 'build-ios-package: FAIL — staged resources are %s bytes, over the %s-byte bundle budget\n' "$staged_bytes" "$budget" >&2
         exit 1

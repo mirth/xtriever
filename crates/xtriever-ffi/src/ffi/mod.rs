@@ -38,9 +38,9 @@ impl std::fmt::Debug for IndexHandle {
 #[uniffi::export]
 impl IndexHandle {
     /// Open a hybrid index read-only with the pinned embedder and, optionally, the pinned
-    /// re-ranker. Read-only includes the directory: no lock file, nothing created, so an index
-    /// inside a read-only app bundle opens in place (Feature 008 D11 — the 007 lock-file caveat,
-    /// report F-001, is gone).
+    /// re-ranker. A writable directory is opened with the lexical backend's lock (readers stay
+    /// safe from a concurrent writer); a directory that refuses the lock file — an app bundle —
+    /// is opened in place, lock-free (Feature 008 D11; the 007 copy-out, report F-001, is gone).
     ///
     /// # Errors
     ///

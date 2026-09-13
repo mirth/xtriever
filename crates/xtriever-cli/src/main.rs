@@ -4,7 +4,8 @@
 //! A binary: `anyhow` for errors (Principle VII), `clap` for arguments (research D8).
 
 use clap::{Parser, Subcommand};
-use xtriever_cli::wiki;
+
+mod wiki;
 
 /// Xtriever command-line tools.
 #[derive(Parser)]

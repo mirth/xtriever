@@ -46,9 +46,13 @@ impl From<LoadPath> for xtriever_rerank::LoadPath {
 }
 
 /// Open read-only: the embedder, then the pipeline directory, then the optional re-ranker.
-/// Read-only means the directory too: the pipeline is opened with `read_only: true`, so the
-/// lexical backend takes no lock file and an index inside a read-only app bundle opens in place
-/// (Feature 008 D11; resolves 007 F-001).
+///
+/// The directory is opened **with** the lexical backend's meta lock whenever it can be taken —
+/// that lock is what keeps a reader safe from a concurrent writer's garbage collection, and a
+/// non-mutating handle does not make a writable directory immutable. Only when the directory
+/// itself refuses the lock file (`PermissionDenied`: an app bundle, a read-only mount) is it
+/// reopened `read_only`, lock-free — a directory this process cannot write is one no writer of
+/// this process's rights can change under it (Feature 008 D11; resolves 007 F-001).
 pub(crate) fn open(
     index_dir: &str,
     embedder_dir: &str,
@@ -60,14 +64,29 @@ pub(crate) fn open(
     let embedder_load = t.elapsed();
 
     let dir = std::path::Path::new(index_dir);
-    let mut index = HybridIndex::open_with(
+    let mapped = matches!(load_path, LoadPath::Mmap);
+    let mut index = match HybridIndex::open_with(
         dir,
         Box::new(embedder),
         OpenOptions {
-            mapped: matches!(load_path, LoadPath::Mmap),
-            read_only: true,
+            mapped,
+            read_only: false,
         },
-    )?;
+    ) {
+        Err(xtriever_core::Error::Io(e)) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            // The embedder moved into the failed open; load it again (~100 ms mapped).
+            let embedder = MiniLmEmbedder::load(embedder_dir.as_ref(), load_path.into())?;
+            HybridIndex::open_with(
+                dir,
+                Box::new(embedder),
+                OpenOptions {
+                    mapped,
+                    read_only: true,
+                },
+            )?
+        }
+        other => other?,
+    };
 
     let reranker_load = match reranker_dir {
         Some(rdir) => {

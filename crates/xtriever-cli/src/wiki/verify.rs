@@ -158,16 +158,17 @@ pub fn run(args: &VerifyArgs) -> anyhow::Result<()> {
         MiniLmEmbedder::load(&args.embedder_dir, load_path("mmap")?)
             .context("loading the embedder")?,
     );
+    // The URL check is part of the contract, not optional: without the snapshot there is no
+    // truth to check against, and a PASS that skipped it would be a lie (contracts/cli.md).
     let jsonl = args.snapshot_dir.join("simple.jsonl");
-    let jsonl = jsonl.exists().then_some(jsonl);
-    if jsonl.is_none() {
-        eprintln!(
-            "wiki verify: no snapshot at {}; skipping the URL check",
-            args.snapshot_dir.display()
+    if !jsonl.exists() {
+        bail!(
+            "no snapshot at {} — run scripts/fetch-wiki.sh; the URL check needs simple.jsonl",
+            jsonl.display()
         );
     }
     let mut counts = Counts::default();
-    let verify = verify_index(&args.index, &embedder, jsonl.as_deref(), true, &mut counts)?;
+    let verify = verify_index(&args.index, &embedder, Some(&jsonl), true, &mut counts)?;
     println!(
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({ "counts": counts, "verify": verify }))?

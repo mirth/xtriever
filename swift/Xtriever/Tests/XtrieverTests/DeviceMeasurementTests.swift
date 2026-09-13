@@ -74,7 +74,9 @@ final class DeviceMeasurementTests: XCTestCase {
         let corpus: String
         /// The index was opened inside the bundle; no copy-out (008 D11).
         let openedInPlace: Bool
-        let firstLaunchCopyMs: UInt64?
+        /// Always present in the record: `null` for an in-place open (synthesized Codable would
+        /// omit a nil optional, and the schema requires the key).
+        let firstLaunchCopyMs: Nullable<UInt64>
         let device: String
         let os: String
         let thermalState: String
@@ -271,7 +273,7 @@ final class DeviceMeasurementTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         let record = RunRecord(
             schemaVersion: 2, feature: corpus == "wikipedia" ? "008-wiki-corpus" : "007-ffi-surface",
-            corpus: corpus, openedInPlace: true, firstLaunchCopyMs: nil,
+            corpus: corpus, openedInPlace: true, firstLaunchCopyMs: Nullable(nil),
             device: Measure.deviceModel,
             os: ProcessInfo.processInfo.operatingSystemVersionString,
             thermalState: Measure.thermalState,
@@ -294,6 +296,20 @@ final class DeviceMeasurementTests: XCTestCase {
         try emit(record)
         if verdict == "FAIL" {
             XCTFail("peak footprint \(peak) B exceeds the \(Self.ceilingBytes / 1_000_000) MB ceiling (ADR-0010) — stop and report (Rule 6)")
+        }
+    }
+
+    /// An optional that encodes as JSON `null` rather than being omitted.
+    struct Nullable<T: Codable>: Codable {
+        let value: T?
+        init(_ value: T?) { self.value = value }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            value = c.decodeNil() ? nil : try c.decode(T.self)
+        }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.singleValueContainer()
+            if let value { try c.encode(value) } else { try c.encodeNil() }
         }
     }
 

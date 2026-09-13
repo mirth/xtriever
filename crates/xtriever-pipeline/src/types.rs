@@ -13,7 +13,10 @@ pub struct OpenOptions {
     /// writers applies). Without the feature this is `Error::Backend` at open.
     pub mapped: bool,
     /// Open without the lexical backend's lock file so a directory nobody can write opens;
-    /// every mutation then returns `Error::Io` "read-only index".
+    /// every mutation then returns `Error::Io` "read-only index". **Precondition the caller
+    /// owns**: no writer touches the directory while this handle lives — the lock this skips is
+    /// what protects a reader from another writer's garbage collection. Meant for directories
+    /// that are immutable by construction (an app bundle), not as a convenience.
     pub read_only: bool,
 }
 

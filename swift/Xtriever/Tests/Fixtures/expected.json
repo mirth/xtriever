@@ -1,5 +1,5 @@
 {
-  "generated_by": "xtriever-ffi examples/fixture_index.rs @ 90d038ca3b7b6aa47453b1c5ec3ba2876c23f016",
+  "generated_by": "xtriever-ffi examples/fixture_index.rs @ fd2026b4634e6cff7483793d411007f870498b6d",
   "info": {
     "candidate_depth": 100,
     "documents": 40,

@@ -210,9 +210,12 @@ returning `Ok(DirectoryLock::from(Box::new(())))`** (the public
 (`index/index.rs:510`, `T: Into<Box<dyn Directory>>`); mutations on such an index fail at the
 writer lock with the same "read-only index" error. `xtriever-pipeline` gains
 `HybridIndex::open_with(dir, embedder, OpenOptions { mapped: bool, read_only: bool })`; the
-existing `open`/`open_mapped` delegate to it. `xtriever-ffi`'s `IndexHandle::open` passes
-`read_only: true` unconditionally — the surface was specified read-only (007 FR-002) and now
-is, including its directory.
+existing `open`/`open_mapped` delegate to it. `xtriever-ffi`'s `IndexHandle::open` opens with the lock when the directory permits and falls
+back to `read_only: true` only on a `PermissionDenied` lock file — review round 1 pointed out
+that a non-mutating handle does not make a writable directory immutable, and the lock is what
+protects a reader from another writer's garbage collection; a directory this process cannot
+write is the one case where no writer of its rights can exist. `xtriever-lexical` maps that
+lock failure to `Error::Io` so the fallback matches on a fact, not a message.
 
 **Where the lock is taken** (tantivy 0.26.2, read from source): `IndexReader` creation →
 `open_segment_readers` → `directory.acquire_lock(&META_LOCK)` (`reader/mod.rs:194`), which
