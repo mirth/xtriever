@@ -1,0 +1,96 @@
+# Minimal iOS app that exists to HOST the measurement tests on a physical device.
+#
+# Why this project exists at all: tool-hosted (hostless) XCTest bundles run only on simulators and
+# macOS. A device destination rejects them with "Tool-hosted testing is unavailable on device
+# destinations". So the device run needs an application to host the tests — which is what T036
+# asked for in the first place.
+#
+# The test target's sources are the SwiftPM package's test files, referenced in place: one copy of
+# the tests, running on both simulator and device. Ported from the Feature 001 spike harness (007 FR-018).
+#
+# Generated with `xcodegen generate` (see scripts/build-ios-package.sh --app); the .xcodeproj is
+# gitignored because it is derived, not authored.
+name: XtrieverHarnessApp
+options:
+  bundleIdPrefix: dev.xtriever
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+# arm64 only, on purpose. The crate targets `aarch64-apple-ios` and `aarch64-apple-ios-sim`
+# (Principle III) and the Rust staticlibs carry no x86_64 slice. Left at ARCHS_STANDARD, a Release
+# build also tries x86_64 for the simulator and fails with "symbol(s) not found for architecture
+# x86_64" — which reads like a missing symbol but is really a missing slice nobody asked for.
+settings:
+  base:
+    ARCHS: arm64
+    VALID_ARCHS: arm64
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+
+packages:
+  Xtriever:
+    path: ../Xtriever
+
+targets:
+  XtrieverHarnessApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: Xtriever
+        product: Xtriever
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.xtriever.harness
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.9"
+
+  XtrieverHarnessAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ../Xtriever/Tests/XtrieverTests
+    dependencies:
+      - target: XtrieverHarnessApp
+      - package: Xtriever
+        product: Xtriever
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.xtriever.harness.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.9"
+
+schemes:
+  XtrieverHarnessApp:
+    build:
+      targets:
+        XtrieverHarnessApp: all
+        XtrieverHarnessAppTests: [test]
+    test:
+      config: Release
+      targets:
+        - XtrieverHarnessAppTests
+      environmentVariables:
+        # candle sizes its rayon pool from the core count, which perturbs both the footprint this
+        # harness measures and float summation order (001 research D15). One thread keeps the
+        # run comparable with Feature 001's records.
+        RAYON_NUM_THREADS: "1"
+    run:
+      config: Release
+  # The phone's real default: candle picks the core count (007 research D9).
+  XtrieverHarnessApp-DefaultThreads:
+    build:
+      targets:
+        XtrieverHarnessApp: all
+        XtrieverHarnessAppTests: [test]
+    test:
+      config: Release
+      targets:
+        - XtrieverHarnessAppTests
+    run:
+      config: Release

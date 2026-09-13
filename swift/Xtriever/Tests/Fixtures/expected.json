@@ -1,0 +1,1526 @@
+{
+  "generated_by": "xtriever-ffi examples/fixture_index.rs @ d9637145b2eae575fe781f356d8a1c5c889e3b66",
+  "info": {
+    "candidate_depth": 100,
+    "documents": 40,
+    "embedder_fingerprint": "sentence-transformers/all-MiniLM-L6-v2@1110a243fdf4706b3f48f1d95db1a4f5529b4d41;weights=sha256:53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=f32;prefix=none;engine=candle-0.9.2",
+    "format_version": 2,
+    "rerank_depth": 20,
+    "reranker_model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2@233902d25c440f23af6f7d6e94d2946bac0bee0a;weights=sha256:821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=f32;engine=candle-0.9.2",
+    "rrf_k": 60
+  },
+  "queries": [
+    {
+      "id": "q0",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "zephyr",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3ea47a7e",
+            "external_id": "d016",
+            "rerank_rank": 1,
+            "rerank_score_bits": "4068509b",
+            "score_bits": "3fa0c9714fbcda3b"
+          },
+          {
+            "bm25_score_bits": "3fdcf87b",
+            "dense_score_bits": "3e7eeb4e",
+            "external_id": "d011",
+            "rerank_rank": 2,
+            "rerank_score_bits": "40247186",
+            "score_bits": "3fa0010010010010"
+          },
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3e4859fe",
+            "external_id": "d031",
+            "rerank_rank": 3,
+            "rerank_score_bits": "4017370c",
+            "score_bits": "3fa0228e8c01864a"
+          },
+          {
+            "bm25_score_bits": "3fe24620",
+            "dense_score_bits": "3e4a5647",
+            "external_id": "d026",
+            "rerank_rank": 4,
+            "rerank_score_bits": "40100f3c",
+            "score_bits": "3fa0000000000000"
+          },
+          {
+            "bm25_score_bits": "3fedaec4",
+            "dense_score_bits": "3e80d462",
+            "external_id": "d001",
+            "rerank_rank": 5,
+            "rerank_score_bits": "3fe908ac",
+            "score_bits": "3fa062928c418a4a"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e46c71f",
+            "external_id": "d032",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e3e2c9e",
+            "external_id": "d020",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e25c022",
+            "external_id": "d008",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e253976",
+            "external_id": "d038",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e1bf307",
+            "external_id": "d030",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 5,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3ea47a7e",
+            "external_id": "d016",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0c9714fbcda3b"
+          },
+          {
+            "bm25_score_bits": "3fedaec4",
+            "dense_score_bits": "3e80d462",
+            "external_id": "d001",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa062928c418a4a"
+          },
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3e4859fe",
+            "external_id": "d031",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0228e8c01864a"
+          },
+          {
+            "bm25_score_bits": "3fdcf87b",
+            "dense_score_bits": "3e7eeb4e",
+            "external_id": "d011",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0010010010010"
+          },
+          {
+            "bm25_score_bits": "3fe24620",
+            "dense_score_bits": "3e4a5647",
+            "external_id": "d026",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0000000000000"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e46c71f",
+            "external_id": "d032",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e3e2c9e",
+            "external_id": "d020",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e25c022",
+            "external_id": "d008",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e253976",
+            "external_id": "d038",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e1bf307",
+            "external_id": "d030",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 5,
+          "rerank": null
+        }
+      }
+    },
+    {
+      "id": "q1",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "quasar harbour",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "40323dd5",
+            "dense_score_bits": "3edc5782",
+            "external_id": "d002",
+            "rerank_rank": 1,
+            "rerank_score_bits": "409e3206",
+            "score_bits": "3fa0010010010010"
+          },
+          {
+            "bm25_score_bits": "403420cc",
+            "dense_score_bits": "3f01efe8",
+            "external_id": "d022",
+            "rerank_rank": 2,
+            "rerank_score_bits": "4090c1e8",
+            "score_bits": "3fa064b8a7de6d1e"
+          },
+          {
+            "bm25_score_bits": "3ff958ea",
+            "dense_score_bits": "3ee82e6f",
+            "external_id": "d037",
+            "rerank_rank": 3,
+            "rerank_score_bits": "bfb7562a",
+            "score_bits": "3f9fccb9de3a6c38"
+          },
+          {
+            "bm25_score_bits": "3fe57ce0",
+            "dense_score_bits": "3ece684b",
+            "external_id": "d017",
+            "rerank_rank": 4,
+            "rerank_score_bits": "bffcccc8",
+            "score_bits": "3f9f0f0f0f0f0f0f"
+          },
+          {
+            "bm25_score_bits": "409bdb5f",
+            "dense_score_bits": "3ec1fcab",
+            "external_id": "d013",
+            "rerank_rank": 5,
+            "rerank_score_bits": "c1086f52",
+            "score_bits": "3fa04536afbeeb26"
+          },
+          {
+            "bm25_score_bits": "40087c1e",
+            "dense_score_bits": "3eb39b90",
+            "external_id": "d032",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ecc79ce366b38"
+          },
+          {
+            "bm25_score_bits": "3f94decb",
+            "dense_score_bits": "3eb4ad8c",
+            "external_id": "d016",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9df00c3cbfdd0a"
+          },
+          {
+            "bm25_score_bits": "3fd48ef0",
+            "dense_score_bits": "3eabd39f",
+            "external_id": "d007",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9de63f4a6bcffc"
+          },
+          {
+            "bm25_score_bits": "3f902b4b",
+            "dense_score_bits": "3ea34b1b",
+            "external_id": "d027",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d1013c995a47c"
+          },
+          {
+            "bm25_score_bits": "40810fe0",
+            "dense_score_bits": "3e6067c5",
+            "external_id": "d039",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ce55c8eac7900"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 22,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "403420cc",
+            "dense_score_bits": "3f01efe8",
+            "external_id": "d022",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa064b8a7de6d1e"
+          },
+          {
+            "bm25_score_bits": "409bdb5f",
+            "dense_score_bits": "3ec1fcab",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa04536afbeeb26"
+          },
+          {
+            "bm25_score_bits": "40323dd5",
+            "dense_score_bits": "3edc5782",
+            "external_id": "d002",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0010010010010"
+          },
+          {
+            "bm25_score_bits": "3ff958ea",
+            "dense_score_bits": "3ee82e6f",
+            "external_id": "d037",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9fccb9de3a6c38"
+          },
+          {
+            "bm25_score_bits": "3fe57ce0",
+            "dense_score_bits": "3ece684b",
+            "external_id": "d017",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9f0f0f0f0f0f0f"
+          },
+          {
+            "bm25_score_bits": "40087c1e",
+            "dense_score_bits": "3eb39b90",
+            "external_id": "d032",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ecc79ce366b38"
+          },
+          {
+            "bm25_score_bits": "3f94decb",
+            "dense_score_bits": "3eb4ad8c",
+            "external_id": "d016",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9df00c3cbfdd0a"
+          },
+          {
+            "bm25_score_bits": "3fd48ef0",
+            "dense_score_bits": "3eabd39f",
+            "external_id": "d007",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9de63f4a6bcffc"
+          },
+          {
+            "bm25_score_bits": "3f902b4b",
+            "dense_score_bits": "3ea34b1b",
+            "external_id": "d027",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d1013c995a47c"
+          },
+          {
+            "bm25_score_bits": "40810fe0",
+            "dense_score_bits": "3e6067c5",
+            "external_id": "d039",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ce55c8eac7900"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 22,
+          "rerank": null
+        }
+      }
+    },
+    {
+      "id": "q2",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "obsidian",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3ecfe2a7",
+            "external_id": "d013",
+            "rerank_rank": 1,
+            "rerank_score_bits": "3f3627b4",
+            "score_bits": "3fa0421084210842"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3ebaf002",
+            "external_id": "d008",
+            "rerank_rank": 2,
+            "rerank_score_bits": "bf107eda",
+            "score_bits": "3fa062928c418a4a"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3eeb1da8",
+            "external_id": "d028",
+            "rerank_rank": 3,
+            "rerank_score_bits": "bf17a0f0",
+            "score_bits": "3fa0853aaffeef26"
+          },
+          {
+            "bm25_score_bits": "40042b5b",
+            "dense_score_bits": "3eba482d",
+            "external_id": "d038",
+            "rerank_rank": 4,
+            "rerank_score_bits": "bf41c60e",
+            "score_bits": "3fa064b8a7de6d1e"
+          },
+          {
+            "bm25_score_bits": "3fe7d689",
+            "dense_score_bits": "3eb26aec",
+            "external_id": "d023",
+            "rerank_rank": 5,
+            "rerank_score_bits": "bf85148c",
+            "score_bits": "3f9f81f81f81f820"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e983084",
+            "external_id": "d036",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e84e6ea",
+            "external_id": "d022",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e83b968",
+            "external_id": "d037",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e7cc708",
+            "external_id": "d021",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e62eec7",
+            "external_id": "d033",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 5,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3eeb1da8",
+            "external_id": "d028",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0853aaffeef26"
+          },
+          {
+            "bm25_score_bits": "40042b5b",
+            "dense_score_bits": "3eba482d",
+            "external_id": "d038",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa064b8a7de6d1e"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3ebaf002",
+            "external_id": "d008",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa062928c418a4a"
+          },
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3ecfe2a7",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0421084210842"
+          },
+          {
+            "bm25_score_bits": "3fe7d689",
+            "dense_score_bits": "3eb26aec",
+            "external_id": "d023",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9f81f81f81f820"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e983084",
+            "external_id": "d036",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e84e6ea",
+            "external_id": "d022",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e83b968",
+            "external_id": "d037",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e7cc708",
+            "external_id": "d021",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e62eec7",
+            "external_id": "d033",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 5,
+          "rerank": null
+        }
+      }
+    },
+    {
+      "id": "q3",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "marlin sextant",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "400c0560",
+            "dense_score_bits": "3e29c541",
+            "external_id": "d019",
+            "rerank_rank": 1,
+            "rerank_score_bits": "c0ce6689",
+            "score_bits": "3f9f18344b9dc4fe"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3e6a63a9",
+            "external_id": "d029",
+            "rerank_rank": 2,
+            "rerank_score_bits": "c0d988dc",
+            "score_bits": "3f9fc4e5087f1394"
+          },
+          {
+            "bm25_score_bits": "4014dd4a",
+            "dense_score_bits": "3e337f7f",
+            "external_id": "d014",
+            "rerank_rank": 3,
+            "rerank_score_bits": "c0e344a4",
+            "score_bits": "3fa026a923fd74e0"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3e7284be",
+            "external_id": "d004",
+            "rerank_rank": 4,
+            "rerank_score_bits": "c0eb1ed4",
+            "score_bits": "3fa0228e8c01864a"
+          },
+          {
+            "bm25_score_bits": "400cef78",
+            "dense_score_bits": "3e78b863",
+            "external_id": "d025",
+            "rerank_rank": 5,
+            "rerank_score_bits": "c0f0a6d2",
+            "score_bits": "3fa0a6c92bff7560"
+          },
+          {
+            "bm25_score_bits": "3fe57ce0",
+            "dense_score_bits": "3e3946b4",
+            "external_id": "d035",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ed00b1ed00b1f"
+          },
+          {
+            "bm25_score_bits": "3fca983d",
+            "dense_score_bits": "3e45b08e",
+            "external_id": "d005",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9e6c2b4481cd86"
+          },
+          {
+            "bm25_score_bits": "40087c1e",
+            "dense_score_bits": "3e0a8865",
+            "external_id": "d040",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9dd67c8a60dd68"
+          },
+          {
+            "bm25_score_bits": "3fd48ef0",
+            "dense_score_bits": "3e2e7296",
+            "external_id": "d010",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9daff91daff91e"
+          },
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3e14f579",
+            "external_id": "d034",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d817c64313f42"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 11,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "400cef78",
+            "dense_score_bits": "3e78b863",
+            "external_id": "d025",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0a6c92bff7560"
+          },
+          {
+            "bm25_score_bits": "4014dd4a",
+            "dense_score_bits": "3e337f7f",
+            "external_id": "d014",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa026a923fd74e0"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3e7284be",
+            "external_id": "d004",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0228e8c01864a"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3e6a63a9",
+            "external_id": "d029",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9fc4e5087f1394"
+          },
+          {
+            "bm25_score_bits": "400c0560",
+            "dense_score_bits": "3e29c541",
+            "external_id": "d019",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9f18344b9dc4fe"
+          },
+          {
+            "bm25_score_bits": "3fe57ce0",
+            "dense_score_bits": "3e3946b4",
+            "external_id": "d035",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ed00b1ed00b1f"
+          },
+          {
+            "bm25_score_bits": "3fca983d",
+            "dense_score_bits": "3e45b08e",
+            "external_id": "d005",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9e6c2b4481cd86"
+          },
+          {
+            "bm25_score_bits": "40087c1e",
+            "dense_score_bits": "3e0a8865",
+            "external_id": "d040",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9dd67c8a60dd68"
+          },
+          {
+            "bm25_score_bits": "3fd48ef0",
+            "dense_score_bits": "3e2e7296",
+            "external_id": "d010",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9daff91daff91e"
+          },
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3e14f579",
+            "external_id": "d034",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d817c64313f42"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 11,
+          "rerank": null
+        }
+      }
+    },
+    {
+      "id": "q4",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "lantern compass",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "4101b88a",
+            "dense_score_bits": "3f20f9e1",
+            "external_id": "d029",
+            "rerank_rank": 1,
+            "rerank_score_bits": "40987709",
+            "score_bits": "3fa0c9714fbcda3b"
+          },
+          {
+            "bm25_score_bits": "40268848",
+            "dense_score_bits": "3f199e98",
+            "external_id": "d037",
+            "rerank_rank": 2,
+            "rerank_score_bits": "40473c82",
+            "score_bits": "3f9fc4e5087f1394"
+          },
+          {
+            "bm25_score_bits": "401c1bb8",
+            "dense_score_bits": "3f1b6b3d",
+            "external_id": "d004",
+            "rerank_rank": 3,
+            "rerank_score_bits": "4019d578",
+            "score_bits": "3f9fccb9de3a6c38"
+          },
+          {
+            "bm25_score_bits": "3ffafee4",
+            "dense_score_bits": "3efeb27b",
+            "external_id": "d017",
+            "rerank_rank": 4,
+            "rerank_score_bits": "3ffcdbfb",
+            "score_bits": "3f9ed7303b5cc0ee"
+          },
+          {
+            "bm25_score_bits": "40f483af",
+            "dense_score_bits": "3eea854a",
+            "external_id": "d026",
+            "rerank_rank": 5,
+            "rerank_score_bits": "c0c6a2f8",
+            "score_bits": "3f9fccb9de3a6c38"
+          },
+          {
+            "bm25_score_bits": "40df964a",
+            "dense_score_bits": "3ec26ea8",
+            "external_id": "d028",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9e17809aa1e178"
+          },
+          {
+            "bm25_score_bits": "409bdb5f",
+            "dense_score_bits": "3eca836e",
+            "external_id": "d002",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9df9df9df9df9e"
+          },
+          {
+            "bm25_score_bits": "3fdd9505",
+            "dense_score_bits": "3ee000af",
+            "external_id": "d011",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9daff91daff91e"
+          },
+          {
+            "bm25_score_bits": "3f93601f",
+            "dense_score_bits": "3ef3a6fb",
+            "external_id": "d031",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d3a3f6e11d3a4"
+          },
+          {
+            "bm25_score_bits": "4000eba6",
+            "dense_score_bits": "3ebbff1d",
+            "external_id": "d024",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9c5b86bf4440ee"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 27,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "4101b88a",
+            "dense_score_bits": "3f20f9e1",
+            "external_id": "d029",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0c9714fbcda3b"
+          },
+          {
+            "bm25_score_bits": "401c1bb8",
+            "dense_score_bits": "3f1b6b3d",
+            "external_id": "d004",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9fccb9de3a6c38"
+          },
+          {
+            "bm25_score_bits": "40f483af",
+            "dense_score_bits": "3eea854a",
+            "external_id": "d026",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9fccb9de3a6c38"
+          },
+          {
+            "bm25_score_bits": "40268848",
+            "dense_score_bits": "3f199e98",
+            "external_id": "d037",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9fc4e5087f1394"
+          },
+          {
+            "bm25_score_bits": "3ffafee4",
+            "dense_score_bits": "3efeb27b",
+            "external_id": "d017",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ed7303b5cc0ee"
+          },
+          {
+            "bm25_score_bits": "40df964a",
+            "dense_score_bits": "3ec26ea8",
+            "external_id": "d028",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9e17809aa1e178"
+          },
+          {
+            "bm25_score_bits": "409bdb5f",
+            "dense_score_bits": "3eca836e",
+            "external_id": "d002",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9df9df9df9df9e"
+          },
+          {
+            "bm25_score_bits": "3fdd9505",
+            "dense_score_bits": "3ee000af",
+            "external_id": "d011",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9daff91daff91e"
+          },
+          {
+            "bm25_score_bits": "3f93601f",
+            "dense_score_bits": "3ef3a6fb",
+            "external_id": "d031",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d3a3f6e11d3a4"
+          },
+          {
+            "bm25_score_bits": "4000eba6",
+            "dense_score_bits": "3ebbff1d",
+            "external_id": "d024",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9c5b86bf4440ee"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 27,
+          "rerank": null
+        }
+      }
+    },
+    {
+      "id": "q5",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dd4b391",
+            "external_id": "d012",
+            "rerank_rank": 1,
+            "rerank_score_bits": "c05223ae",
+            "score_bits": "3f90000000000000"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3df38345",
+            "external_id": "d009",
+            "rerank_rank": 2,
+            "rerank_score_bits": "c08f0ee8",
+            "score_bits": "3f90842108421084"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dfee5a8",
+            "external_id": "d018",
+            "rerank_rank": 3,
+            "rerank_score_bits": "c08fb112",
+            "score_bits": "3f90c9714fbcda3b"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3ddd6928",
+            "external_id": "d023",
+            "rerank_rank": 4,
+            "rerank_score_bits": "c0905ffa",
+            "score_bits": "3f90410410410410"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dc45f87",
+            "external_id": "d010",
+            "rerank_rank": 5,
+            "rerank_score_bits": "c09508bc",
+            "score_bits": "3f8f81f81f81f820"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dbf3277",
+            "external_id": "d004",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dad66e2",
+            "external_id": "d005",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dad3600",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3da91c6f",
+            "external_id": "d007",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3da7b803",
+            "external_id": "d026",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 0,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dfee5a8",
+            "external_id": "d018",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f90c9714fbcda3b"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3df38345",
+            "external_id": "d009",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f90842108421084"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3ddd6928",
+            "external_id": "d023",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f90410410410410"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dd4b391",
+            "external_id": "d012",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f90000000000000"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dc45f87",
+            "external_id": "d010",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8f81f81f81f820"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dbf3277",
+            "external_id": "d004",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dad66e2",
+            "external_id": "d005",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3dad3600",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3da91c6f",
+            "external_id": "d007",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3da7b803",
+            "external_id": "d026",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 0,
+          "rerank": null
+        }
+      }
+    },
+    {
+      "id": "q6",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "quasar",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "3febbf1d",
+            "dense_score_bits": "3e88a66b",
+            "external_id": "d022",
+            "rerank_rank": 1,
+            "rerank_score_bits": "4067224d",
+            "score_bits": "3fa0410410410410"
+          },
+          {
+            "bm25_score_bits": "3ff958ea",
+            "dense_score_bits": "3ecbec34",
+            "external_id": "d037",
+            "rerank_rank": 2,
+            "rerank_score_bits": "405e4218",
+            "score_bits": "3fa0a6c92bff7560"
+          },
+          {
+            "bm25_score_bits": "3fe57ce0",
+            "dense_score_bits": "3e7fb6da",
+            "external_id": "d017",
+            "rerank_rank": 3,
+            "rerank_score_bits": "40177f78",
+            "score_bits": "3f9fc0fc0fc0fc10"
+          },
+          {
+            "bm25_score_bits": "40087c1e",
+            "dense_score_bits": "3e80deb3",
+            "external_id": "d032",
+            "rerank_rank": 4,
+            "rerank_score_bits": "4002b02a",
+            "score_bits": "3fa064b8a7de6d1e"
+          },
+          {
+            "bm25_score_bits": "3fd48ef0",
+            "dense_score_bits": "3e8c216e",
+            "external_id": "d007",
+            "rerank_rank": 5,
+            "rerank_score_bits": "3f946b38",
+            "score_bits": "3fa0228e8c01864a"
+          },
+          {
+            "bm25_score_bits": "3fca983d",
+            "dense_score_bits": "3e71f9f3",
+            "external_id": "d002",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e2edb4c",
+            "external_id": "d033",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e233404",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e17a03d",
+            "external_id": "d010",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e11df54",
+            "external_id": "d027",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 6,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "3ff958ea",
+            "dense_score_bits": "3ecbec34",
+            "external_id": "d037",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0a6c92bff7560"
+          },
+          {
+            "bm25_score_bits": "40087c1e",
+            "dense_score_bits": "3e80deb3",
+            "external_id": "d032",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa064b8a7de6d1e"
+          },
+          {
+            "bm25_score_bits": "3febbf1d",
+            "dense_score_bits": "3e88a66b",
+            "external_id": "d022",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0410410410410"
+          },
+          {
+            "bm25_score_bits": "3fd48ef0",
+            "dense_score_bits": "3e8c216e",
+            "external_id": "d007",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0228e8c01864a"
+          },
+          {
+            "bm25_score_bits": "3fe57ce0",
+            "dense_score_bits": "3e7fb6da",
+            "external_id": "d017",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9fc0fc0fc0fc10"
+          },
+          {
+            "bm25_score_bits": "3fca983d",
+            "dense_score_bits": "3e71f9f3",
+            "external_id": "d002",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9f07c1f07c1f08"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e2edb4c",
+            "external_id": "d033",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e9131abf0b767"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e233404",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8e1e1e1e1e1e1e"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e17a03d",
+            "external_id": "d010",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8dae6076b981db"
+          },
+          {
+            "bm25_score_bits": null,
+            "dense_score_bits": "3e11df54",
+            "external_id": "d027",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f8d41d41d41d41d"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 6,
+          "rerank": null
+        }
+      }
+    },
+    {
+      "id": "q7",
+      "k": 10,
+      "rerank_depth": 5,
+      "text": "zephyr obsidian marlin",
+      "with_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3e8c59ea",
+            "external_id": "d016",
+            "rerank_rank": 1,
+            "rerank_score_bits": "c0977c16",
+            "score_bits": "3fa026a923fd74e0"
+          },
+          {
+            "bm25_score_bits": "400c0560",
+            "dense_score_bits": "3e8aacf2",
+            "external_id": "d019",
+            "rerank_rank": 2,
+            "rerank_score_bits": "c117615e",
+            "score_bits": "3f9f4898d5f85bb4"
+          },
+          {
+            "bm25_score_bits": "40042b5b",
+            "dense_score_bits": "3e9572df",
+            "external_id": "d038",
+            "rerank_rank": 3,
+            "rerank_score_bits": "c12019b8",
+            "score_bits": "3f9fc0fc0fc0fc10"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3eafffcc",
+            "external_id": "d028",
+            "rerank_rank": 4,
+            "rerank_score_bits": "c123cd67",
+            "score_bits": "3f9f933017511f93"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3ebbc5bf",
+            "external_id": "d008",
+            "rerank_rank": 5,
+            "rerank_score_bits": "c126e3d4",
+            "score_bits": "3fa0090512da9af7"
+          },
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3e6fd53e",
+            "external_id": "d031",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ef04c4cc3de0a"
+          },
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3ea46811",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ee1ee1ee1ee1e"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3e83b9d6",
+            "external_id": "d004",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9e92f0074d1e93"
+          },
+          {
+            "bm25_score_bits": "3fe24620",
+            "dense_score_bits": "3e9388ba",
+            "external_id": "d026",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d97789a21d978"
+          },
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3e7c4063",
+            "external_id": "d034",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d0d155322b794"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 15,
+          "rerank": {
+            "candidates": 5,
+            "scored": 5
+          }
+        }
+      },
+      "without_reranker": {
+        "hits": [
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3e8c59ea",
+            "external_id": "d016",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa026a923fd74e0"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3ebbc5bf",
+            "external_id": "d008",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3fa0090512da9af7"
+          },
+          {
+            "bm25_score_bits": "40042b5b",
+            "dense_score_bits": "3e9572df",
+            "external_id": "d038",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9fc0fc0fc0fc10"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3eafffcc",
+            "external_id": "d028",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9f933017511f93"
+          },
+          {
+            "bm25_score_bits": "400c0560",
+            "dense_score_bits": "3e8aacf2",
+            "external_id": "d019",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9f4898d5f85bb4"
+          },
+          {
+            "bm25_score_bits": "4019b7fd",
+            "dense_score_bits": "3e6fd53e",
+            "external_id": "d031",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ef04c4cc3de0a"
+          },
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3ea46811",
+            "external_id": "d013",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9ee1ee1ee1ee1e"
+          },
+          {
+            "bm25_score_bits": "3ffa4d93",
+            "dense_score_bits": "3e83b9d6",
+            "external_id": "d004",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9e92f0074d1e93"
+          },
+          {
+            "bm25_score_bits": "3fe24620",
+            "dense_score_bits": "3e9388ba",
+            "external_id": "d026",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d97789a21d978"
+          },
+          {
+            "bm25_score_bits": "3ff3d463",
+            "dense_score_bits": "3e7c4063",
+            "external_id": "d034",
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9d0d155322b794"
+          }
+        ],
+        "stages": {
+          "degraded": false,
+          "dense_candidates": 40,
+          "lexical_candidates": 15,
+          "rerank": null
+        }
+      }
+    }
+  ]
+}
