@@ -1,6 +1,7 @@
 //! Feature 008 D11: `TantivyIndex::open_read_only` opens an index in a directory nobody can
 //! write — the case an iOS app bundle presents — takes no lock, creates no file, and refuses
 //! mutation with the crate's own message.
+#![cfg(unix)] // permissions are POSIX; the read-only open itself is exercised on every OS by the FFI suite
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
@@ -40,7 +41,6 @@ fn snapshot(dir: &Path) -> BTreeMap<String, (u64, std::time::SystemTime)> {
 struct ReadOnlyTree(Vec<(PathBuf, bool)>);
 
 impl ReadOnlyTree {
-    #[cfg(unix)]
     fn new(root: &Path) -> Self {
         use std::os::unix::fs::PermissionsExt;
         let mut entries = Vec::new();
@@ -69,20 +69,16 @@ impl ReadOnlyTree {
 
 impl Drop for ReadOnlyTree {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            for (p, is_dir) in &self.0 {
-                let _ = std::fs::set_permissions(
-                    p,
-                    std::fs::Permissions::from_mode(if *is_dir { 0o755 } else { 0o644 }),
-                );
-            }
+        use std::os::unix::fs::PermissionsExt;
+        for (p, is_dir) in &self.0 {
+            let _ = std::fs::set_permissions(
+                p,
+                std::fs::Permissions::from_mode(if *is_dir { 0o755 } else { 0o644 }),
+            );
         }
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn a_read_only_directory_opens_searches_and_refuses_mutation() {
     let writable = support::fixture_index();

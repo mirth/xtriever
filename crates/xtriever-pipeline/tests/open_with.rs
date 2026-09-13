@@ -5,9 +5,8 @@
 
 mod support;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use xtriever_core::Error;
 use xtriever_pipeline::{HybridIndex, OpenOptions, SearchOptions};
 
 fn embedder() -> Box<dyn xtriever_core::Embedder> {
@@ -24,11 +23,12 @@ fn hits(index: &HybridIndex, text: &str) -> Vec<(String, u64)> {
         .collect()
 }
 
-/// dirs 0o555, files 0o444; restored on drop.
-struct ReadOnlyTree(Vec<(PathBuf, bool)>);
+/// dirs 0o555, files 0o444; restored on drop. POSIX permissions: the read-only test is unix-only.
+#[cfg(unix)]
+struct ReadOnlyTree(Vec<(std::path::PathBuf, bool)>);
 
+#[cfg(unix)]
 impl ReadOnlyTree {
-    #[cfg(unix)]
     fn new(root: &Path) -> Self {
         use std::os::unix::fs::PermissionsExt;
         let mut entries = vec![(root.to_path_buf(), true)];
@@ -53,17 +53,15 @@ impl ReadOnlyTree {
     }
 }
 
+#[cfg(unix)]
 impl Drop for ReadOnlyTree {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            for (p, is_dir) in &self.0 {
-                let _ = std::fs::set_permissions(
-                    p,
-                    std::fs::Permissions::from_mode(if *is_dir { 0o755 } else { 0o644 }),
-                );
-            }
+        use std::os::unix::fs::PermissionsExt;
+        for (p, is_dir) in &self.0 {
+            let _ = std::fs::set_permissions(
+                p,
+                std::fs::Permissions::from_mode(if *is_dir { 0o755 } else { 0o644 }),
+            );
         }
     }
 }
@@ -101,7 +99,7 @@ fn a_read_only_directory_opens_and_searches_like_a_writable_one() {
             ("merge", ro.merge().err()),
         ] {
             match err {
-                Some(Error::Io(e)) => {
+                Some(xtriever_core::Error::Io(e)) => {
                     assert!(e.to_string().contains("read-only index"), "{what}: {e}")
                 }
                 other => panic!("{what}: expected Error::Io(read-only index), got {other:?}"),
@@ -159,7 +157,7 @@ fn open_with_equals_the_named_constructors() {
         )
         .err();
         assert!(
-            matches!(err, Some(Error::Backend(_))),
+            matches!(err, Some(xtriever_core::Error::Backend(_))),
             "mapped without the feature must be a plain error: {err:?}"
         );
     }
