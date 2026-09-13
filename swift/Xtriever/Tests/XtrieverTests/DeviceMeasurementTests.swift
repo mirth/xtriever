@@ -168,34 +168,51 @@ final class DeviceMeasurementTests: XCTestCase {
         }
 
         // --- parity vs the host (research D9): lexical bit-exact, dense/re-rank within 1e-3 --
+        // Every host query, depth and hit must have a device counterpart, and a score present on
+        // one side and absent on the other is a mismatch, not a skip: silence here would let an
+        // incomplete run pass as parity.
         var compared = 0, lexicalOk = 0, fusedOk = 0
         var denseMax: Float = 0, rerankMax: Float = 0
+        var incomplete: [String] = []
         for tq in truth.queries {
-            guard let byDepth = responses[tq.id] else { continue }
+            guard let byDepth = responses[tq.id] else { incomplete.append("\(tq.id): not searched"); continue }
             compared += 1
             var lexicalIdentical = true
             var fusedIdentical = true
             for (depthKey, want) in tq.depths {
-                guard let depth = UInt32(depthKey), let got = byDepth[depth] else { continue }
+                guard let depth = UInt32(depthKey), let got = byDepth[depth] else {
+                    incomplete.append("\(tq.id)@\(depthKey): no response"); continue
+                }
+                if got.hits.count != want.hits.count {
+                    incomplete.append("\(tq.id)@\(depth): \(got.hits.count) hits, host has \(want.hits.count)")
+                }
                 if depth == 0 {
                     fusedIdentical = fusedIdentical && got.hits.map(\.externalId) == want.hits.map(\.externalId)
                 }
-                for (g, w) in zip(got.hits, want.hits) {
+                for (rank, (g, w)) in zip(got.hits, want.hits).enumerated() {
                     let gBm25 = g.explain?.bm25Score.map { String(format: "%08x", $0.bitPattern) }
                     if gBm25 != w.bm25ScoreBits { lexicalIdentical = false }
-                    if let wd = w.denseScoreBits, let gd = g.explain?.denseScore {
-                        denseMax = max(denseMax, abs(gd - Float(bitPattern: UInt32(wd, radix: 16) ?? 0)))
+                    switch (w.denseScoreBits, g.explain?.denseScore) {
+                    case let (wd?, gd?): denseMax = max(denseMax, abs(gd - Float(bitPattern: UInt32(wd, radix: 16) ?? 0)))
+                    case (nil, nil): break
+                    default: incomplete.append("\(tq.id)@\(depth) hit \(rank): dense score present on one side only")
                     }
-                    if let wr = w.rerankScoreBits, let gr = g.rerankScore {
-                        rerankMax = max(rerankMax, abs(gr - Float(bitPattern: UInt32(wr, radix: 16) ?? 0)))
+                    switch (w.rerankScoreBits, g.rerankScore) {
+                    case let (wr?, gr?): rerankMax = max(rerankMax, abs(gr - Float(bitPattern: UInt32(wr, radix: 16) ?? 0)))
+                    case (nil, nil): break
+                    default: incomplete.append("\(tq.id)@\(depth) hit \(rank): re-rank score present on one side only")
                     }
                 }
             }
             if lexicalIdentical { lexicalOk += 1 }
             if fusedIdentical { fusedOk += 1 }
         }
-        let parityOk = compared > 0 && lexicalOk == compared && fusedOk == compared
+        let parityOk = compared > 0 && compared == truth.queries.count && incomplete.isEmpty
+            && lexicalOk == compared && fusedOk == compared
             && denseMax <= Self.toleranceAbs && rerankMax <= Self.toleranceAbs
+        notes.append(contentsOf: incomplete.map { "parity: " + $0 })
+        XCTAssertEqual(compared, truth.queries.count, "every host query must have been searched")
+        XCTAssertTrue(incomplete.isEmpty, "parity comparison incomplete: \(incomplete)")
         XCTAssertEqual(lexicalOk, compared, "lexical scores must be bit-identical to the host's")
         XCTAssertEqual(fusedOk, compared, "the fused order at depth 0 must equal the host's")
         XCTAssertLessThanOrEqual(denseMax, Self.toleranceAbs, "dense scores within tolerance of the host's")

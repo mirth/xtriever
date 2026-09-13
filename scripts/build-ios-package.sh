@@ -94,8 +94,10 @@ xcodebuild -create-xcframework \
     -output "$frameworks/XtrieverFFI.xcframework" >/dev/null
 
 echo "==> staging resources"
-# The directory must exist for `resources: [.copy("XtrieverData")]` to validate even when
-# nothing is staged; each staged tree is replaced whole so a stale one cannot linger.
+# The whole tree is rebuilt from this invocation's flags: a run without --with-models must not
+# leave models staged by an earlier run for the tests to find. The directory itself must exist
+# for `resources: [.copy("XtrieverData")]` to validate even when nothing is staged.
+rm -rf "$resources"
 mkdir -p "$resources"
 printf 'Staged by scripts/build-ios-package.sh; gitignored.\n' > "$resources/README.txt"
 
@@ -145,6 +147,10 @@ with open(f"{root}/queries.jsonl") as fh:
         q = json.loads(line)
         texts[q["_id"]] = q["text"]
 ids = sorted((i for i in judged if i in texts), key=lambda s: (len(s), s))[:20]
+if len(ids) != 20:
+    # The protocol is 20 fixed queries; a shorter set would stage an incomplete measurement that
+    # the device run would then carry out without saying so.
+    sys.exit(f"build-ios-package: FAIL — {len(ids)} judged SciFact queries with text, need 20")
 json.dump([{"id": i, "text": texts[i]} for i in ids], open(out, "w"), indent=2)
 print(f"    {len(ids)} measurement queries at {out}")
 EOF

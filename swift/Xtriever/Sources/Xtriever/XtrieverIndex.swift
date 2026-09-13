@@ -10,9 +10,9 @@ import Foundation
 /// - the caller's thread is never blocked (spec FR-005);
 /// - calls on one instance run one at a time, in call order (FR-006) — the Rust side holds a
 ///   mutex too, so two instances on one directory also never interleave on the index;
-/// - cancelling the awaiting task is **cooperative** (FR-008): the Rust work runs to its budget
-///   and its result is dropped; the instance stays usable. The time budget
-///   (`SearchOptions.maxTimeMs`) is the bound.
+/// - cancelling the awaiting task is **cooperative** (FR-008): the Rust work runs to its budget,
+///   then the caller gets `CancellationError` and the result is dropped; the instance stays
+///   usable. The time budget (`SearchOptions.maxTimeMs`) is the bound.
 ///
 /// `loadPath: .mmap` maps both models' weight files read-only (ADR-0007, ADR-0009); the caller
 /// owns the precondition that no other process modifies or truncates them while the index is
@@ -57,6 +57,9 @@ public final class XtrieverIndex: @unchecked Sendable {
                 })
             }
         }
+        // Cooperative cancellation: the open ran to completion, but a cancelled caller must not
+        // receive a handle it never asked to keep.
+        try Task.checkCancellation()
         return XtrieverIndex(handle: handle)
     }
 
@@ -70,11 +73,15 @@ public final class XtrieverIndex: @unchecked Sendable {
         options: SearchOptions = SearchOptions(k: 10, explain: true)
     ) async throws -> SearchResponse {
         let handle = self.handle
-        return try await withCheckedThrowingContinuation { continuation in
+        let response: SearchResponse = try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 continuation.resume(with: Result { try handle.search(query: query, options: options) })
             }
         }
+        // The Rust work cannot be interrupted, so cancellation is observed here, after it: the
+        // response is dropped and the caller gets `CancellationError` (FR-008).
+        try Task.checkCancellation()
+        return response
     }
 }
 
@@ -97,9 +104,16 @@ public extension XtrieverIndex {
            existing == sourceDescriptor {
             return base
         }
-        if fm.fileExists(atPath: base.path) { try fm.removeItem(at: base) }
+        // Copy into a sibling first and swap it in only once it is complete: a disk-full error or
+        // a kill mid-copy then leaves either the previous complete copy or nothing — never a
+        // partial tree whose descriptor the check above would take for a finished one.
+        let staging = base.deletingLastPathComponent()
+            .appendingPathComponent(name + ".staging", isDirectory: true)
         try fm.createDirectory(at: base.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try fm.copyItem(at: source, to: base)
+        if fm.fileExists(atPath: staging.path) { try fm.removeItem(at: staging) }
+        try fm.copyItem(at: source, to: staging)
+        if fm.fileExists(atPath: base.path) { try fm.removeItem(at: base) }
+        try fm.moveItem(at: staging, to: base)
         return base
     }
 }

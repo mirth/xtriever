@@ -182,4 +182,21 @@ headroom for the next time.
 
 ## Review round 1
 
-_(GitHub Copilot comments, when they arrive, are recorded here with the action taken.)_
+GitHub Copilot, nine comments, all taken. Simulator suite re-run after the changes: 16 / 16.
+
+| # | Comment | Action |
+|---|---|---|
+| 1 | `reference/gen_001_fixtures.py --emit-ranking` still invokes the deleted `--features spike --example gen_ranking` | `mint_ranking` now refuses with a message naming FR-018; the committed `ranking.json` is frozen as minted, the other sections still regenerate; docstring says so; dead `subprocess` import removed |
+| 2 | `build-ios-package.sh` accepts fewer than 20 measurement queries and only prints the count | Fails the build unless exactly 20 judged SciFact queries with text were found |
+| 3 | `writableCopy` removes the old copy before copying, so a disk-full or a kill can leave no usable index, or a partial tree whose descriptor passes the "already copied" check | Copies into a `<name>.staging` sibling and swaps it in only once complete; a stale staging tree is removed first |
+| 4 | Device parity skips a missing depth with `continue` while still counting the query as compared | Missing query, depth, or hit-count mismatch is recorded in `incomplete`, asserted empty, noted in the run record, and fails `parityOk`; `compared` must equal the truth's query count |
+| 5 | Dense / re-rank scores only compared when present on both sides — present-vs-absent passed silently | `switch` over both optionals: both present → compared, both absent → fine, one side only → parity failure |
+| 6 | Staged resources from an earlier run linger when a later run omits the flag | `rm -rf` of the whole `XtrieverData` tree before staging; comment corrected |
+| 7 | `search` resumes a cancelled caller with the response, contradicting "the result is dropped" | `Task.checkCancellation()` after the continuation in `search` and `open`: the cancelled caller gets `CancellationError`; the async test now asserts that instead of discarding whatever came back |
+| 8 | Cadence test asserts ≥ 1 s elapsed after a 20-search cap — fails on a host that is simply faster | `XCTSkip` when 20 full-depth searches finish under a second (the premise cannot be produced); the cadence assertion is unchanged |
+| 9 | `IndexHandle::open` docs claim nothing is ever written to `index_dir`, contradicting F-001 | Docs on the constructor, `index::open`, the crate root and the contract now say: content never modified, directory must be writable for the lexical backend's lock file, copy a bundled index out first |
+
+Items 4 and 5 make the device parity check stricter than the one the three committed run records
+passed. They were not re-run on the device after the change; the run records stand as recorded,
+and the next device run (Feature 008's, or a re-run of this harness) is the first under the
+stricter check.

@@ -22,7 +22,12 @@ final class AsyncTests: XCTestCase {
         } while Date().timeIntervalSince(start) < 1.0 && searches < 20
         let elapsed = Date().timeIntervalSince(start)
         timer.invalidate()
-        XCTAssertGreaterThanOrEqual(elapsed, 1.0, "\(searches) searches did not reach a second of work")
+        // The scenario needs ≥ 1 s of Rust work on the queue. If this host finishes 20 full-depth
+        // searches faster than that, the premise cannot be produced and the test says so rather
+        // than failing on a machine that did nothing wrong.
+        if elapsed < 1.0 {
+            throw XCTSkip("\(searches) full-depth searches took \(elapsed) s; a ≥ 1 s search cannot be produced here")
+        }
         let expectedTicks = Int(elapsed / 0.05)
         XCTAssertGreaterThanOrEqual(Double(ticks), 0.9 * Double(expectedTicks),
                                     "main thread ticked \(ticks) of \(expectedTicks) during a \(elapsed) s search")
@@ -44,7 +49,12 @@ final class AsyncTests: XCTestCase {
         let task = Task { try await index.search(q.text, options: SearchOptions(k: 20, rerankDepth: 20)) }
         try await Task.sleep(nanoseconds: 10_000_000)
         task.cancel()
-        _ = await task.result   // whatever it produced is discarded
+        // The Rust work runs to completion; the cancelled caller then receives CancellationError
+        // and never sees the response (FR-008).
+        switch await task.result {
+        case .failure(let error): XCTAssertTrue(error is CancellationError, "cancelled search threw \(error)")
+        case .success: XCTFail("a cancelled search must not deliver its response")
+        }
         let r = try await index.search(q.text, options: SearchOptions(k: q.k, rerankDepth: q.rerankDepth, explain: true))
         Support.assertParity(r, q.withReranker, "after cancellation")
     }

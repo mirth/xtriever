@@ -69,4 +69,11 @@ first push the Ubuntu test job ran out of disk (lld SIGBUS while linking a candl
 binary — report F-007): `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=line-tables-only`
 in the workflow env, plus a `df -h` step on Linux; nothing compiled or tested changes.
 
+**Review round 1** (Copilot, nine comments, all taken — report table): retired
+`gen_001_fixtures.py --emit-ranking`; exactly-20 query check and a clean resource tree in
+the build script; atomic `writableCopy`; strict device parity (missing depth / hit /
+one-sided score = failure); cancelled callers get `CancellationError`; cadence test skips
+instead of failing when a ≥ 1 s search cannot be produced; read-only docs corrected to
+"content never modified, directory must be writable". Simulator suite 16 / 16 after.
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

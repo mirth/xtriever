@@ -46,8 +46,9 @@ impl From<LoadPath> for xtriever_rerank::LoadPath {
 }
 
 /// Open read-only: the embedder, then the pipeline directory, then the optional re-ranker.
-/// Nothing is written — the pipeline's lexical stage creates its writer lazily, on a mutation
-/// this surface never issues.
+/// The index content is never modified — the pipeline's lexical stage creates its writer lazily,
+/// on a mutation this surface never issues — but the lexical backend does open its lock file
+/// for writing, so the directory itself must be writable (see [`crate::IndexHandle::open`]).
 pub(crate) fn open(
     index_dir: &str,
     embedder_dir: &str,
