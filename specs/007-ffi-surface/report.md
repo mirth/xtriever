@@ -16,10 +16,15 @@ message. One script builds both static libraries, the bindings, the XCFramework,
 and the device harness; CI lost two lines and gained none. The 001 spike is gone (2,137 lines);
 `Measure.swift` and the run-record discipline survived.
 
-**The device measurement is a ⛔ Rule 6 stop-point.** On the iPhone 16e, with SciFact and both
-models memory-mapped, the process footprint peaks at **372–376 MB against the 300 MB ceiling —
-FAIL on all three runs** (buffered: 383 MB). Nothing was tuned around it: the runs are committed
-verbatim under [`runs/`](./runs/), the breakdown is in F-002, and the decision is the human's.
+**The device measurement was a ⛔ Rule 6 stop-point, resolved by amendment.** On the iPhone
+16e, with SciFact and both models memory-mapped, the process footprint peaks at **372–376 MB
+against the 300 MB ceiling — FAIL on all three runs** (buffered: 383 MB). Nothing was tuned
+around it: the runs are committed verbatim under [`runs/`](./runs/) and the breakdown is in
+F-002. The owner's decision (2026-09-13) was to change the ceiling, not the pipeline:
+**constitution v1.4.0 / [ADR-0010](../../docs/adr/0010-device-rss-ceiling-600mb.md)** sets
+Principle III's default at **600 MB for the full pipeline** (100k-chunk index, embedder and
+cross-encoder loaded). Under it the same peaks are a PASS; the run records keep their recorded
+300 MB verdict as evidence.
 Latency on the phone: **299–464 ms per re-ranked pair** (default threads / one thread), 6.1–9.6 s
 per query at depth 20, 1.4–2.7 s at depth 5, 0.16–0.32 s at depth 0. Parity on device: lexical
 bit-identical 20 / 20, dense Δ 1.8e-7, re-rank Δ 5.7e-6 (tolerance 1e-3).
@@ -85,7 +90,7 @@ tests open the copy. Documented on `open`. The cost is one copy of the index on 
 (19 MB here; the Wikipedia index of Feature 008 will be far larger — that feature should weigh a
 lock-free read-only open in `xtriever-lexical` against the copy).
 
-### F-002 — ⛔ Two resident models put the full pipeline over the 300 MB ceiling on device
+### F-002 — ⛔ Two resident models put the full pipeline over the 300 MB ceiling on device — resolved by ADR-0010
 
 The 001 headline ("mapped weights cut footprint ~40×, 101 MB → 2.56 MB") measured one
 *embedding call* after the buffered path had freed its buffer (001 report's own ordering
@@ -110,7 +115,15 @@ sit at ~175 MB + transients); (b) smaller weights — `F16` or int8 tensors halv
 measurement plus an ADR); (c) a smaller re-rank input — truncating pairs to 256 tokens cuts the
 transient attention memory ~4× and the per-pair cost, at a measured quality cost; (d) not
 keeping both models resident — load the re-ranker per query (180 ms mapped) and drop it.
-The decision is the owner's; this report only records the numbers.
+
+**Resolution (2026-09-13)**: the owner chose the fifth option, a constitutional one — relax the
+ceiling. [ADR-0010](../../docs/adr/0010-device-rss-ceiling-600mb.md) amends Principle III's
+default to **600 MB for the full pipeline**, derived from these numbers plus the ~154 MB of
+vectors the 100k-chunk reference configuration adds (v1.4.0, MINOR). The three run records are
+unchanged (`ceilingBytes: 300000000`, `verdict: FAIL` — what was measured against what, at the
+time); `DeviceMeasurementTests.ceilingBytes` is 600 MB from here on. The levers (a)–(d) remain
+available as optimisations and are no longer needed to ship the demo. The first device run of
+the 100k-chunk index is the ADR's review trigger.
 
 ### F-003 — The phone re-ranks a pair in 299–464 ms, 2.5–3× the laptop
 
@@ -173,8 +186,9 @@ headroom for the next time.
 
 ## Known costs (stated, not claimed small)
 
-- **The 300 MB ceiling is not met with two resident models** (F-002) — the feature's headline,
-  and the input to whatever comes next.
+- **The 300 MB ceiling was not met with two resident models** (F-002) — resolved by raising it
+  to 600 MB for the full pipeline (ADR-0010, constitution v1.4.0), not by shrinking the pipeline;
+  the 100k-chunk index has yet to be measured against the new number.
 - A bundled index must be copied out before it can be opened (F-001).
 - The XCFramework is 279 MB (both slices, release) and the staged models 174 MB — none committed.
 - The model-backed Rust suite must run in release (`--release`): each test embeds the 40-document

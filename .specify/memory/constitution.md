@@ -35,7 +35,9 @@ in the repository. Specs, plans and code MUST comply; conflicts are resolved in 
 - Every PR MUST `cargo check` on host, `aarch64-apple-ios`, `aarch64-apple-ios-sim`,
   `aarch64-linux-android`. `wasm32-unknown-unknown` is best-effort (may fail, is tracked).
 - Memory is budgeted. On-device configurations MUST stay under the RSS ceiling stated in their
-  spec (default: 300 MB for a 100k-chunk index including loaded models).
+  spec (default: 600 MB for the full pipeline — a 100k-chunk hybrid index with the embedder and
+  the cross-encoder re-ranker loaded; ADR-0010). A spec that measures a smaller configuration
+  MUST say so and MUST NOT claim the ceiling is met for the reference one.
 
 ### IV. Measured, Not Asserted
 - Performance claims MUST be backed by `criterion` benchmarks with budgets stated in the spec
@@ -106,4 +108,4 @@ For AI agents executing specs, in addition to everything above:
   with justification.
 - This constitution supersedes README, templates and agent instruction files.
 
-**Version**: 1.3.0 | **Ratified**: 2026-09-10 | **Last Amended**: 2026-09-13
+**Version**: 1.4.0 | **Ratified**: 2026-09-10 | **Last Amended**: 2026-09-13

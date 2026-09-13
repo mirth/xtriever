@@ -4,7 +4,8 @@
 
 > **Status**: **executed 2026-09-13** — every step ran; results in [report.md](./report.md).
 > Parity bit-identical (Rust and Swift); simulator suite 16 / 16; device: **footprint FAIL 372–383 MB
-> vs 300 MB on all three runs (⛔ F-002, reported, not tuned)**; per pair 299–464 ms on the phone.
+> vs 300 MB on all three runs (⛔ F-002, reported, not tuned — then resolved by amendment: constitution
+> v1.4.0 / ADR-0010 sets the default at 600 MB, under which the same peaks PASS)**; per pair 299–464 ms on the phone.
 
 ## Step 0 — Toolchain, models, indexes
 
@@ -73,7 +74,7 @@ open swift/XtrieverHarnessApp/XtrieverHarnessApp.xcodeproj      # select the dev
 # copy each run record from the test attachment into specs/007-ffi-surface/runs/
 ```
 
-Expected: a run record per run with `footprint.verdict` against 300 MB, 20 queries × 3 depths
+Expected: a run record per run with `footprint.verdict` against the constitution's ceiling, 20 queries × 3 depths
 with `elapsed_ms`, lexical parity bit-identical 20 / 20, dense and re-rank max abs diff ≤ 1e-3
 (SC-005, SC-006). The per-pair cost on the device is derived as (depth-20 mean − depth-0 mean)
 / 20 and recorded beside 006's laptop number.

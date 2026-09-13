@@ -65,7 +65,7 @@ Rust tests ~350; Swift package ~450 (wrapper, `Measure.swift` ported, `Package.s
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Authority: `.specify/memory/constitution.md` (v1.3.0, ratified 2026-09-10, last amended 2026-09-13).
+Authority: `.specify/memory/constitution.md` (v1.3.0 at planning; amended to v1.4.0 by ADR-0010 on this feature's F-002 — Principle III's default ceiling 300 MB → 600 MB, full pipeline).
 Every row below MUST be marked **PASS**, **FAIL**, or **N/A** with a one-line justification — an
 empty verdict is a FAIL.
 
