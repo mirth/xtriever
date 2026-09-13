@@ -16,7 +16,7 @@ reference/models/*
 # uniffi bindgen output (quickstart Step 3)
 /build/
 
-# macOS / Xcode (harness/ios lands in PR 2)
+# macOS / Xcode
 .DS_Store
 DerivedData/
 xcuserdata/
@@ -24,13 +24,16 @@ xcuserdata/
 *.xcarchive
 *.ipa
 
-# iOS harness build inputs — regenerate with scripts/build-ios-harness.sh.
-# The XCFramework alone is ~262 MB and the Swift bindings are generated from the Rust.
-harness/ios/XtrieverSpike/Frameworks/
-harness/ios/XtrieverSpike/Sources/XtrieverSpike/Generated/
-harness/ios/XtrieverSpike/.build/
-harness/ios/XtrieverSpike/Sources/XtrieverSpike/XtrieverData/
-harness/ios/XtrieverSpikeApp/XtrieverSpikeApp.xcodeproj/
+# iOS package build outputs — regenerate with scripts/build-ios-package.sh. Generated from the
+# Rust (the XCFramework alone is ~260 MB), so committing them would create a second source of
+# truth; the staged resources are models and indexes that are pinned elsewhere.
+swift/Xtriever/Frameworks/
+swift/Xtriever/Sources/Xtriever/Generated/
+swift/Xtriever/Sources/Xtriever/XtrieverData/
+swift/Xtriever/Tests/Fixtures/index/
+swift/Xtriever/.build/
+swift/XtrieverHarnessApp/XtrieverHarnessApp.xcodeproj/
+build/
 
 # BEIR evaluation datasets: ~23 MB fetched by scripts/fetch-beir.sh, pinned by hash in
 # reference/datasets/beir-manifest.json, never committed (Feature 003 FR-008).
