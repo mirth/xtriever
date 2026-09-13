@@ -200,3 +200,17 @@ Items 4 and 5 make the device parity check stricter than the one the three commi
 passed. They were not re-run on the device after the change; the run records stand as recorded,
 and the next device run (Feature 008's, or a re-run of this harness) is the first under the
 stricter check.
+
+## Review round 2
+
+GitHub Copilot, six comments: four taken, one taken in part, one doc fix. Simulator suite after:
+18 / 18 (two new `WritableCopyTests`); release-mode budget tests 3 / 3 (one new).
+
+| # | Comment | Verdict | Action |
+|---|---|---|---|
+| 1 | The budget clock starts after the mutex, so a call queued behind a long search exceeds `max_time_ms` by the wait; count the Rust lock wait *and* the Swift queue wait | **Part** | Rust lock wait: yes — FR-007 says "from the moment the call starts" and the FFI layer is the Rust shim; `Instant::now()` now precedes the lock, and `budget.rs` gains an overlapping-search test (a 200 ms search queued behind an unbudgeted one arrives with its budget spent and degrades). Swift queue wait: **no** — the budget is the pipeline's elapsed source and bounds the search's *work* (FR-007's second half); charging the queue wait would make a queued search silently degrade to lexical-only for having waited, and queue depth is the caller's under FR-006. The Swift doc now says exactly that instead of "bound the call" |
+| 2 | `name` reaches `removeItem` unvalidated (`../OtherData`) | Taken | Empty, `.`, `..`, separators and NUL throw `CocoaError.fileWriteInvalidFileName`; tested |
+| 3 | Fixed staging path is unsafe for concurrent callers; remove-then-move loses the old tree on a crash in between | Taken | Unique `<name>.staging-<UUID>` sibling, process-wide `NSLock`, `FileManager.replaceItemAt` (old tree kept until the swap), `defer` cleans staging on failure; tested: same descriptor → no re-copy, new descriptor → whole-tree replacement, no staging left behind |
+| 4 | Depths 5 and 20 zip hits by rank; drift that reorders neighbours compares different documents "and can still emit PASS" | Taken, claim corrected | It could not pass — the bit-exact BM25 check would fail on the mismatched pair — but it would fail *misattributed* as a lexical difference. Scores are now compared per document matched by external id; order is asserted only at depth 0, where it is the requirement; a device hit absent from the host's list is a parity failure |
+| 5 | `LoadPath::Mmap` precondition names only the weight files; `open_mapped` maps `dense/index.bin` too | Taken | Rust and Swift docs name both models' weights and the dense index's vectors |
+| 6 | "the Rust side holds a mutex too, so two instances on one directory never interleave" is false — each handle owns its mutex | Taken | Doc now states the opposite: instances are independent and may run concurrently, even over one directory |

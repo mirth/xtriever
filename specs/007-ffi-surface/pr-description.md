@@ -76,4 +76,11 @@ one-sided score = failure); cancelled callers get `CancellationError`; cadence t
 instead of failing when a ≥ 1 s search cannot be produced; read-only docs corrected to
 "content never modified, directory must be writable". Simulator suite 16 / 16 after.
 
+**Review round 2** (Copilot, six comments — report table): budget clock now starts before the
+Rust lock (FR-007) with an overlapping-search test; the Swift queue wait is deliberately *not*
+charged to the budget (documented, with the reason); `writableCopy` validates `name`, stages
+under a unique sibling, swaps with `replaceItemAt` under a lock (two new tests); device parity
+matches hits by id at the re-ranked depths; `Mmap` precondition names the dense index too; the
+false cross-instance serialisation claim removed. Simulator 18 / 18, release budget tests 3 / 3.
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

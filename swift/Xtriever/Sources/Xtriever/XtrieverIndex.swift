@@ -8,16 +8,18 @@ import Foundation
 /// on a private **serial** dispatch queue and resumes the caller through a continuation:
 ///
 /// - the caller's thread is never blocked (spec FR-005);
-/// - calls on one instance run one at a time, in call order (FR-006) — the Rust side holds a
-///   mutex too, so two instances on one directory also never interleave on the index;
+/// - calls on one instance run one at a time, in call order (FR-006). Two instances are
+///   independent — each owns its Rust handle and mutex — so searches on different instances
+///   can run concurrently, even over the same directory;
 /// - cancelling the awaiting task is **cooperative** (FR-008): the Rust work runs to its budget,
 ///   then the caller gets `CancellationError` and the result is dropped; the instance stays
 ///   usable. The time budget (`SearchOptions.maxTimeMs`) is the bound.
 ///
-/// `loadPath: .mmap` maps both models' weight files read-only (ADR-0007, ADR-0009); the caller
-/// owns the precondition that no other process modifies or truncates them while the index is
-/// open. The index content is never modified (see ``open(indexDir:embedderDir:rerankerDir:loadPath:)``
-/// for the lock-file caveat).
+/// `loadPath: .mmap` maps both models' weight files **and** the dense index's vectors
+/// (`dense/index.bin`) read-only (ADR-0007, ADR-0009); the caller owns the precondition that no
+/// other process modifies or truncates any of those files while the instance lives. The index
+/// content is never modified (see ``open(indexDir:embedderDir:rerankerDir:loadPath:)`` for the
+/// lock-file caveat).
 public final class XtrieverIndex: @unchecked Sendable {
     /// Identity and configuration of the open index, read once at open.
     public let info: IndexInfo
@@ -66,8 +68,12 @@ public final class XtrieverIndex: @unchecked Sendable {
     /// One search, off the caller's thread; calls on one instance run one at a time.
     ///
     /// The default options ask for 10 explained hits with the index's default depths and no
-    /// budget. Set `maxTimeMs` to bound the call: the dense stage is skipped or the re-ranker
-    /// stops early and `stages` says so; with `strict` those become thrown errors instead.
+    /// budget. Set `maxTimeMs` to bound the search's own work: the dense stage is skipped or the
+    /// re-ranker stops early and `stages` says so; with `strict` those become thrown errors
+    /// instead. The budget is measured from the moment the Rust side is entered (FR-007);
+    /// time spent queued behind an earlier search on this instance is **not** counted — a
+    /// queued search still gets its full budget rather than arriving with it spent and
+    /// degrading to a lexical-only result. Queue depth is the caller's to control (FR-006).
     public func search(
         _ query: String,
         options: SearchOptions = SearchOptions(k: 10, explain: true)
@@ -92,7 +98,16 @@ public extension XtrieverIndex {
     /// The copy is keyed by `name` and the source descriptor's bytes: a bundle that ships a
     /// newer index (a different `xtriever-pipeline.json`) replaces the old copy; the same index
     /// is not copied twice. Models need no copy — they are opened read-only.
+    ///
+    /// `name` is one path component (no separators, not `.` or `..`, not empty); anything else
+    /// throws `CocoaError.fileWriteInvalidFileName`, since the copy's directory is removed and
+    /// replaced under that name. Calls are serialised process-wide.
     static func writableCopy(of source: URL, named name: String) throws -> URL {
+        guard !name.isEmpty, name != ".", name != "..",
+              !name.contains("/"), !name.contains("\\"), !name.contains("\0")
+        else { throw CocoaError(.fileWriteInvalidFileName) }
+        copyLock.lock(); defer { copyLock.unlock() }
+
         let fm = FileManager.default
         let base = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
                               appropriateFor: nil, create: true)
@@ -104,18 +119,25 @@ public extension XtrieverIndex {
            existing == sourceDescriptor {
             return base
         }
-        // Copy into a sibling first and swap it in only once it is complete: a disk-full error or
-        // a kill mid-copy then leaves either the previous complete copy or nothing — never a
-        // partial tree whose descriptor the check above would take for a finished one.
+        // Copy into a uniquely named sibling first and swap it in only once it is complete: a
+        // disk-full error or a kill mid-copy leaves the previous complete copy untouched, never
+        // a partial tree whose descriptor the check above would take for a finished one.
+        // `replaceItemAt` keeps the old tree until the swap; the staging tree is removed by it
+        // (or by the move) on success and by the `defer` on failure.
         let staging = base.deletingLastPathComponent()
-            .appendingPathComponent(name + ".staging", isDirectory: true)
+            .appendingPathComponent("\(name).staging-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: base.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if fm.fileExists(atPath: staging.path) { try fm.removeItem(at: staging) }
+        defer { try? fm.removeItem(at: staging) }
         try fm.copyItem(at: source, to: staging)
-        if fm.fileExists(atPath: base.path) { try fm.removeItem(at: base) }
-        try fm.moveItem(at: staging, to: base)
+        if fm.fileExists(atPath: base.path) {
+            _ = try fm.replaceItemAt(base, withItemAt: staging)
+        } else {
+            try fm.moveItem(at: staging, to: base)
+        }
         return base
     }
+
+    private static let copyLock = NSLock()
 }
 
 public extension HitExplain {

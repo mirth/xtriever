@@ -186,21 +186,28 @@ final class DeviceMeasurementTests: XCTestCase {
                 if got.hits.count != want.hits.count {
                     incomplete.append("\(tq.id)@\(depth): \(got.hits.count) hits, host has \(want.hits.count)")
                 }
+                // Order is a requirement only at depth 0 (fused, deterministic). At the re-ranked
+                // depths a drift within tolerance may legitimately swap neighbours, so scores are
+                // compared per document, matched by id — never by rank.
                 if depth == 0 {
                     fusedIdentical = fusedIdentical && got.hits.map(\.externalId) == want.hits.map(\.externalId)
                 }
-                for (rank, (g, w)) in zip(got.hits, want.hits).enumerated() {
+                let wantById = Dictionary(want.hits.map { ($0.externalId, $0) }, uniquingKeysWith: { a, _ in a })
+                for g in got.hits {
+                    guard let w = wantById[g.externalId] else {
+                        incomplete.append("\(tq.id)@\(depth): \(g.externalId) is not among the host's hits"); continue
+                    }
                     let gBm25 = g.explain?.bm25Score.map { String(format: "%08x", $0.bitPattern) }
                     if gBm25 != w.bm25ScoreBits { lexicalIdentical = false }
                     switch (w.denseScoreBits, g.explain?.denseScore) {
                     case let (wd?, gd?): denseMax = max(denseMax, abs(gd - Float(bitPattern: UInt32(wd, radix: 16) ?? 0)))
                     case (nil, nil): break
-                    default: incomplete.append("\(tq.id)@\(depth) hit \(rank): dense score present on one side only")
+                    default: incomplete.append("\(tq.id)@\(depth) \(g.externalId): dense score present on one side only")
                     }
                     switch (w.rerankScoreBits, g.rerankScore) {
                     case let (wr?, gr?): rerankMax = max(rerankMax, abs(gr - Float(bitPattern: UInt32(wr, radix: 16) ?? 0)))
                     case (nil, nil): break
-                    default: incomplete.append("\(tq.id)@\(depth) hit \(rank): re-rank score present on one side only")
+                    default: incomplete.append("\(tq.id)@\(depth) \(g.externalId): re-rank score present on one side only")
                     }
                 }
             }

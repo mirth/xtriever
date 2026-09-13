@@ -112,14 +112,19 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
     }
 }
 
-/// One search: take the lock, start the clock, run the pipeline, convert (research D3).
+/// One search: start the clock, take the lock, run the pipeline, convert (research D3).
+///
+/// The clock starts before the lock: FR-007 measures the budget "from the moment the call
+/// starts", so a caller that contends on the handle spends its budget while it waits. The
+/// Swift wrapper's queue wait happens before this call and is deliberately not counted (see
+/// the package's docs).
 pub(crate) fn search(
     inner: &Inner,
     query: &str,
     options: &SearchOptions,
 ) -> Result<SearchResponse, XtrieverError> {
-    let guard = inner.index.lock().map_err(|_| poisoned())?;
     let start = Instant::now();
+    let guard = inner.index.lock().map_err(|_| poisoned())?;
     let elapsed = || start.elapsed();
     let clock: Option<&dyn Fn() -> Duration> = options.max_time_ms.map(|_| &elapsed as _);
     let opts = to_pipeline_options(options, clock);
