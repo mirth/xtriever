@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Fetch and verify the pinned embedding model for xtriever-dense (Feature 004, spec FR-026).
+# Fetch and verify a pinned model (Feature 004 spec FR-026; Feature 006 spec FR-003).
 #
-# Usage: scripts/fetch-model.sh [DEST_DIR]      (default: reference/models/all-MiniLM-L6-v2)
+# Usage: scripts/fetch-model.sh [--manifest FILE] [DEST_DIR]
+#   default manifest: reference/models/manifest.json (the 004 embedder)
+#   default DEST_DIR: reference/models/<local_dir from the manifest>, else
+#                     reference/models/all-MiniLM-L6-v2
+#   e.g. scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   (006 cross-encoder)
 #
 # The three files (config.json, tokenizer.json, model.safetensors) are downloaded from the
-# Hugging Face hub at the revision pinned in reference/models/manifest.json and checked against
+# Hugging Face hub at the revision pinned in the manifest and checked against
 # the manifest — size AND sha256. A mismatch prints the path and both values and exits 1; a
 # download failure is reported as such and never as a hash failure. Idempotent: a file already
 # present is not downloaded again, but everything is re-verified. The destination is git-ignored.
@@ -13,7 +17,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 manifest="$repo_root/reference/models/manifest.json"
-dest="${1:-$repo_root/reference/models/all-MiniLM-L6-v2}"
+if [ "${1:-}" = "--manifest" ]; then
+    [ -n "${2:-}" ] || { printf 'fetch-model: FAIL — --manifest needs a file\n' >&2; exit 1; }
+    manifest="$2"
+    shift 2
+fi
+[ -f "$manifest" ] || { printf 'fetch-model: FAIL — manifest %s does not exist\n' "$manifest" >&2; exit 1; }
 
 for tool in curl jq shasum; do
     command -v "$tool" >/dev/null || { printf 'fetch-model: FAIL — %s not found on PATH\n' "$tool" >&2; exit 1; }
@@ -21,6 +30,8 @@ done
 
 repository="$(jq -er '.repository' "$manifest")"
 revision="$(jq -er '.revision' "$manifest")"
+local_dir="$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$manifest")"
+dest="${1:-$repo_root/reference/models/$local_dir}"
 mkdir -p "$dest"
 
 file_size() { # portable stat

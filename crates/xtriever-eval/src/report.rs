@@ -47,12 +47,24 @@ pub struct Observations {
     /// Peak RSS of a fresh process that only loads the model through the memory-mapped path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_bytes_mmapped: Option<u64>,
+    /// Wall time inside the re-rank stage over every judged query, in milliseconds (Feature 006).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_ms: Option<u64>,
+    /// Query–passage pairs the re-ranker scored over every judged query (Feature 006).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_pairs: Option<u64>,
+    /// Peak RSS of a fresh process that only loads the re-ranker through the buffered path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_model_bytes_buffered: Option<u64>,
+    /// Peak RSS of a fresh process that only loads the re-ranker through the memory-mapped path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_model_bytes_mmapped: Option<u64>,
 }
 
 /// Identity of a non-lexical stage a report was produced with (Feature 004, spec FR-019/FR-021).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StageInfo {
-    /// `dense`.
+    /// `dense`, `hybrid` or `hybrid-rerank`.
     pub kind: String,
     /// `Embedder::fingerprint()` at run time.
     pub embedder_fingerprint: String,
@@ -60,8 +72,15 @@ pub struct StageInfo {
     pub load_path: String,
     /// The engine's effective thread count during the run (`RAYON_NUM_THREADS`).
     pub thread_count: usize,
-    /// `absolute`: the number is a baseline for a new stage, not a delta against another stage.
+    /// `absolute`: the number is a baseline for a new stage, not a delta against another stage;
+    /// `guarded`: the number is a delta against a guarded baseline.
     pub baseline: String,
+    /// `Reranker::model_id()` at run time (Feature 006; `hybrid-rerank` reports only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reranker_model_id: Option<String>,
+    /// Fused candidates re-scored per query (Feature 006; `hybrid-rerank` reports only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_depth: Option<usize>,
 }
 
 /// One dataset's evaluation. **Field order is the on-disk key order** (contract).

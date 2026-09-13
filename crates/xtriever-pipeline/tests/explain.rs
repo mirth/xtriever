@@ -18,6 +18,8 @@ fn explanations_reproduce_the_stage_lists_and_feature_names() {
         "dense.score",
         "dense.rank",
         "fused.score",
+        "rerank.score",
+        "rerank.rank",
     ];
     let mut both = 0;
     let mut one_only = 0;
@@ -86,7 +88,8 @@ fn explanations_reproduce_the_stage_lists_and_feature_names() {
             match (lp, dp) {
                 (Some(_), Some(_)) => {
                     both += 1;
-                    assert!(f.iter().all(|(_, v)| !v.is_nan()));
+                    assert!(f[..5].iter().all(|(_, v)| !v.is_nan()));
+                    assert!(f[5].1.is_nan() && f[6].1.is_nan(), "no re-ranker attached");
                 }
                 (Some(_), None) => {
                     one_only += 1;
@@ -143,5 +146,76 @@ fn explanation_never_changes_the_ranking() {
         assert_eq!(strip(&plain), strip(&explained), "{}", q.id);
         assert_eq!(plain.stages, explained.stages);
         assert!(plain.stages.lexical_candidates > 0 || q.text.is_empty());
+    }
+}
+
+// ── Feature 006: US4 scenarios 1–3 (FR-016; SC-006) ─────────────────────────────────────────
+
+#[test]
+fn rerank_fields_are_present_exactly_where_the_stage_scored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    let q = &h.queries[0];
+    index.set_reranker(Some(Box::new(
+        support::TableReranker::from_fn(&h, |id| id as f32 * 0.5).with_limit(3),
+    )));
+    let r = index
+        .search(&q.text, None, 10, &support::rerank_options(6))
+        .unwrap();
+    assert_eq!(r.stages.rerank.as_ref().unwrap().scored, 3);
+    for (i, hit) in r.hits.iter().enumerate() {
+        let e = hit.explain.as_ref().unwrap();
+        let f = e.features();
+        assert_eq!(f[5].0.0.as_ref(), "rerank.score");
+        assert_eq!(f[6].0.0.as_ref(), "rerank.rank");
+        if i < 3 {
+            assert_eq!(hit.rerank_score, Some(hit.id.0 as f32 * 0.5));
+            assert_eq!(e.rerank_score, hit.rerank_score);
+            assert_eq!(e.rerank_rank, Some(i as u32 + 1));
+            assert_eq!(f[5].1, hit.id.0 as f32 * 0.5);
+            assert_eq!(f[6].1, (i + 1) as f32);
+        } else {
+            assert!(hit.rerank_score.is_none());
+            assert!(e.rerank_score.is_none() && e.rerank_rank.is_none());
+            assert!(f[5].1.is_nan() && f[6].1.is_nan());
+        }
+        assert_eq!(e.fused, hit.score);
+    }
+    // Explanation never changes hits.
+    let bare = index
+        .search(
+            &q.text,
+            None,
+            10,
+            &SearchOptions {
+                explain: false,
+                ..support::rerank_options(6)
+            },
+        )
+        .unwrap();
+    assert_eq!(bare.hits.len(), r.hits.len());
+    for (a, b) in bare.hits.iter().zip(&r.hits) {
+        assert_eq!(
+            (a.id, a.score, a.rerank_score),
+            (b.id, b.score, b.rerank_score)
+        );
+        assert!(a.explain.is_none());
+    }
+    assert_eq!(bare.stages, r.stages);
+}
+
+#[test]
+fn a_skipped_reranker_explains_with_absent_rerank_fields() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    index.set_reranker(Some(Box::new(support::FailingReranker)));
+    let r = index
+        .search(&h.queries[0].text, None, 10, &support::rerank_options(5))
+        .unwrap();
+    assert!(r.stages.rerank.as_ref().unwrap().skipped.is_some());
+    for hit in &r.hits {
+        let e = hit.explain.as_ref().unwrap();
+        assert!(e.rerank_score.is_none() && e.rerank_rank.is_none());
+        assert!(hit.rerank_score.is_none());
     }
 }

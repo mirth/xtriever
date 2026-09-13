@@ -53,7 +53,10 @@ JSON, pretty-printed, keys in this order: `config`, `dataset`, `lexical_commit`,
 embedder_fingerprint, load_path, thread_count, baseline }`, always last). Feature 004 also added
 four optional keys inside `observations` (`embed_corpus_ms`, `search_ms`, `model_bytes_buffered`,
 `model_bytes_mmapped`); a report without them serialises exactly as before, and `delta` refuses
-to pair reports of different configurations (004 FR-021).
+to pair reports of different configurations (004 FR-021). **Feature 006** added two optional
+trailing keys to `stage` (`reranker_model_id`, `rerank_depth`; `kind` may be `hybrid-rerank`) and
+four optional keys to `observations` (`rerank_ms`, `rerank_pairs`, `rerank_model_bytes_buffered`,
+`rerank_model_bytes_mmapped`), under the same rule.
 
 ## Baseline location
 

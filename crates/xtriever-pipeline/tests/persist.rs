@@ -75,7 +75,8 @@ fn a_future_descriptor_version_is_corrupt_naming_both_versions() {
         &path,
         text.replace(
             &format!("\"format_version\": {FORMAT_VERSION}"),
-            "\"format_version\": 2",
+            // A version this build does not read (2 became the current version in 006).
+            "\"format_version\": 7",
         ),
     )
     .unwrap();
@@ -87,7 +88,7 @@ fn a_future_descriptor_version_is_corrupt_naming_both_versions() {
     {
         Error::Corrupt(msg) => {
             assert!(
-                msg.contains('2') && msg.contains(&FORMAT_VERSION.to_string()),
+                msg.contains('7') && msg.contains(&FORMAT_VERSION.to_string()),
                 "{msg}"
             );
         }

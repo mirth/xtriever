@@ -237,3 +237,162 @@ pub fn open_stages(dir: &Path) -> (TantivyIndex, FlatIndex) {
 pub fn ids(hits: &[xtriever_pipeline::HybridHit]) -> Vec<String> {
     hits.iter().map(|h| h.external_id.clone()).collect()
 }
+
+// ── stub re-rankers (Feature 006, research D13) ─────────────────────────────────────────────
+
+use xtriever_core::{Budget, DocId, Passage, Reranker};
+use xtriever_pipeline::SearchOptions;
+
+/// Scores by internal id from a table; `None` after `limit` passages; records every `Budget`
+/// it receives. Unknown ids are an error so a test that forgets an id fails loudly.
+pub struct TableReranker {
+    pub scores: BTreeMap<u32, f32>,
+    pub limit: Option<usize>,
+    pub calls: Arc<Mutex<Vec<Budget>>>,
+}
+
+impl TableReranker {
+    /// A score for every fixture document: `score(id) = f(id)`.
+    pub fn from_fn(h: &Hybrid, f: impl Fn(u32) -> f32) -> Self {
+        let scores = (0..h.documents.len() as u32).map(|i| (i, f(i))).collect();
+        Self {
+            scores,
+            limit: None,
+            calls: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn with_limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn calls(&self) -> Arc<Mutex<Vec<Budget>>> {
+        Arc::clone(&self.calls)
+    }
+}
+
+impl Reranker for TableReranker {
+    fn model_id(&self) -> &str {
+        "table-reranker"
+    }
+    fn rerank(
+        &self,
+        _query: &str,
+        passages: &[Passage<'_>],
+        budget: &Budget,
+    ) -> Result<Vec<Option<f32>>> {
+        self.calls.lock().unwrap().push(*budget);
+        passages
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                if self.limit.is_some_and(|n| i >= n) {
+                    return Ok(None);
+                }
+                self.scores
+                    .get(&p.id.0)
+                    .copied()
+                    .map(Some)
+                    .ok_or_else(|| Error::Model {
+                        model: "table-reranker".into(),
+                        message: format!("no score for id {}", p.id),
+                    })
+            })
+            .collect()
+    }
+}
+
+/// Always fails.
+pub struct FailingReranker;
+
+impl Reranker for FailingReranker {
+    fn model_id(&self) -> &str {
+        "failing-reranker"
+    }
+    fn rerank(&self, _: &str, _: &[Passage<'_>], _: &Budget) -> Result<Vec<Option<f32>>> {
+        Err(Error::Model {
+            model: "failing-reranker".into(),
+            message: "stub rerank failure".into(),
+        })
+    }
+}
+
+/// Returns one entry too few — a defect.
+pub struct WrongLengthReranker;
+
+impl Reranker for WrongLengthReranker {
+    fn model_id(&self) -> &str {
+        "wrong-length-reranker"
+    }
+    fn rerank(&self, _: &str, p: &[Passage<'_>], _: &Budget) -> Result<Vec<Option<f32>>> {
+        Ok(vec![Some(1.0); p.len().saturating_sub(1)])
+    }
+}
+
+/// Returns `NaN` for the first passage — a defect.
+pub struct NanReranker;
+
+impl Reranker for NanReranker {
+    fn model_id(&self) -> &str {
+        "nan-reranker"
+    }
+    fn rerank(&self, _: &str, p: &[Passage<'_>], _: &Budget) -> Result<Vec<Option<f32>>> {
+        let mut out = vec![Some(0.0); p.len()];
+        if let Some(first) = out.first_mut() {
+            *first = Some(f32::NAN);
+        }
+        Ok(out)
+    }
+}
+
+/// Options that re-rank the first `d` fused candidates, with explanation.
+pub fn rerank_options(d: usize) -> SearchOptions<'static> {
+    SearchOptions {
+        rerank_depth: Some(d),
+        explain: true,
+        ..SearchOptions::default()
+    }
+}
+
+/// Hits with a re-rank score, then without, as `(id, rerank_score)`.
+pub fn rerank_split(hits: &[xtriever_pipeline::HybridHit]) -> (Vec<(DocId, f32)>, Vec<DocId>) {
+    let scored = hits
+        .iter()
+        .filter_map(|h| h.rerank_score.map(|s| (h.id, s)))
+        .collect();
+    let unscored = hits
+        .iter()
+        .filter(|h| h.rerank_score.is_none())
+        .map(|h| h.id)
+        .collect();
+    (scored, unscored)
+}
+
+// ── pipeline_order.json (Feature 006) ───────────────────────────────────────────────────────
+
+pub fn order_fixtures_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../reference/fixtures/006")
+}
+
+#[derive(Deserialize)]
+pub struct OrderCase {
+    pub name: String,
+    pub fused: Vec<u32>,
+    pub scores: Vec<Option<f32>>,
+    pub d: usize,
+    pub k: usize,
+    pub expected: Vec<(u32, Option<f32>)>,
+}
+
+#[derive(Deserialize)]
+pub struct OrderGoldens {
+    pub cases: Vec<OrderCase>,
+}
+
+pub fn order_goldens() -> OrderGoldens {
+    let path = order_fixtures_dir().join("pipeline_order.json");
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+}

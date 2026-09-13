@@ -2,7 +2,9 @@
 
 **Feature**: `006-rerank-stage` | **Date**: 2026-09-13 | **Plan**: [plan.md](./plan.md)
 
-> **Status**: not yet executed — filled in by `/speckit-implement`; results go to `report.md`.
+> **Status**: **executed 2026-09-13** — every step ran; results in [report.md](./report.md).
+> SC-008 PASS 3 / 3 (re-ranked nDCG@10 0.704 / 0.360 / 0.374 vs the fused 0.690 / 0.345 / 0.369),
+> Recall@100 unchanged, `--verify-rerank` 1,271 / 1,271; worst golden |Δ| 7.5e-6; 116–163 ms per pair.
 
 ## Step 0 — Toolchain, models, cache
 

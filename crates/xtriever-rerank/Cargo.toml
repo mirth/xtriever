@@ -1,13 +1,36 @@
 [package]
 name = "xtriever-rerank"
-description = "Xtriever: rerank (placeholder until its spec lands)"
+description = "Xtriever: rerank stage — candle cross-encoder"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# PINNED to 0.9.2 — do NOT `cargo add`-upgrade. See docs/adr/0001-pin-candle-0-9-2.md.
+# 0.10+ declare a non-optional `tokenizers` dependency with the `onig` feature hard-coded,
+# pulling `onig_sys` (C), which deny.toml bans and no feature flag can disable. 0.11.0
+# additionally needs nightly (`stdarch_neon_f16`) on every target where `target_feature=fp16`
+# is on — which includes this host and the iOS simulator, breaking the macOS CI gate.
+candle-core = "0.9.2"
+candle-nn = "0.9.2"
+candle-transformers = "0.9.2"
+memmap2 = { version = "0.9.11", optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+tokenizers = { version = "0.23.2", default-features = false, features = ["fancy-regex"] }
 xtriever-core = { path = "../xtriever-core" }
 
 [lints]
 workspace = true
+
+[features]
+default = []
+# Read-only memory mapping of the weights: the crate's one `unsafe` block
+# (docs/adr/0009-unsafe-readonly-mmap-in-rerank.md, constitution v1.3.0). Off by default.
+mmap = ["dep:memmap2"]
+
+[dev-dependencies]
+serde_json = "1.0.151"
+tempfile = "3.27.0"

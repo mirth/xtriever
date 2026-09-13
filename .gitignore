@@ -10,6 +10,7 @@ __pycache__/
 # goldens — and so is reference/models/manifest.json, the pins the fetch script verifies against.
 reference/models/*
 !reference/models/manifest.json
+!reference/models/manifest-rerank.json
 *.safetensors
 
 # uniffi bindgen output (quickstart Step 3)

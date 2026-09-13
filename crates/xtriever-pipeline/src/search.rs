@@ -1,23 +1,52 @@
-//! Search: filter once, lexical, dense, fuse — with degradation, budgets and explanation
-//! (data-model "Search algorithm"; research D5–D8).
+//! Search: filter once, lexical, dense, fuse, re-rank — with degradation, budgets and
+//! explanation (data-model "Search algorithm"; 005 research D5–D8; 006 research D8).
 
 use std::collections::HashMap;
 use std::time::Duration;
 
 use xtriever_core::{
-    DocSet, Error, Filter, Hit, LexicalIndex, LexicalQuery, Result, TextKind, VectorIndex,
+    Budget, DocId, DocSet, Error, Filter, Hit, LexicalIndex, LexicalQuery, Passage, Result,
+    TextKind, VectorIndex,
 };
 
 use crate::fusion::fused_terms;
 use crate::index::HybridIndex;
+use crate::rerank::order_reranked;
 use crate::{
-    Degradation, DegradeReason, HitExplain, HybridHit, Response, SearchOptions, StageReport,
+    Degradation, DegradeReason, HitExplain, HybridHit, RerankReport, Response, SearchOptions,
+    StageReport,
 };
 
-/// Why the dense stage did not contribute — the internal form of [`Degradation`].
+/// Why an ML stage did not contribute — the internal form of [`DegradeReason`].
 enum Skip {
     Error(Error),
     Budget { elapsed_ms: u64, limit_ms: u64 },
+}
+
+impl Skip {
+    fn reason(self) -> DegradeReason {
+        match self {
+            Self::Error(e) => DegradeReason::StageError(e.to_string()),
+            Self::Budget {
+                elapsed_ms,
+                limit_ms,
+            } => DegradeReason::BudgetExceeded {
+                elapsed_ms,
+                limit_ms,
+            },
+        }
+    }
+}
+
+/// Step 9's output: the ordered candidates (cut at `k`) with their re-rank scores, and the
+/// stage report (`None` when the stage did not run).
+type Reranked = (Vec<(Candidate, Option<f32>)>, Option<RerankReport>);
+
+/// A fused candidate before hits are built: its id, fused score and explanation.
+struct Candidate {
+    id: DocId,
+    score: f64,
+    explain: Option<HitExplain>,
 }
 
 impl HybridIndex {
@@ -77,6 +106,7 @@ impl HybridIndex {
                 lexical_candidates: 0,
                 dense_candidates: None,
                 degraded: None,
+                rerank: None,
                 time_limit_ignored,
             },
         };
@@ -130,7 +160,22 @@ impl HybridIndex {
             ),
         };
 
-        // 7–8. Fuse, or degrade to the lexical list.
+        // 7–8. Fuse, or degrade to the lexical list — built to `max(k, d)` so the re-ranker
+        // can promote a candidate from just below `k` (006 research D8).
+        let rerank_depth = if self.reranker.is_some() {
+            opts.rerank_depth.unwrap_or(self.config.rerank_depth)
+        } else {
+            0
+        };
+        let list_len = k.max(rerank_depth);
+        let candidates = match &dense {
+            Some(dense) => self.fuse(&lexical, dense, list_len, opts.explain),
+            None => self.degraded(&lexical, list_len, opts.explain),
+        };
+
+        // 9. Re-rank the first `d` candidates under the remaining budget.
+        let (ordered, rerank) = self.rerank(candidates, dense_text, rerank_depth, k, opts)?;
+
         let stages = StageReport {
             lexical_candidates: lexical.len(),
             dense_candidates: dense.as_ref().map(Vec::len),
@@ -138,13 +183,129 @@ impl HybridIndex {
                 stage: "dense",
                 reason,
             }),
+            rerank,
             time_limit_ignored,
         };
-        let hits = match &dense {
-            Some(dense) => self.fuse(&lexical, dense, k, opts.explain)?,
-            None => self.degraded(&lexical, k, opts.explain)?,
-        };
+        let mut hits = Vec::with_capacity(ordered.len());
+        let mut rerank_rank = 0u32;
+        for (c, rerank_score) in ordered {
+            let explain = c.explain.map(|mut e| {
+                if rerank_score.is_some() {
+                    rerank_rank += 1;
+                    e.rerank_score = rerank_score;
+                    e.rerank_rank = Some(rerank_rank);
+                }
+                e
+            });
+            hits.push(HybridHit {
+                external_id: self.external_of(c.id)?.to_owned(),
+                id: c.id,
+                score: c.score,
+                rerank_score,
+                text: self.passages.read(c.id)?,
+                chunk: self.committed_ids.chunk(c.id).cloned(),
+                explain,
+            });
+        }
         Ok(Response { hits, stages })
+    }
+
+    /// Step 9: check point C, passages from the store, the remaining budget, validation, the
+    /// ordering rule. Returns the ordered candidates (cut at `k`) with their re-rank scores.
+    fn rerank(
+        &self,
+        candidates: Vec<Candidate>,
+        query: &str,
+        depth: usize,
+        k: usize,
+        opts: &SearchOptions<'_>,
+    ) -> Result<Reranked> {
+        let plain = |candidates: Vec<Candidate>, report| {
+            let ordered = candidates.into_iter().take(k).map(|c| (c, None)).collect();
+            Ok((ordered, report))
+        };
+        let (Some(reranker), true) = (self.reranker.as_ref(), depth > 0 && !candidates.is_empty())
+        else {
+            return plain(candidates, None);
+        };
+        let skipped = |reason: DegradeReason| RerankReport {
+            candidates: 0,
+            scored: 0,
+            skipped: Some(reason),
+        };
+        // Check point C: before spending anything on the re-rank stage.
+        match check_budget(opts) {
+            Ok(()) => {}
+            Err(Skip::Budget {
+                elapsed_ms,
+                limit_ms,
+            }) if opts.strict => {
+                return Err(Error::BudgetExhausted(format!(
+                    "rerank stage: {elapsed_ms} ms elapsed > {limit_ms} ms limit"
+                )));
+            }
+            Err(skip) => return plain(candidates, Some(skipped(skip.reason()))),
+        }
+        let n = depth.min(candidates.len());
+        let texts: Vec<String> = candidates[..n]
+            .iter()
+            .map(|c| self.passages.read(c.id))
+            .collect::<Result<_>>()?;
+        let passages: Vec<Passage<'_>> = candidates[..n]
+            .iter()
+            .zip(&texts)
+            .map(|(c, text)| Passage { id: c.id, text })
+            .collect();
+        // The re-ranker measures its own time; it receives what is left of the caller's limit.
+        let remaining = match (opts.budget.max_time, opts.elapsed) {
+            (Some(limit), Some(elapsed)) => Some(limit.saturating_sub(elapsed())),
+            _ => None,
+        };
+        let budget = Budget {
+            max_time: remaining,
+            max_items: opts.budget.max_items,
+        };
+        let scores = match reranker.rerank(query, &passages, &budget) {
+            Ok(scores) => scores,
+            Err(e) if opts.strict => return Err(e),
+            Err(e) => {
+                return plain(
+                    candidates,
+                    Some(skipped(DegradeReason::StageError(e.to_string()))),
+                );
+            }
+        };
+        // A wrong-length or non-finite result is a defect, not a stage failure (FR-014).
+        if scores.len() != passages.len() {
+            return Err(Error::Model {
+                model: reranker.model_id().to_owned(),
+                message: format!(
+                    "returned {} scores for {} passages",
+                    scores.len(),
+                    passages.len()
+                ),
+            });
+        }
+        if let Some(bad) = scores.iter().flatten().find(|s| !s.is_finite()) {
+            return Err(Error::Model {
+                model: reranker.model_id().to_owned(),
+                message: format!("returned a non-finite score {bad}"),
+            });
+        }
+        let report = RerankReport {
+            candidates: passages.len(),
+            scored: scores.iter().flatten().count(),
+            skipped: None,
+        };
+        let fused: Vec<(DocId, f64)> = candidates.iter().map(|c| (c.id, c.score)).collect();
+        let order = order_reranked(&fused, &scores, k);
+        let mut by_id: HashMap<u32, Candidate> =
+            candidates.into_iter().map(|c| (c.id.0, c)).collect();
+        let ordered = order
+            .into_iter()
+            .filter_map(|(id, _, s)| by_id.remove(&id.0).map(|c| (c, s)))
+            .collect();
+        Ok((ordered, Some(report)))
     }
 
     fn dense_candidates(
@@ -175,13 +336,7 @@ impl HybridIndex {
         Ok(hits)
     }
 
-    fn fuse(
-        &self,
-        lexical: &[Hit],
-        dense: &[Hit],
-        k: usize,
-        explain: bool,
-    ) -> Result<Vec<HybridHit>> {
+    fn fuse(&self, lexical: &[Hit], dense: &[Hit], len: usize, explain: bool) -> Vec<Candidate> {
         let lex_pos: HashMap<u32, (u32, f32)> = lexical
             .iter()
             .enumerate()
@@ -192,53 +347,51 @@ impl HybridIndex {
             .enumerate()
             .map(|(i, h)| (h.id.0, (i as u32 + 1, h.score)))
             .collect();
-        let mut hits = Vec::with_capacity(k.min(lex_pos.len() + den_pos.len()));
-        for (id, lex, den) in fused_terms(lexical, dense, self.config.rrf_k)
+        fused_terms(lexical, dense, self.config.rrf_k)
             .into_iter()
-            .take(k)
-        {
-            let score = lex + den;
-            let explain = explain.then(|| {
-                let l = lex_pos.get(&id.0);
-                let d = den_pos.get(&id.0);
-                HitExplain {
-                    bm25_score: l.map(|x| x.1),
-                    bm25_rank: l.map(|x| x.0),
-                    dense_score: d.map(|x| x.1),
-                    dense_rank: d.map(|x| x.0),
-                    fused: score,
-                }
-            });
-            hits.push(HybridHit {
-                external_id: self.external_of(id)?.to_owned(),
-                id,
-                score,
-                chunk: self.committed_ids.chunk(id).cloned(),
-                explain,
-            });
-        }
-        Ok(hits)
+            .take(len)
+            .map(|(id, lex, den)| {
+                let score = lex + den;
+                let explain = explain.then(|| {
+                    let l = lex_pos.get(&id.0);
+                    let d = den_pos.get(&id.0);
+                    HitExplain {
+                        bm25_score: l.map(|x| x.1),
+                        bm25_rank: l.map(|x| x.0),
+                        dense_score: d.map(|x| x.1),
+                        dense_rank: d.map(|x| x.0),
+                        fused: score,
+                        rerank_score: None,
+                        rerank_rank: None,
+                    }
+                });
+                Candidate { id, score, explain }
+            })
+            .collect()
     }
 
-    fn degraded(&self, lexical: &[Hit], k: usize, explain: bool) -> Result<Vec<HybridHit>> {
-        let mut hits = Vec::with_capacity(k.min(lexical.len()));
-        for (i, h) in lexical.iter().take(k).enumerate() {
-            let score = f64::from(h.score);
-            hits.push(HybridHit {
-                external_id: self.external_of(h.id)?.to_owned(),
-                id: h.id,
-                score,
-                chunk: self.committed_ids.chunk(h.id).cloned(),
-                explain: explain.then(|| HitExplain {
-                    bm25_score: Some(h.score),
-                    bm25_rank: Some(i as u32 + 1),
-                    dense_score: None,
-                    dense_rank: None,
-                    fused: score,
-                }),
-            });
-        }
-        Ok(hits)
+    fn degraded(&self, lexical: &[Hit], len: usize, explain: bool) -> Vec<Candidate> {
+        lexical
+            .iter()
+            .take(len)
+            .enumerate()
+            .map(|(i, h)| {
+                let score = f64::from(h.score);
+                Candidate {
+                    id: h.id,
+                    score,
+                    explain: explain.then(|| HitExplain {
+                        bm25_score: Some(h.score),
+                        bm25_rank: Some(i as u32 + 1),
+                        dense_score: None,
+                        dense_rank: None,
+                        fused: score,
+                        rerank_score: None,
+                        rerank_rank: None,
+                    }),
+                }
+            })
+            .collect()
     }
 }
 
