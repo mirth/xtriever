@@ -4,8 +4,6 @@
 
 use std::path::Path;
 
-use xtriever_core::Result;
-
 use crate::LoadPath;
 
 /// The bytes of a file, however they were obtained.
@@ -28,8 +26,9 @@ impl Bytes {
     }
 }
 
-/// Read `path` through `load_path`.
-pub(crate) fn read(path: &Path, load_path: LoadPath) -> Result<Bytes> {
+/// Read `path` through `load_path`. An I/O failure here is the caller's to map onto
+/// `Error::Model` (it happens after verification, inside `load`'s documented contract).
+pub(crate) fn read(path: &Path, load_path: LoadPath) -> std::io::Result<Bytes> {
     match load_path {
         LoadPath::Buffered => Ok(Bytes::Owned(std::fs::read(path)?)),
         #[cfg(feature = "mmap")]

@@ -27,7 +27,7 @@ query at depth 20 — far above the plan's 50–100 ms estimate (F-001).
 | harness | `xtriever-eval` **43 / 43** offline; workspace **226 / 226** |
 | goldens vs the HF reference | 37 pairs: tokenization parity 37 / 37; max abs diff **7.540e-6** (tolerance 1e-3); order 10 / 10 queries exact, incl. over-length, empty-passage, empty-query, both-empty, near-tie (gap 0.092) |
 | ordering rule vs the Python oracle | 10 / 10 cases exact; 500 property cases; `--verify-rerank` SciFact 300 / 300, NFCorpus 323 / 323, FiQA 648 / 648 real queries |
-| gate | fmt ✓ · clippy `-D warnings` (workspace, pipeline `mmap`, rerank `mmap`) ✓ · deny ✓ · iOS / iOS-sim / Android ✓ · wasm32 best-effort fails at `getrandom` via candle (unchanged) · no stubs ✓ · toolchain ✓ · **exactly one `unsafe` in `xtriever-rerank` (`bytes.rs`, behind `mmap`)** ✓ · zero `unsafe`/clock in the pipeline ✓ · eval library graph pure ✓ · pipeline graph free of `xtriever-rerank` ✓ |
+| gate | fmt ✓ · clippy `-D warnings` (workspace, pipeline `mmap`, rerank `mmap`) ✓ · deny ✓ · iOS / iOS-sim / Android ✓ · wasm32 best-effort fails at `getrandom` via candle (unchanged) · no stubs ✓ · toolchain ✓ · `scripts/check-containment.sh` ✓ (**syntax-aware**, comments stripped: exactly one `unsafe` block in `xtriever-rerank/src/bytes.rs` and one in the dense crate's; zero `unsafe` and zero `Instant`/`SystemTime`/`std::thread` in the five pure crates) · eval library graph pure ✓ · pipeline graph free of `xtriever-rerank` ✓ |
 | `xtriever-core`, `xtriever-lexical`, `xtriever-dense`, `deny.toml`, eval `metrics.rs` / `dataset.rs` | **unchanged** (`git diff --stat main` empty; FR-022, SC-009) |
 | governance | constitution **v1.3.0** (Principle VII names `xtriever-rerank`; ADR-0009) · pipeline format **v2** (ADR-0008) — both decided by the owner on 2026-09-13 |
 
@@ -149,9 +149,11 @@ check itself is unchanged (T042's rule).
 - **The five-count check** (descriptor, id map, lexical, dense, and the store's slot count
   against the id map's length) catches a torn `passages.bin` and an off-by-one header count;
   the `commit.pending` marker is still refused first.
-- **`HybridHit.text` costs one file read per returned hit**: 100 reads per query at `k = 100`,
-  invisible next to the re-ranker (the whole non-rerank part of a query is ~150 ms including
-  embedding).
+- **`HybridHit.text` costs one file read per returned hit, and the re-ranked prefix is read
+  once**: at `k = 100`, depth 20 that is 100 open/seek/read cycles per query (the 20 re-ranked
+  texts are carried from the re-rank step onto the hits — review round 1 #1 found them read
+  twice), invisible next to the re-ranker (the whole non-rerank part of a query is ~150 ms
+  including embedding).
 
 ## Success criteria → evidence
 
@@ -177,6 +179,11 @@ check itself is unchanged (T042's rule).
 - **Governance**: two `unsafe` blocks in the workspace now (one per model-loading crate),
   identical, each behind a non-default feature.
 
-## Review round 1
+## Review round 1 (GitHub Copilot, 2026-09-13) — 4 comments, all acted on
 
-_(GitHub Copilot comments, when they arrive, are recorded here with the action taken.)_
+| # | Comment | Action |
+|---|---|---|
+| 1 | The re-ranked prefix is read from `passages.bin` in step 9 and then every hit is read again when hits are built — 120 reads for 100 hits at the baseline settings, contrary to the "one read per hit" claim | `Candidate` now carries its text once step 9 has read it; hit construction reuses it and reads only the hits step 9 did not touch. 100 reads per query at `k = 100`; the report's "Measured facts" entry corrected |
+| 2 | `bytes::read` surfaced open/read/mmap failures as `Error::Io`, so a failure after `verify_files` violated `load`'s documented `Error::Model` contract | `bytes::read` returns `std::io::Result`; the single call site maps it through `model_err` naming the weights path |
+| 3 | The data-model's ordering invariant claimed the hit set always equals the fused top `k`, contradicting the intended (and tested) `d > k` promotion | Invariant reworded: the hits are the first `k` entries after re-ordering the first `d` fused candidates; a candidate at fused rank in `(k, d]` may displace a top-`k` one; hits ⊆ fused candidates, no duplicates. Plan wording aligned |
+| 4 | The containment greps in the gate match documentation as well as code (`lib.rs` docs, `bytes.rs` comments, the pipeline's `Instant` doc), so their stated expectations could not be checked from the output | New `scripts/check-containment.sh`: strips `//` comments and single-line `/* */` before matching and asserts exact counts — one `#[allow(unsafe_code)]` and one `unsafe {` per model crate, both in `src/bytes.rs`; zero `unsafe` and zero `Instant`/`SystemTime`/`std::thread` in the five pure crates — exit 1 with the offending lines otherwise (negative-tested with a planted clock read and a comment mention). Quickstart Step 7 and the gate line use it; 005's Step 6 had the same weakness and is superseded by the script |

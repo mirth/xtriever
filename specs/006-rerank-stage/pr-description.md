@@ -80,7 +80,7 @@ test's expected version text moved to 7 (F-005).
 
 **Gate**: fmt · clippy `-D warnings` (workspace, pipeline `mmap`, rerank `mmap`) · nextest
 (offline, `mmap`, model-backed) · deny · iOS / iOS-sim / Android · no stubs · toolchain · one
-`unsafe` in `xtriever-rerank/src/bytes.rs` and none in the pipeline · no clock in the pipeline ·
+`unsafe` block per model crate and none — nor any clock — in the pure crates (`scripts/check-containment.sh`, syntax-aware) ·
 eval library graph free of candle/tantivy/memmap2/pipeline/rerank · pipeline graph free of
 `xtriever-rerank` · `xtriever-core`, `-lexical`, `-dense`, `deny.toml`, eval
 `metrics.rs`/`dataset.rs` unchanged. No new dependency. CI stays the SciFact lexical smoke only

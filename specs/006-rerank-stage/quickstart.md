@@ -121,9 +121,7 @@ cargo check --workspace --target aarch64-apple-ios-sim
 cargo check --workspace --target aarch64-linux-android
 cargo check --workspace --target wasm32-unknown-unknown   # best-effort; fails at getrandom via candle — tracked
 ./scripts/check-no-stubs.sh
-grep -rn 'unsafe' crates/xtriever-rerank/src/ ; echo "(expect exactly bytes.rs: the allow attribute and the one block — ADR-0009)"
-grep -rn 'unsafe' crates/xtriever-pipeline/src/ ; echo "(expect nothing)"
-grep -rn 'Instant\|SystemTime\|std::thread' crates/xtriever-pipeline/src/ ; echo "(expect nothing — Principle III)"
+./scripts/check-containment.sh   # syntax-aware: comments stripped; exactly one unsafe block in dense and in rerank (bytes.rs), none and no clock/thread in the pure crates
 cargo tree -p xtriever-eval -e normal | grep -E 'candle|tantivy|memmap2|xtriever-pipeline|xtriever-rerank' ; echo "(expect nothing)"
 cargo tree -p xtriever-pipeline -e normal | grep xtriever-rerank ; echo "(expect nothing — pipeline takes Box<dyn Reranker>)"
 git diff --stat main -- crates/xtriever-core crates/xtriever-lexical crates/xtriever-dense deny.toml crates/xtriever-eval/src/metrics.rs crates/xtriever-eval/src/dataset.rs   # expect empty

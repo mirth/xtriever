@@ -59,7 +59,8 @@ impl MiniLmCrossEncoder {
         let tokenizer = load_tokenizer(dir)?;
 
         let weights_path = dir.join(PINNED.files[2].name);
-        let weights = bytes::read(&weights_path, load_path)?;
+        let weights = bytes::read(&weights_path, load_path)
+            .map_err(|e| model_err(format!("cannot read {}: {e}", weights_path.display())))?;
         assert_weights_header(weights.as_slice())?;
 
         let device = Device::Cpu;

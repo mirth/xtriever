@@ -42,11 +42,13 @@ impl Skip {
 /// stage report (`None` when the stage did not run).
 type Reranked = (Vec<(Candidate, Option<f32>)>, Option<RerankReport>);
 
-/// A fused candidate before hits are built: its id, fused score and explanation.
+/// A fused candidate before hits are built: its id, fused score, explanation, and its passage
+/// text once the re-rank step has read it (so a hit is never read twice).
 struct Candidate {
     id: DocId,
     score: f64,
     explain: Option<HitExplain>,
+    text: Option<String>,
 }
 
 impl HybridIndex {
@@ -197,12 +199,16 @@ impl HybridIndex {
                 }
                 e
             });
+            let text = match c.text {
+                Some(text) => text,
+                None => self.passages.read(c.id)?,
+            };
             hits.push(HybridHit {
                 external_id: self.external_of(c.id)?.to_owned(),
                 id: c.id,
                 score: c.score,
                 rerank_score,
-                text: self.passages.read(c.id)?,
+                text,
                 chunk: self.committed_ids.chunk(c.id).cloned(),
                 explain,
             });
@@ -214,7 +220,7 @@ impl HybridIndex {
     /// ordering rule. Returns the ordered candidates (cut at `k`) with their re-rank scores.
     fn rerank(
         &self,
-        candidates: Vec<Candidate>,
+        mut candidates: Vec<Candidate>,
         query: &str,
         depth: usize,
         k: usize,
@@ -246,15 +252,17 @@ impl HybridIndex {
             }
             Err(skip) => return plain(candidates, Some(skipped(skip.reason()))),
         }
+        // Read the texts once; they stay on the candidates for the hits (review round 1 #1).
         let n = depth.min(candidates.len());
-        let texts: Vec<String> = candidates[..n]
-            .iter()
-            .map(|c| self.passages.read(c.id))
-            .collect::<Result<_>>()?;
+        for c in &mut candidates[..n] {
+            c.text = Some(self.passages.read(c.id)?);
+        }
         let passages: Vec<Passage<'_>> = candidates[..n]
             .iter()
-            .zip(&texts)
-            .map(|(c, text)| Passage { id: c.id, text })
+            .map(|c| Passage {
+                id: c.id,
+                text: c.text.as_deref().unwrap_or_default(),
+            })
             .collect();
         // The re-ranker measures its own time; it receives what is left of the caller's limit.
         let remaining = match (opts.budget.max_time, opts.elapsed) {
@@ -365,7 +373,12 @@ impl HybridIndex {
                         rerank_rank: None,
                     }
                 });
-                Candidate { id, score, explain }
+                Candidate {
+                    id,
+                    score,
+                    explain,
+                    text: None,
+                }
             })
             .collect()
     }
@@ -389,6 +402,7 @@ impl HybridIndex {
                         rerank_score: None,
                         rerank_rank: None,
                     }),
+                    text: None,
                 }
             })
             .collect()

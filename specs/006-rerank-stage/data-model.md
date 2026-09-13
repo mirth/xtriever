@@ -196,7 +196,10 @@ pub struct RerankReport {
 
 **Ordering invariant of `hits`** (research D8): the hits with `rerank_score: Some` form a
 prefix ordered `(rerank_score DESC, id ASC)`; the rest follow in fused order; `len ≤ k`; the
-set equals the first `k` of the fused list re-ordered — no candidate appears or disappears.
+hits are the first `k` entries after re-ordering the first `d` candidates of the fused list
+(built to `max(k, d)`). When `d > k` a candidate at fused rank in `(k, d]` can be promoted into
+the top `k` and displace a fused top-`k` candidate — the intended effect (research D8), so the
+set is *not* always the fused top `k`; every hit is a fused candidate and none is duplicated.
 
 ### Search algorithm (steps 1–8 as 005; step 9 new)
 
