@@ -76,6 +76,11 @@ impl IdMap {
         self.chunks.get(&id.0)
     }
 
+    /// The assigned-id space (deleted slots included) — the passage store's slot count.
+    pub fn len(&self) -> usize {
+        self.external.len()
+    }
+
     pub fn live(&self) -> u64 {
         self.reverse.len() as u64
     }

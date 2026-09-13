@@ -2665,6 +2665,7 @@ dependencies = [
  "xtriever-dense",
  "xtriever-lexical",
  "xtriever-pipeline",
+ "xtriever-rerank",
 ]
 
 [[package]]
@@ -2720,12 +2721,22 @@ dependencies = [
  "xtriever-core",
  "xtriever-dense",
  "xtriever-lexical",
+ "xtriever-rerank",
 ]
 
 [[package]]
 name = "xtriever-rerank"
 version = "0.1.0"
 dependencies = [
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "memmap2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokenizers",
  "xtriever-core",
 ]
 

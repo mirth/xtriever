@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use xtriever_core::{
-    DocId, Document, Embedder, Error, FieldKind, FieldName, LexicalIndex, Result, TextKind, Value,
-    VectorIndex,
+    DocId, Document, Embedder, Error, FieldKind, FieldName, LexicalIndex, Reranker, Result,
+    TextKind, Value, VectorIndex,
 };
 use xtriever_dense::FlatIndex;
 use xtriever_lexical::TantivyIndex;
@@ -14,6 +14,7 @@ use crate::FORMAT_VERSION;
 use crate::descriptor::Descriptor;
 use crate::error::{corrupt, schema_err};
 use crate::ids::IdMap;
+use crate::passages::PassageStore;
 use crate::{HybridConfig, SourceDocument};
 
 pub(crate) const LEXICAL_DIR: &str = "lexical";
@@ -36,7 +37,11 @@ pub struct HybridIndex {
     pub(crate) dirty: bool,
     pub(crate) lexical: TantivyIndex,
     pub(crate) dense: FlatIndex,
+    /// Every document's passage text, read per hit (format version 2, ADR-0008).
+    pub(crate) passages: PassageStore,
     pub(crate) embedder: Box<dyn Embedder>,
+    /// Attached per handle, never persisted: any re-ranker can serve any index.
+    pub(crate) reranker: Option<Box<dyn Reranker>>,
 }
 
 impl std::fmt::Debug for HybridIndex {
@@ -45,7 +50,9 @@ impl std::fmt::Debug for HybridIndex {
             .field("dir", &self.dir)
             .field("live_docs", &self.descriptor.live_docs)
             .field("generation", &self.descriptor.generation)
+            .field("rerank_depth", &self.config.rerank_depth)
             .field("fingerprint", &self.embedder.fingerprint())
+            .field("reranker", &self.reranker.as_ref().map(|r| r.model_id()))
             .finish_non_exhaustive()
     }
 }
@@ -101,6 +108,7 @@ impl HybridIndex {
             embedder.metric(),
             embedder.fingerprint(),
         )?;
+        let passages = PassageStore::create(dir)?;
         let ids = IdMap::default();
         ids.write(dir)?;
         let descriptor = Descriptor {
@@ -110,6 +118,7 @@ impl HybridIndex {
             dense_fields: config.dense_fields.clone(),
             candidate_depth: config.candidate_depth,
             rrf_k: config.rrf_k,
+            rerank_depth: config.rerank_depth,
             live_docs: 0,
             generation: 0,
         };
@@ -123,7 +132,9 @@ impl HybridIndex {
             dirty: false,
             lexical,
             dense,
+            passages,
             embedder,
+            reranker: None,
         })
     }
 
@@ -165,6 +176,8 @@ impl HybridIndex {
         let lexical = TantivyIndex::open(&dir.join(LEXICAL_DIR))?;
         descriptor.check_identity(lexical.schema(), embedder.fingerprint())?;
         let ids = IdMap::read(dir)?;
+        // The store's slot count must equal the id map's length (the fifth count, ADR-0008).
+        let passages = PassageStore::open(dir, ids.len())?;
         let dense_dir = dir.join(DENSE_DIR);
         let dense = if mapped {
             #[cfg(feature = "mmap")]
@@ -197,6 +210,7 @@ impl HybridIndex {
             dense_fields: descriptor.dense_fields.clone(),
             candidate_depth: descriptor.candidate_depth,
             rrf_k: descriptor.rrf_k,
+            rerank_depth: descriptor.rerank_depth,
         };
         Ok(Self {
             dir: dir.to_path_buf(),
@@ -207,7 +221,9 @@ impl HybridIndex {
             dirty: false,
             lexical,
             dense,
+            passages,
             embedder,
+            reranker: None,
         })
     }
 
@@ -221,6 +237,17 @@ impl HybridIndex {
     #[must_use]
     pub fn embedder(&self) -> &dyn Embedder {
         self.embedder.as_ref()
+    }
+
+    /// Attach (or detach) a re-ranker to this handle; nothing is written to the directory.
+    pub fn set_reranker(&mut self, reranker: Option<Box<dyn Reranker>>) {
+        self.reranker = reranker;
+    }
+
+    /// The re-ranker attached to this handle, if any.
+    #[must_use]
+    pub fn reranker(&self) -> Option<&dyn Reranker> {
+        self.reranker.as_deref()
     }
 
     /// Committed live documents.
@@ -257,7 +284,7 @@ impl HybridIndex {
         out
     }
 
-    fn stage_one(&mut self, doc: &SourceDocument, vector: &[f32]) -> Result<()> {
+    fn stage_one(&mut self, doc: &SourceDocument, passage: String, vector: &[f32]) -> Result<()> {
         if vector.len() != self.embedder.dim() {
             return Err(Error::DimensionMismatch {
                 expected: self.embedder.dim(),
@@ -273,6 +300,7 @@ impl HybridIndex {
             chunk: doc.chunk.clone(),
         }])?;
         self.dense.add(id, vector)?;
+        self.passages.stage(id.0, Some(passage));
         self.dirty = true;
         Ok(())
     }
@@ -296,7 +324,7 @@ impl HybridIndex {
                 model: "embedder".into(),
                 message: "returned no vector for the passage".into(),
             })?;
-            self.stage_one(doc, &vector)?;
+            self.stage_one(doc, passage, &vector)?;
         }
         Ok(())
     }
@@ -311,7 +339,8 @@ impl HybridIndex {
             if doc.external_id.is_empty() {
                 return Err(schema_err("external id must not be empty"));
             }
-            self.stage_one(doc, vector)?;
+            let passage = self.passage(&doc.fields);
+            self.stage_one(doc, passage, vector)?;
         }
         Ok(())
     }
@@ -326,14 +355,15 @@ impl HybridIndex {
             if let Some(id) = self.pending_ids.remove(ext) {
                 self.lexical.delete(&[id])?;
                 self.dense.delete(&[id])?;
+                self.passages.stage(id.0, None);
                 self.dirty = true;
             }
         }
         Ok(())
     }
 
-    /// Commit both stages, then the id map, then the descriptor (research D3). No-op when
-    /// nothing is staged.
+    /// Commit both stages, then the passage store, the id map and the descriptor (research
+    /// D3; 006 D7). No-op when nothing is staged.
     ///
     /// # Errors
     ///
@@ -349,7 +379,9 @@ impl HybridIndex {
         // 2–3. The stages, each durable on its own.
         self.lexical.commit()?;
         self.dense.commit()?;
-        // 4–5. The id map, then the descriptor.
+        // 4. The passage store (format version 2, ADR-0008): one slot per assigned id.
+        self.passages.commit(self.pending_ids.len())?;
+        // 5–6. The id map, then the descriptor.
         self.pending_ids.write(&self.dir)?;
         let descriptor = Descriptor {
             live_docs: self.pending_ids.live(),
@@ -357,7 +389,7 @@ impl HybridIndex {
             ..self.descriptor.clone()
         };
         descriptor.write(&self.dir)?;
-        // 6. Only now is the generation complete.
+        // 7. Only now is the generation complete.
         std::fs::remove_file(&marker)?;
         self.descriptor = descriptor;
         self.committed_ids = self.pending_ids.clone();

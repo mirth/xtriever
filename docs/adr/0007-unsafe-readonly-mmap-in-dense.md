@@ -140,3 +140,8 @@ macOS counts touched file-backed pages in RSS and candle touches every page whil
 tensors onto the heap (research D1); steady state is identical between the paths. The number is
 recorded in `specs/004-dense-stage/baselines/dense-baseline-v1.fiqa.json` (`observations`) and
 the feature report.
+
+**Extended by [ADR-0009](./0009-unsafe-readonly-mmap-in-rerank.md)** (2026-09-13): the same block,
+under the same conditions 1–4, is admitted in `xtriever-rerank` for the cross-encoder's weights;
+constitution v1.3.0 names both crates. "Exactly one block in `xtriever-dense`" still holds for
+this crate.

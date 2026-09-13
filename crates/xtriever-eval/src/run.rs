@@ -518,3 +518,45 @@ pub fn execute_external(
         unjudged_queries: 0,
     })
 }
+
+// ── Feature 006: the re-ranked configuration ───────────────────────────────────────────────
+
+/// The re-ranked recipe: `hybrid-baseline-v1` plus a re-rank depth (data-model 006).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RerankConfig {
+    /// Cited by reports.
+    pub name: String,
+    /// The fused recipe underneath.
+    pub hybrid: HybridConfig,
+    /// Fused candidates re-scored per query.
+    pub rerank_depth: usize,
+}
+
+impl RerankConfig {
+    /// `1 ≤ rerank_depth ≤ hybrid.k`, and the hybrid configuration valid.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Run`.
+    pub fn validate(&self) -> Result<()> {
+        if self.rerank_depth == 0 {
+            return Err(Error::Run("rerank_depth must be at least 1".into()));
+        }
+        if self.rerank_depth > self.hybrid.k {
+            return Err(Error::Run(format!(
+                "rerank_depth = {} exceeds k = {}; candidates beyond k cannot be returned",
+                self.rerank_depth, self.hybrid.k
+            )));
+        }
+        self.hybrid.validate()
+    }
+
+    /// `hybrid-rerank-v1`: `hybrid-baseline-v1` re-ranked at depth 20.
+    pub fn hybrid_rerank_v1() -> Self {
+        Self {
+            name: "hybrid-rerank-v1".into(),
+            hybrid: HybridConfig::hybrid_baseline_v1(),
+            rerank_depth: 20,
+        }
+    }
+}

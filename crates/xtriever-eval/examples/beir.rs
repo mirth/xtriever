@@ -10,10 +10,11 @@
 //! beir run    --dataset D [--config lexical-baseline-v1] [--out F] [--export-run F] [--index-dir DIR] [--cache DIR]
 //! beir run    --dataset D --config dense-baseline-v1 [--model-dir M] [--cache-dir C] [--load-path buffered|mmap] [--out F] [--export-run F]
 //! beir run    --dataset D --config hybrid-baseline-v1 [--model-dir M] [--cache-dir C] [--index-dir DIR] [--load-path P] [--out F] [--export-run F] [--export-explain F]
+//! beir run    --dataset D --config hybrid-rerank-v1 [--rerank-model-dir R] (+ the hybrid flags; --load-path applies to both models)
 //! beir compare a.json b.json                        (cross-configuration table, no ADR line)
 //! beir delta  before.json... -- after.json...      (or two single files; same configuration only)
 //! beir smoke  --dataset scifact --baseline F [--cache DIR]
-//! beir model-memory [--model-dir M] --load-path buffered|mmap
+//! beir model-memory [--model embedder|rerank] [--model-dir M] [--rerank-model-dir R] --load-path buffered|mmap
 //! beir export-vectors --dataset D [--cache-dir C] --sample N --out F
 //! ```
 //!
@@ -27,16 +28,17 @@ use std::io::Write;
 use std::time::Instant;
 
 use anyhow::{Context, bail};
-use xtriever_core::{DocId, Embedder, LexicalIndex, TextKind, VectorIndex};
+use xtriever_core::{DocId, Embedder, LexicalIndex, Reranker, TextKind, VectorIndex};
 use xtriever_dense::{FlatIndex, LoadPath, MiniLmEmbedder};
 use xtriever_eval::dataset::{Dataset, Manifest};
 use xtriever_eval::report::{EvalReport, StageInfo, compare, delta, score, smoke};
 use xtriever_eval::run::{
-    DenseConfig, EmbeddingCacheKey, EvalConfig, HybridConfig, build, build_external,
+    DenseConfig, EmbeddingCacheKey, EvalConfig, HybridConfig, RerankConfig, build, build_external,
     build_passages, execute, execute_dense, execute_external,
 };
 use xtriever_lexical::TantivyIndex;
 use xtriever_pipeline::{HybridIndex, SearchOptions, SourceDocument};
+use xtriever_rerank::MiniLmCrossEncoder;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -95,6 +97,7 @@ enum Config {
     Lexical(EvalConfig),
     Dense(DenseConfig),
     Hybrid(HybridConfig),
+    Rerank(RerankConfig),
 }
 
 fn config(a: &Args) -> anyhow::Result<Config> {
@@ -107,9 +110,10 @@ fn config(a: &Args) -> anyhow::Result<Config> {
         "lexical-baseline-v1" => Ok(Config::Lexical(EvalConfig::lexical_baseline_v1())),
         "dense-baseline-v1" => Ok(Config::Dense(DenseConfig::dense_baseline_v1())),
         "hybrid-baseline-v1" => Ok(Config::Hybrid(HybridConfig::hybrid_baseline_v1())),
+        "hybrid-rerank-v1" => Ok(Config::Rerank(RerankConfig::hybrid_rerank_v1())),
         other => {
             bail!(
-                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1"
+                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1, hybrid-rerank-v1"
             )
         }
     }
@@ -120,6 +124,64 @@ fn model_dir(a: &Args) -> PathBuf {
         .get("model-dir")
         .map(PathBuf::from)
         .unwrap_or_else(|| repo_root().join("reference/models/all-MiniLM-L6-v2"))
+}
+
+fn rerank_model_dir(a: &Args) -> PathBuf {
+    a.flags
+        .get("rerank-model-dir")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2"))
+}
+
+fn rerank_load_path(a: &Args) -> anyhow::Result<xtriever_rerank::LoadPath> {
+    Ok(match load_path(a)? {
+        LoadPath::Buffered => xtriever_rerank::LoadPath::Buffered,
+        LoadPath::Mmap => xtriever_rerank::LoadPath::Mmap,
+    })
+}
+
+/// A `Reranker` that delegates and accumulates the stage's wall time and scored pair count
+/// (spec 006 SC-010). `Instant` is fine in a binary; the pipeline itself reads no clock.
+struct TimedReranker {
+    inner: MiniLmCrossEncoder,
+    totals: std::sync::Arc<std::sync::Mutex<(std::time::Duration, u64)>>,
+}
+
+impl TimedReranker {
+    fn new(inner: MiniLmCrossEncoder) -> Self {
+        Self {
+            inner,
+            totals: std::sync::Arc::new(std::sync::Mutex::new((std::time::Duration::ZERO, 0))),
+        }
+    }
+
+    fn totals(&self) -> std::sync::Arc<std::sync::Mutex<(std::time::Duration, u64)>> {
+        std::sync::Arc::clone(&self.totals)
+    }
+}
+
+impl xtriever_core::Reranker for TimedReranker {
+    fn model_id(&self) -> &str {
+        self.inner.model_id()
+    }
+    fn rerank(
+        &self,
+        query: &str,
+        passages: &[xtriever_core::Passage<'_>],
+        budget: &xtriever_core::Budget,
+    ) -> xtriever_core::Result<Vec<Option<f32>>> {
+        let t = Instant::now();
+        let out = self.inner.rerank(query, passages, budget);
+        let scored = out
+            .as_ref()
+            .map(|v| v.iter().flatten().count() as u64)
+            .unwrap_or(0);
+        if let Ok(mut totals) = self.totals.lock() {
+            totals.0 += t.elapsed();
+            totals.1 += scored;
+        }
+        out
+    }
 }
 
 fn dense_cache_dir(a: &Args) -> PathBuf {
@@ -273,6 +335,8 @@ fn evaluate_dense(dataset: &str, cfg: &DenseConfig, a: &Args) -> anyhow::Result<
         load_path: load_path_name(load_path).into(),
         thread_count: MiniLmEmbedder::thread_count(),
         baseline: "absolute".into(),
+        reranker_model_id: None,
+        rerank_depth: None,
     });
     report_line(dataset, &cfg.name, &report);
     Ok(report)
@@ -282,6 +346,20 @@ fn evaluate_dense(dataset: &str, cfg: &DenseConfig, a: &Args) -> anyhow::Result<
 /// path's peak RSS is measured from cold in its own process (research D12).
 fn model_memory(a: &Args) -> anyhow::Result<()> {
     let load_path = load_path(a)?;
+    if a.flags.get("model").map(String::as_str) == Some("rerank") {
+        let started = Instant::now();
+        let reranker = MiniLmCrossEncoder::load(&rerank_model_dir(a), rerank_load_path(a)?)?;
+        let loaded = started.elapsed();
+        let score = reranker.score("memory probe", "a probe passage")?;
+        println!(
+            "model-memory: model=rerank load_path={} model_id={} probe_score={score} threads={} load={:.0} ms",
+            load_path_name(load_path),
+            reranker.model_id(),
+            MiniLmCrossEncoder::thread_count(),
+            loaded.as_secs_f64() * 1000.0
+        );
+        return Ok(());
+    }
     let started = Instant::now();
     let embedder = MiniLmEmbedder::load(&model_dir(a), load_path)?;
     let loaded = started.elapsed();
@@ -343,8 +421,17 @@ fn export_vectors(a: &Args) -> anyhow::Result<()> {
 /// The hybrid baseline: a `HybridIndex` fed from the 004 embedding cache by value (0 documents
 /// embedded), every judged query searched with explanation, scored in the 003 format
 /// (spec 005 FR-022; research D10).
-fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Result<EvalReport> {
+fn evaluate_hybrid(
+    dataset: &str,
+    cfg: &HybridConfig,
+    rerank: Option<&RerankConfig>,
+    a: &Args,
+) -> anyhow::Result<EvalReport> {
     cfg.validate()?;
+    if let Some(r) = rerank {
+        r.validate()?;
+    }
+    let config_name = rerank.map_or(cfg.name.as_str(), |r| r.name.as_str());
     let ds = load_dataset(dataset, a)?;
     let load_path = load_path(a)?;
     let embedder = MiniLmEmbedder::load(&model_dir(a), load_path).context("loading the model")?;
@@ -436,6 +523,20 @@ fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Resul
         started.elapsed().as_secs_f64()
     );
 
+    // Feature 006: attach the cross-encoder through the timing decorator.
+    let mut rerank_totals = None;
+    let mut reranker_model_id = None;
+    if rerank.is_some() {
+        let reranker = TimedReranker::new(
+            MiniLmCrossEncoder::load(&rerank_model_dir(a), rerank_load_path(a)?)
+                .context("loading the re-rank model")?,
+        );
+        rerank_totals = Some(reranker.totals());
+        reranker_model_id = Some(reranker.model_id().to_owned());
+        index.set_reranker(Some(Box::new(reranker)));
+    }
+    let rerank_depth = rerank.map(|r| r.rerank_depth);
+
     let mut explain_out = a
         .flags
         .get("export-explain")
@@ -446,6 +547,7 @@ fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Resul
     let started = Instant::now();
     let opts = SearchOptions {
         explain: true,
+        rerank_depth: Some(rerank_depth.unwrap_or(0)),
         ..SearchOptions::default()
     };
     let mut retrieve = |query_id: &str, text: &str| -> xtriever_core::Result<Vec<String>> {
@@ -456,11 +558,26 @@ fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Resul
         if r.stages.degraded.is_some() {
             eprintln!("warning: query degraded: {:?}", r.stages.degraded);
         }
+        if let Some(rr) = &r.stages.rerank
+            && (rr.skipped.is_some() || rr.scored < rr.candidates)
+        {
+            eprintln!("warning: query {query_id}: re-rank stage {rr:?}");
+        }
         if let Some(out) = explain_out.as_mut() {
             // The stage lists must be complete for the oracle: a second search with k large
             // enough to hold the union of both candidate lists (2 × depth) exposes every
             // candidate's rank through its explanation.
-            let full = index.search(text, None, 2 * cfg.candidate_depth, &opts)?;
+            // Without re-ranking: this search only exposes the stage lists, and must not count
+            // toward the re-rank timings.
+            let full = index.search(
+                text,
+                None,
+                2 * cfg.candidate_depth,
+                &SearchOptions {
+                    rerank_depth: Some(0),
+                    ..opts
+                },
+            )?;
             let mut lexical: Vec<(u32, &str)> = Vec::new();
             let mut dense: Vec<(u32, &str)> = Vec::new();
             for h in &full.hits {
@@ -475,17 +592,47 @@ fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Resul
             }
             lexical.sort_unstable();
             dense.sort_unstable();
+            // The fused order is the plain (un-re-ranked) top-k, the scored prefix carries its
+            // 1-based re-rank position and score, `hits` is the response as returned.
+            let mut fused: Vec<(f64, u32, &str)> = r
+                .hits
+                .iter()
+                .map(|h| {
+                    (
+                        h.explain.as_ref().map_or(h.score, |e| e.fused),
+                        h.id.0,
+                        h.external_id.as_str(),
+                    )
+                })
+                .collect();
+            fused.sort_by(|a, b| {
+                b.0.partial_cmp(&a.0)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.1.cmp(&b.1))
+            });
+            let rerank: Vec<serde_json::Value> = r
+                .hits
+                .iter()
+                .filter_map(|h| {
+                    h.explain
+                        .as_ref()
+                        .and_then(|e| e.rerank_rank.zip(e.rerank_score))
+                        .map(|(rk, sc)| serde_json::json!([rk, h.external_id, sc]))
+                })
+                .collect();
             let line = serde_json::json!({
                 "query_id": query_id,
                 "lexical": lexical.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
                 "dense": dense.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
-                "fused": r.hits.iter().map(|h| h.external_id.as_str()).collect::<Vec<_>>(),
+                "fused": fused.iter().map(|(_, _, id)| *id).collect::<Vec<_>>(),
+                "rerank": rerank,
+                "hits": r.hits.iter().map(|h| h.external_id.as_str()).collect::<Vec<_>>(),
             });
             writeln!(out, "{line}").map_err(xtriever_core::Error::Io)?;
         }
         Ok(r.hits.into_iter().map(|h| h.external_id).collect())
     };
-    let run = execute_external(&ds, &cfg.name, cfg.k, &mut retrieve)?;
+    let run = execute_external(&ds, config_name, cfg.k, &mut retrieve)?;
     if let Some(mut out) = explain_out {
         out.flush()?;
     }
@@ -494,19 +641,35 @@ fn evaluate_hybrid(dataset: &str, cfg: &HybridConfig, a: &Args) -> anyhow::Resul
         started.elapsed().as_secs_f64(),
         lex_ms / queries.max(1) as f64
     );
+    if let Some(totals) = &rerank_totals {
+        let (elapsed, pairs) = *totals.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        eprintln!(
+            "re-ranked {pairs} pairs in {:.1} s ({:.1} ms per query, {:.1} ms per pair)",
+            elapsed.as_secs_f64(),
+            elapsed.as_secs_f64() * 1000.0 / queries.max(1) as f64,
+            elapsed.as_secs_f64() * 1000.0 / pairs.max(1) as f64
+        );
+    }
     if let Some(path) = a.flags.get("export-run") {
         run.export_jsonl(Path::new(path))?;
         eprintln!("exported run to {path}");
     }
     let mut report = score(&run, &ds, &git_head())?;
     report.stage = Some(StageInfo {
-        kind: "hybrid".into(),
+        kind: if rerank.is_some() {
+            "hybrid-rerank"
+        } else {
+            "hybrid"
+        }
+        .into(),
         embedder_fingerprint: index.embedder().fingerprint().to_owned(),
         load_path: load_path_name(load_path).into(),
         thread_count,
         baseline: "guarded".into(),
+        reranker_model_id,
+        rerank_depth,
     });
-    report_line(dataset, &cfg.name, &report);
+    report_line(dataset, config_name, &report);
     Ok(report)
 }
 
@@ -515,7 +678,8 @@ fn evaluate(dataset: &str, a: &Args) -> anyhow::Result<EvalReport> {
     let cfg = match config(a)? {
         Config::Lexical(cfg) => cfg,
         Config::Dense(cfg) => return evaluate_dense(dataset, &cfg, a),
-        Config::Hybrid(cfg) => return evaluate_hybrid(dataset, &cfg, a),
+        Config::Hybrid(cfg) => return evaluate_hybrid(dataset, &cfg, None, a),
+        Config::Rerank(cfg) => return evaluate_hybrid(dataset, &cfg.hybrid, Some(&cfg), a),
     };
     let ds = load_dataset(dataset, a)?;
     let (schema, docs, ids) = build(&ds, &cfg)?;

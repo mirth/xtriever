@@ -127,3 +127,69 @@ fn real_embedder_round_trip_and_fingerprint_mismatch() {
         other => panic!("{other:?}"),
     }
 }
+
+/// Feature 006: the real cross-encoder attached to the real embedder's index.
+#[test]
+#[ignore = "needs both models (scripts/fetch-model.sh, scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json)"]
+fn real_reranker_over_the_real_embedder_index() {
+    use xtriever_core::Reranker;
+    let tmp = tempfile::tempdir().unwrap();
+    let embedder = MiniLmEmbedder::load(&support::model_dir(), LoadPath::Buffered).unwrap();
+    let mut index = HybridIndex::create(
+        tmp.path(),
+        HybridConfig::new(schema(), vec!["title".into(), "text".into()]),
+        Box::new(embedder),
+    )
+    .unwrap();
+    index
+        .add(&[
+            doc(
+                "berlin",
+                "Berlin",
+                "Berlin has a population of 3.5 million people.",
+            ),
+            doc("paris", "Paris", "Paris is the capital of France."),
+            doc("cats", "Cats", "Cats sleep for most of the day."),
+            doc("rust", "Rust", "Rust is a systems programming language."),
+            doc(
+                "tea",
+                "Tea",
+                "Green tea is brewed at a lower temperature than black tea.",
+            ),
+        ])
+        .unwrap();
+    index.commit().unwrap();
+    let rerank_dir = std::env::var_os("XTRIEVER_RERANK_MODEL_DIR").map_or_else(
+        || {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../reference/models/ms-marco-MiniLM-L-6-v2")
+        },
+        std::path::PathBuf::from,
+    );
+    let reranker =
+        xtriever_rerank::MiniLmCrossEncoder::load(&rerank_dir, xtriever_rerank::LoadPath::Buffered)
+            .unwrap();
+    let model_id = reranker.model_id().to_owned();
+    index.set_reranker(Some(Box::new(reranker)));
+    assert_eq!(index.reranker().unwrap().model_id(), model_id);
+    let r = index
+        .search(
+            "how many people live in berlin",
+            None,
+            5,
+            &SearchOptions {
+                rerank_depth: Some(5),
+                explain: true,
+                ..SearchOptions::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(r.stages.rerank.as_ref().unwrap().scored, 5);
+    assert_eq!(r.hits[0].external_id, "berlin");
+    assert!(
+        r.hits
+            .iter()
+            .all(|h| h.rerank_score.is_some_and(f32::is_finite))
+    );
+    assert_eq!(r.hits[0].explain.as_ref().unwrap().rerank_rank, Some(1));
+}

@@ -257,3 +257,195 @@ fn a_lexical_failure_is_an_error_in_every_mode() {
         );
     }
 }
+
+// ── Feature 006: the re-rank stage degrades per stage (US3 scenarios 3, 6; FR-013–FR-015) ──
+
+#[test]
+fn a_failing_reranker_degrades_to_the_fused_order_by_default_and_errors_in_strict() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    let q = &h.queries[0];
+    let plain = index
+        .search(&q.text, None, 10, &support::rerank_options(0))
+        .unwrap();
+    index.set_reranker(Some(Box::new(support::FailingReranker)));
+    let r = index
+        .search(&q.text, None, 10, &support::rerank_options(5))
+        .unwrap();
+    assert_eq!(r.hits, plain.hits);
+    let rr = r.stages.rerank.as_ref().expect("stage report");
+    assert_eq!((rr.candidates, rr.scored), (0, 0));
+    assert!(
+        matches!(&rr.skipped, Some(DegradeReason::StageError(m)) if m.contains("stub rerank failure")),
+        "{:?}",
+        rr.skipped
+    );
+    assert!(r.stages.degraded.is_none(), "the dense stage ran");
+    let strict = SearchOptions {
+        strict: true,
+        ..support::rerank_options(5)
+    };
+    assert!(matches!(
+        index.search(&q.text, None, 10, &strict),
+        Err(Error::Model { .. })
+    ));
+}
+
+#[test]
+fn a_wrong_length_or_non_finite_result_is_an_error_in_every_mode() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    let q = &h.queries[0];
+    for reranker in [
+        Box::new(support::WrongLengthReranker) as Box<dyn xtriever_core::Reranker>,
+        Box::new(support::NanReranker),
+    ] {
+        let name = reranker.model_id().to_owned();
+        index.set_reranker(Some(reranker));
+        for strict in [false, true] {
+            let opts = SearchOptions {
+                strict,
+                ..support::rerank_options(5)
+            };
+            match index.search(&q.text, None, 10, &opts) {
+                Err(Error::Model { model, .. }) => assert_eq!(model, name),
+                other => panic!("{name} strict={strict}: expected Error::Model, got {other:?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn a_spent_budget_at_check_point_c_skips_the_reranker() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    let reranker = support::TableReranker::from_fn(&h, |id| id as f32);
+    let calls = reranker.calls();
+    index.set_reranker(Some(Box::new(reranker)));
+    let clock = || Duration::from_millis(500);
+    let opts = SearchOptions {
+        budget: Budget {
+            max_time: Some(Duration::from_millis(100)),
+            max_items: None,
+        },
+        elapsed: Some(&clock),
+        ..support::rerank_options(5)
+    };
+    let r = index.search(&h.queries[0].text, None, 10, &opts).unwrap();
+    assert!(
+        r.stages.degraded.is_some(),
+        "the dense stage degraded too (005)"
+    );
+    let rr = r.stages.rerank.as_ref().unwrap();
+    assert_eq!((rr.candidates, rr.scored), (0, 0));
+    assert!(matches!(
+        rr.skipped,
+        Some(DegradeReason::BudgetExceeded {
+            elapsed_ms: 500,
+            limit_ms: 100
+        })
+    ));
+    assert!(
+        calls.lock().unwrap().is_empty(),
+        "the re-ranker was not called"
+    );
+    assert!(r.hits.iter().all(|x| x.rerank_score.is_none()));
+
+    let strict = SearchOptions {
+        strict: true,
+        ..opts
+    };
+    // Strict: the dense stage's spent budget fires first (check point A); make the clock pass A
+    // and B and fail only at C to see the re-rank message.
+    let calls_seen = Cell::new(0u32);
+    let staged = || {
+        let n = calls_seen.get();
+        calls_seen.set(n + 1);
+        if n < 2 {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(500)
+        }
+    };
+    let strict_c = SearchOptions {
+        elapsed: Some(&staged),
+        ..strict
+    };
+    match index.search(&h.queries[0].text, None, 10, &strict_c) {
+        Err(Error::BudgetExhausted(m)) => assert!(m.contains("rerank"), "{m}"),
+        other => panic!("expected BudgetExhausted, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_reranker_receives_the_remaining_time_or_none_without_a_clock() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    let reranker = support::TableReranker::from_fn(&h, |id| id as f32);
+    let calls = reranker.calls();
+    index.set_reranker(Some(Box::new(reranker)));
+    // A, B, C: 0, 0, 30 ms.
+    let n = Cell::new(0u32);
+    let clock = || {
+        let i = n.get();
+        n.set(i + 1);
+        if i < 2 {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(30)
+        }
+    };
+    let opts = SearchOptions {
+        budget: Budget {
+            max_time: Some(Duration::from_millis(100)),
+            max_items: None,
+        },
+        elapsed: Some(&clock),
+        ..support::rerank_options(5)
+    };
+    let r = index.search(&h.queries[0].text, None, 10, &opts).unwrap();
+    assert!(r.stages.degraded.is_none());
+    assert_eq!(r.stages.rerank.as_ref().unwrap().scored, 5);
+    let received = calls.lock().unwrap();
+    assert_eq!(received.len(), 1);
+    assert_eq!(received[0].max_time, Some(Duration::from_millis(70)));
+    drop(received);
+
+    let no_clock = SearchOptions {
+        budget: Budget {
+            max_time: Some(Duration::from_millis(100)),
+            max_items: None,
+        },
+        elapsed: None,
+        ..support::rerank_options(5)
+    };
+    let r = index
+        .search(&h.queries[0].text, None, 10, &no_clock)
+        .unwrap();
+    assert!(r.stages.time_limit_ignored);
+    let received = calls.lock().unwrap();
+    assert_eq!(received.len(), 2);
+    assert_eq!(received[1].max_time, None);
+}
+
+#[test]
+fn a_degraded_dense_stage_does_not_skip_the_reranker() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, index) = support::build_from_fixture(tmp.path());
+    drop(index);
+    let mut index = HybridIndex::open(tmp.path(), Box::new(support::FailingEmbedder)).unwrap();
+    index.set_reranker(Some(Box::new(support::TableReranker::from_fn(&h, |id| {
+        id as f32
+    }))));
+    let r = index
+        .search(&h.queries[0].text, None, 10, &support::rerank_options(5))
+        .unwrap();
+    assert_eq!(r.stages.degraded.as_ref().unwrap().stage, "dense");
+    let rr = r.stages.rerank.as_ref().unwrap();
+    assert!(rr.scored > 0 && rr.skipped.is_none(), "{rr:?}");
+    // The scored prefix is ordered by the stub's score (descending id).
+    let (scored, _) = support::rerank_split(&r.hits);
+    for w in scored.windows(2) {
+        assert!(w[0].1 >= w[1].1);
+    }
+}

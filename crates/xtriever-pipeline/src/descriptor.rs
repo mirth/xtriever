@@ -19,6 +19,8 @@ pub(crate) struct Descriptor {
     pub dense_fields: Vec<FieldName>,
     pub candidate_depth: usize,
     pub rrf_k: u32,
+    /// Feature 006 (format version 2): the default re-rank depth.
+    pub rerank_depth: usize,
     pub live_docs: u64,
     pub generation: u64,
 }
@@ -44,7 +46,7 @@ impl Descriptor {
             .map_err(|e| corrupt(format!("{} is not a valid descriptor: {e}", path.display())))?;
         if d.format_version != FORMAT_VERSION {
             return Err(corrupt(format!(
-                "{} is format version {}, this build reads {FORMAT_VERSION}",
+                "{} is format version {}, this build reads {FORMAT_VERSION}; rebuild the index",
                 path.display(),
                 d.format_version
             )));
@@ -83,6 +85,7 @@ mod tests {
             dense_fields: vec![],
             candidate_depth: 100,
             rrf_k: 60,
+            rerank_depth: 20,
             live_docs: 0,
             generation: 0,
         }
@@ -94,15 +97,20 @@ mod tests {
         sample().write(dir.path()).unwrap();
         assert_eq!(Descriptor::read(dir.path()).unwrap(), sample());
         let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
-        assert!(text.starts_with("{\n  \"format_version\": 1"), "{text}");
-        std::fs::write(
-            dir.path().join(FILE),
-            text.replace("\"format_version\": 1", "\"format_version\": 7"),
-        )
-        .unwrap();
-        assert!(
-            matches!(Descriptor::read(dir.path()), Err(Error::Corrupt(m)) if m.contains('7') && m.contains('1'))
-        );
+        assert!(text.starts_with("{\n  \"format_version\": 2"), "{text}");
+        for old in ["1", "7"] {
+            std::fs::write(
+                dir.path().join(FILE),
+                text.replace(
+                    "\"format_version\": 2",
+                    &format!("\"format_version\": {old}"),
+                ),
+            )
+            .unwrap();
+            assert!(
+                matches!(Descriptor::read(dir.path()), Err(Error::Corrupt(m)) if m.contains(old) && m.contains('2') && m.contains("rebuild"))
+            );
+        }
     }
 
     #[test]
