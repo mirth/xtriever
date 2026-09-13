@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc cd17938c7e1e2f5a77d74a4010353fbec23030fb4312939dcbc6c10993b5c1b0 # shrinks to fused = [(DocId(0), 1.0)], raw_scores = [], k = 1

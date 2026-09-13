@@ -26,3 +26,4 @@ tempfile = "3.27.0"
 xtriever-dense = { path = "../xtriever-dense", features = ["mmap"] }
 xtriever-lexical = { path = "../xtriever-lexical" }
 xtriever-pipeline = { path = "../xtriever-pipeline" }
+xtriever-rerank = { path = "../xtriever-rerank", features = ["mmap"] }

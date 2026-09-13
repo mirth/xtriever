@@ -1,0 +1,337 @@
+//! The pinned `ms-marco-MiniLM-L-6-v2` cross-encoder on candle 0.9.2 (spec FR-001–FR-006;
+//! research D1, D4, D5).
+//!
+//! Each query–passage pair goes through the model **alone, at its own length**: a pair's tensor
+//! shapes depend only on the pair, so its score cannot depend on the other passages in the
+//! call, their order or the call boundaries (candle folds a batch into the matmul's `M`, 004
+//! research D2 — the reason nothing is batched here). candle-transformers 0.9.2 ships the BERT
+//! encoder without a classification head; the head — CLS row → pooler → tanh → linear — is the
+//! reference's, composed from two `candle_nn::Linear` layers (research D1).
+
+use std::path::Path;
+
+use candle_core::{Device, Module, Tensor};
+use candle_nn::{Linear, VarBuilder};
+use candle_transformers::models::bert::{BertModel, Config, DTYPE};
+use tokenizers::Tokenizer;
+use tokenizers::utils::truncation::TruncationParams;
+use xtriever_core::{Budget, Passage, Reranker, Result};
+
+use crate::error::model_err;
+use crate::model::{MODEL_ID, PINNED};
+use crate::{LoadPath, bytes};
+
+/// The pinned `ms-marco-MiniLM-L-6-v2` cross-encoder.
+pub struct MiniLmCrossEncoder {
+    tokenizer: Tokenizer,
+    encoder: BertModel,
+    pooler: Linear,
+    classifier: Linear,
+    device: Device,
+    load_path: LoadPath,
+}
+
+impl std::fmt::Debug for MiniLmCrossEncoder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MiniLmCrossEncoder")
+            .field("model_id", &MODEL_ID)
+            .field("load_path", &self.load_path)
+            .finish_non_exhaustive()
+    }
+}
+
+impl MiniLmCrossEncoder {
+    /// Verify (FR-003), assert (FR-002) and build. `dir` holds the three pinned files.
+    ///
+    /// Order: every file's size and hash → `config.json` parsed and asserted → tokenizer built
+    /// from the verified bytes → weights read through `load_path` and the safetensors header
+    /// asserted → encoder, pooler and classifier built. Nothing is parsed before its bytes are
+    /// verified.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Model` for any verification, assertion or construction failure, naming the file
+    /// and both values where a pin is violated.
+    pub fn load(dir: &Path, load_path: LoadPath) -> Result<Self> {
+        crate::model::verify_files(dir)?;
+
+        let config = load_config(dir)?;
+        let tokenizer = load_tokenizer(dir)?;
+
+        let weights_path = dir.join(PINNED.files[2].name);
+        let weights = bytes::read(&weights_path, load_path)
+            .map_err(|e| model_err(format!("cannot read {}: {e}", weights_path.display())))?;
+        assert_weights_header(weights.as_slice())?;
+
+        let device = Device::Cpu;
+        let vb = VarBuilder::from_slice_safetensors(weights.as_slice(), DTYPE, &device)
+            .map_err(|e| model_err(format!("cannot load weights: {e}")))?;
+        // The safetensors keys carry the `bert.` prefix; the head sits beside it (research D2).
+        let encoder = BertModel::load(vb.pp("bert"), &config)
+            .map_err(|e| model_err(format!("cannot build encoder: {e}")))?;
+        let pooler = candle_nn::linear(PINNED.hidden, PINNED.hidden, vb.pp("bert.pooler.dense"))
+            .map_err(|e| model_err(format!("cannot build pooler: {e}")))?;
+        let classifier = candle_nn::linear(PINNED.hidden, 1, vb.pp("classifier"))
+            .map_err(|e| model_err(format!("cannot build classifier: {e}")))?;
+        // `weights` is dropped here: candle copied every tensor into its own storage.
+
+        Ok(Self {
+            tokenizer,
+            encoder,
+            pooler,
+            classifier,
+            device,
+            load_path,
+        })
+    }
+
+    /// The path this instance was loaded through.
+    #[must_use]
+    pub fn load_path(&self) -> LoadPath {
+        self.load_path
+    }
+
+    /// candle's effective thread count (`RAYON_NUM_THREADS`, else the CPU count).
+    #[must_use]
+    pub fn thread_count() -> usize {
+        candle_core::utils::get_num_threads()
+    }
+
+    /// Token ids and token type ids for the pair, for the tokenization-parity test.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Model` if encoding fails.
+    #[doc(hidden)]
+    pub fn tokenize_for_test(&self, query: &str, passage: &str) -> Result<(Vec<u32>, Vec<u32>)> {
+        let enc = self.encode(query, passage)?;
+        Ok((enc.get_ids().to_vec(), enc.get_type_ids().to_vec()))
+    }
+
+    /// The reference's call, literally: `tokenizer(query, passage, truncation=True,
+    /// max_length=512)` — and an empty passage is falsy there, so the query is encoded alone
+    /// (research D4).
+    fn encode(&self, query: &str, passage: &str) -> Result<tokenizers::Encoding> {
+        let result = if passage.is_empty() {
+            self.tokenizer.encode(query, true)
+        } else {
+            self.tokenizer.encode((query, passage), true)
+        };
+        result.map_err(|e| model_err(format!("cannot encode pair: {e}")))
+    }
+
+    /// Score one query–passage pair: one forward pass at the pair's own length, then the
+    /// classification head on the CLS row.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Model` if encoding or the forward pass fails, or the logit is not finite (FR-008).
+    pub fn score(&self, query: &str, passage: &str) -> Result<f32> {
+        let enc = self.encode(query, passage)?;
+        let seq = enc.get_ids().len();
+        let ids = self.tensor(enc.get_ids(), seq, "input_ids")?;
+        let type_ids = self.tensor(enc.get_type_ids(), seq, "token_type_ids")?;
+
+        // No padding ⇒ the attention mask is all ones, which `None` means in candle 0.9.2.
+        let hidden = self
+            .encoder
+            .forward(&ids, &type_ids, None)
+            .map_err(|e| model_err(format!("forward pass: {e}")))?;
+        let cls = hidden
+            .narrow(1, 0, 1)
+            .and_then(|t| t.squeeze(1))
+            .map_err(|e| model_err(format!("cls row: {e}")))?;
+        let pooled = self
+            .pooler
+            .forward(&cls)
+            .and_then(|t| t.tanh())
+            .map_err(|e| model_err(format!("pooler: {e}")))?;
+        let logit: f32 = self
+            .classifier
+            .forward(&pooled)
+            .and_then(|t| t.squeeze(1))
+            .and_then(|t| t.squeeze(0))
+            .and_then(|t| t.to_scalar::<f32>())
+            .map_err(|e| model_err(format!("classifier: {e}")))?;
+        if !logit.is_finite() {
+            return Err(model_err(format!(
+                "model produced a non-finite score {logit}"
+            )));
+        }
+        Ok(logit)
+    }
+
+    fn tensor(&self, data: &[u32], seq: usize, what: &str) -> Result<Tensor> {
+        Tensor::new(data, &self.device)
+            .and_then(|t| t.reshape((1, seq)))
+            .map_err(|e| model_err(format!("{what} tensor: {e}")))
+    }
+}
+
+impl Reranker for MiniLmCrossEncoder {
+    fn model_id(&self) -> &str {
+        MODEL_ID
+    }
+
+    fn rerank(
+        &self,
+        query: &str,
+        passages: &[Passage<'_>],
+        budget: &Budget,
+    ) -> Result<Vec<Option<f32>>> {
+        crate::budget::rerank_with(&|q, p| self.score(q, p), query, passages, budget)
+    }
+}
+
+/// Parse and assert `config.json` (FR-002). The bytes were verified by `verify_files`.
+fn load_config(dir: &Path) -> Result<Config> {
+    let path = dir.join(PINNED.files[0].name);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
+    let config: Config = serde_json::from_str(&text)
+        .map_err(|e| model_err(format!("cannot parse {}: {e}", path.display())))?;
+    let raw: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| model_err(format!("cannot parse {}: {e}", path.display())))?;
+
+    let assert = |name: &str, actual: usize, expected: usize| {
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(model_err(format!(
+                "config.json {name} is {actual}, expected {expected}"
+            )))
+        }
+    };
+    assert("hidden_size", config.hidden_size, PINNED.hidden)?;
+    assert("vocab_size", config.vocab_size, 30_522)?;
+    assert("pad_token_id", config.pad_token_id, 0)?;
+    if config.max_position_embeddings < PINNED.max_tokens {
+        return Err(model_err(format!(
+            "config.json max_position_embeddings is {}, below the {} tokens a pair may have",
+            config.max_position_embeddings, PINNED.max_tokens
+        )));
+    }
+    match raw.get("model_type").and_then(serde_json::Value::as_str) {
+        Some("bert") => {}
+        other => {
+            return Err(model_err(format!(
+                "config.json model_type is {other:?}, expected \"bert\""
+            )));
+        }
+    }
+    let architectures = raw
+        .get("architectures")
+        .and_then(serde_json::Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(serde_json::Value::as_str)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !architectures.contains(&"BertForSequenceClassification") {
+        return Err(model_err(format!(
+            "config.json architectures is {architectures:?}, expected BertForSequenceClassification"
+        )));
+    }
+    let labels = raw
+        .get("id2label")
+        .and_then(serde_json::Value::as_object)
+        .map_or(0, serde_json::Map::len);
+    if labels != 1 {
+        return Err(model_err(format!(
+            "config.json id2label has {labels} entries, expected exactly 1 (a single relevance logit)"
+        )));
+    }
+    Ok(config)
+}
+
+/// Build the tokenizer from the verified bytes with the reference's truncation: `longest_first`
+/// at 512 (the `tokenizers` default strategy), no padding (research D4).
+fn load_tokenizer(dir: &Path) -> Result<Tokenizer> {
+    let path = dir.join(PINNED.files[1].name);
+    let bytes = std::fs::read(&path)
+        .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
+    let mut tokenizer = Tokenizer::from_bytes(&bytes)
+        .map_err(|e| model_err(format!("cannot load {}: {e}", path.display())))?;
+    tokenizer
+        .with_truncation(Some(TruncationParams {
+            max_length: PINNED.max_tokens,
+            ..TruncationParams::default()
+        }))
+        .map_err(|e| model_err(format!("cannot set truncation: {e}")))?;
+    tokenizer.with_padding(None);
+    for (token, expected) in [("[PAD]", 0), ("[CLS]", 101), ("[SEP]", 102)] {
+        match tokenizer.token_to_id(token) {
+            Some(id) if id == expected => {}
+            other => {
+                return Err(model_err(format!(
+                    "tokenizer.json maps {token} to {other:?}, expected {expected}"
+                )));
+            }
+        }
+    }
+    Ok(tokenizer)
+}
+
+/// Assert the safetensors header: exactly `f32_tensors` `F32` tensors, only
+/// `bert.embeddings.position_ids` as `I64`, and the classifier's shape (research D2 — a
+/// quantised variant or a model without the head differs here).
+fn assert_weights_header(bytes: &[u8]) -> Result<()> {
+    let name = PINNED.files[2].name;
+    let Some(len_bytes) = bytes.get(..8) else {
+        return Err(model_err(format!(
+            "{name}: shorter than a safetensors header"
+        )));
+    };
+    let header_len = usize::try_from(u64::from_le_bytes(
+        len_bytes
+            .try_into()
+            .map_err(|_| model_err(format!("{name}: bad header length")))?,
+    ))
+    .map_err(|e| model_err(format!("{name}: implausible header length: {e}")))?;
+    let Some(header_bytes) = bytes.get(8..8 + header_len) else {
+        return Err(model_err(format!(
+            "{name}: header length {header_len} exceeds the file"
+        )));
+    };
+    let header: serde_json::Value = serde_json::from_slice(header_bytes)
+        .map_err(|e| model_err(format!("{name}: header is not JSON: {e}")))?;
+    let tensors = header
+        .as_object()
+        .ok_or_else(|| model_err(format!("{name}: header is not an object")))?;
+    let mut f32_tensors = 0usize;
+    for (tensor, meta) in tensors {
+        if tensor == "__metadata__" {
+            continue;
+        }
+        match meta.get("dtype").and_then(serde_json::Value::as_str) {
+            Some("F32") => f32_tensors += 1,
+            // An integer index buffer, not a weight; `I64` in the published fp32 model.
+            Some("I64") if tensor == "bert.embeddings.position_ids" => {}
+            other => {
+                return Err(model_err(format!(
+                    "{name}: tensor {tensor} has dtype {other:?}; the pin is as-published f32 weights"
+                )));
+            }
+        }
+    }
+    if f32_tensors != PINNED.f32_tensors {
+        return Err(model_err(format!(
+            "{name}: {f32_tensors} F32 tensors, expected {} — not the pinned fp32 model",
+            PINNED.f32_tensors
+        )));
+    }
+    let classifier_shape: Vec<u64> = tensors
+        .get("classifier.weight")
+        .and_then(|m| m.get("shape"))
+        .and_then(serde_json::Value::as_array)
+        .map(|a| a.iter().filter_map(serde_json::Value::as_u64).collect())
+        .unwrap_or_default();
+    if classifier_shape != [1, PINNED.hidden as u64] {
+        return Err(model_err(format!(
+            "{name}: classifier.weight has shape {classifier_shape:?}, expected [1, {}]",
+            PINNED.hidden
+        )));
+    }
+    Ok(())
+}

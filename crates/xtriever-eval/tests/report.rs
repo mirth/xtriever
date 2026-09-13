@@ -231,6 +231,8 @@ fn stage_is_the_last_key_and_round_trips() {
         load_path: "buffered".into(),
         thread_count: 4,
         baseline: "absolute".into(),
+        reranker_model_id: None,
+        rerank_depth: None,
     });
     let json = serde_json::to_string_pretty(&r).unwrap();
     let keys: Vec<&str> = json

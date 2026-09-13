@@ -31,6 +31,8 @@ passages (`title + " " + text`), candidate depth 100 per stage, RRF `k = 60`, `k
 load path, `RAYON_NUM_THREADS=4`. Every dataset ingested from the Feature 004 embedding cache by
 value: **0 documents embedded**.
 
+> **Baseline commit**: `27978b1a3a0c0dd420a109625e2111098e50837e`
+
 | dataset | nDCG@10 | Recall@100 | BEIR-rounded | scored | `--verify-run` | `--verify-fusion` |
 |---|---|---|---|---|---|---|
 | SciFact | **0.689727** | 0.941667 | 0.68973 / 0.94167 | 300 | PASS | 300 / 300 |
