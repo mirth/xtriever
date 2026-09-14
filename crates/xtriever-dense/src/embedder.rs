@@ -22,6 +22,9 @@ use crate::{LoadPath, bytes};
 /// The pinned `all-MiniLM-L6-v2` embedder.
 pub struct MiniLmEmbedder {
     tokenizer: Tokenizer,
+    /// The same `tokenizer.json` without truncation or padding — answers "how many positions
+    /// would this text need?" (Feature 008 D7). The embedding path never uses it.
+    counter: Tokenizer,
     model: BertModel,
     device: Device,
     load_path: LoadPath,
@@ -52,6 +55,7 @@ impl MiniLmEmbedder {
 
         let config = load_config(dir)?;
         let tokenizer = load_tokenizer(dir)?;
+        let counter = load_counter(dir)?;
 
         let weights_path = dir.join(PINNED.files[2].name);
         let weights = bytes::read(&weights_path, load_path)?;
@@ -68,6 +72,7 @@ impl MiniLmEmbedder {
 
         Ok(Self {
             tokenizer,
+            counter,
             model,
             device,
             load_path,
@@ -95,6 +100,25 @@ impl MiniLmEmbedder {
     pub fn tokenize_for_test(&self, text: &str) -> Result<(Vec<u32>, Vec<u32>)> {
         let enc = self.encode(text)?;
         Ok((enc.get_ids().to_vec(), enc.get_attention_mask().to_vec()))
+    }
+
+    /// The number of positions `text` needs to be seen whole — `[CLS]`, its word-pieces,
+    /// `[SEP]` — with **no truncation**: a text longer than the window counts past 256.
+    ///
+    /// The embedder itself truncates and pads to `max_tokens`, so this is the only way to ask
+    /// whether a passage fits; Feature 008's chunker budgets on `token_count(unit) - 2`, the
+    /// content pieces, which are additive over whitespace-joined units (the BERT pre-tokenizer
+    /// splits on whitespace and punctuation before WordPiece runs per word). The embedding
+    /// behaviour and `MODEL_ID` are unchanged by this method.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Model` if encoding fails.
+    pub fn token_count(&self, text: &str) -> Result<usize> {
+        self.counter
+            .encode(text, true)
+            .map(|enc| enc.get_ids().len())
+            .map_err(|e| model_err(format!("cannot encode text: {e}")))
     }
 
     fn encode(&self, text: &str) -> Result<tokenizers::Encoding> {
@@ -231,6 +255,22 @@ fn load_config(dir: &Path) -> Result<Config> {
         }
     }
     Ok(config)
+}
+
+/// The counting tokenizer: the verified `tokenizer.json` with truncation and padding removed
+/// (`Tokenizer::with_truncation(None)`, `with_padding(None)`), so an encoding's length is the
+/// text's true position count (Feature 008 D7).
+fn load_counter(dir: &Path) -> Result<Tokenizer> {
+    let path = dir.join(PINNED.files[1].name);
+    let bytes = std::fs::read(&path)
+        .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
+    let mut tokenizer = Tokenizer::from_bytes(&bytes)
+        .map_err(|e| model_err(format!("cannot load {}: {e}", path.display())))?;
+    tokenizer
+        .with_truncation(None)
+        .map_err(|e| model_err(format!("cannot clear truncation: {e}")))?;
+    tokenizer.with_padding(None);
+    Ok(tokenizer)
 }
 
 /// Build the tokenizer from the verified bytes with the sentence-transformers overrides:

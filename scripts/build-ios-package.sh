@@ -7,12 +7,15 @@
 # Rust; the resources are pinned elsewhere). Feature 007 — replaces the 001 spike's
 # build-ios-harness.sh and encodes the traps that spike recorded (001 report F-004–F-008).
 #
-#     scripts/build-ios-package.sh [--debug] [--with-models] [--with-fixtures] [--with-scifact] [--app]
+#     scripts/build-ios-package.sh [--debug] [--with-models] [--with-fixtures] [--with-scifact] [--with-wiki|--with-wiki-dev] [--app]
 #
 #   --with-models    stage both pinned models into the library bundle (~175 MB; needed by every
 #                    Swift test and by any device run — a device has no host filesystem)
 #   --with-fixtures  build the 40-document parity fixture index + goldens and stage them
 #   --with-scifact   stage the SciFact hybrid-rerank index and the measurement queries/truth
+#   --with-wiki      stage the Feature 008 Wikipedia index from target/xt-wiki (index, build
+#                    record, attribution, queries, host goldens); fails over the bundle budget
+#   --with-wiki-dev  the same from target/xt-wiki-dev (a --limit build) — simulator work only
 #   --app            regenerate swift/XtrieverHarnessApp/*.xcodeproj (needs xcodegen)
 #
 # Prerequisite: scripts/check-toolchain.sh must pass. A cross-target build recorded without it
@@ -28,6 +31,7 @@ profile_flag="--release"
 with_models=false
 with_fixtures=false
 with_scifact=false
+with_wiki=""
 with_app=false
 for arg in "$@"; do
     case "$arg" in
@@ -35,6 +39,8 @@ for arg in "$@"; do
         --with-models)   with_models=true ;;
         --with-fixtures) with_fixtures=true ;;
         --with-scifact)  with_scifact=true ;;
+        --with-wiki)     with_wiki="target/xt-wiki" ;;
+        --with-wiki-dev) with_wiki="target/xt-wiki-dev" ;;
         --app)           with_app=true ;;
         *) echo "unknown option: $arg" >&2; exit 1 ;;
     esac
@@ -157,6 +163,39 @@ EOF
     cargo run -q --release -p xtriever-ffi --example fixture_index -- --scifact \
         "$scifact_index" "$resources/scifact/queries.json" "$resources/scifact/expected-scifact.json"
     printf '    SciFact staged (%s)\n' "$(du -sh "$resources/scifact" | cut -f1)"
+fi
+
+if [ -n "$with_wiki" ]; then
+    wiki="$repo_root/$with_wiki"
+    if [ ! -f "$wiki/index/xtriever-pipeline.json" ]; then
+        printf 'build-ios-package: FAIL — no Wikipedia index at %s. Build it with:\n' "$wiki" >&2
+        printf '  RAYON_NUM_THREADS=1 cargo run --release -p xtriever-cli -- wiki build --out %s --cache-dir target/xt-wiki-cache%s\n' \
+            "$with_wiki" "$([ "$with_wiki" = target/xt-wiki-dev ] && printf ' --limit 2000')" >&2
+        exit 1
+    fi
+    for f in wiki-build.json ATTRIBUTION.txt expected.json; do
+        [ -f "$wiki/$f" ] || { printf 'build-ios-package: FAIL — %s/%s missing (run `xtriever wiki expected` for expected.json)\n' "$wiki" "$f" >&2; exit 1; }
+    done
+    rm -rf "$resources/wikipedia"; mkdir -p "$resources/wikipedia"
+    cp -R "$wiki/index" "$resources/wikipedia/index"
+    cp "$wiki/wiki-build.json" "$wiki/ATTRIBUTION.txt" "$wiki/expected.json" "$resources/wikipedia/"
+    cp "$repo_root/reference/fixtures/008/queries.json" "$resources/wikipedia/queries.json"
+    if [ "$with_wiki" = target/xt-wiki-dev ]; then
+        printf '    Wikipedia DEV index staged (%s) — a --limit build; not the artefact\n' "$(du -sh "$resources/wikipedia" | cut -f1)"
+    else
+        printf '    Wikipedia index staged (%s)\n' "$(du -sh "$resources/wikipedia" | cut -f1)"
+    fi
+    # The bundle budget (contracts/artefact.md "Staging"): 2,000,000,000 bytes for everything
+    # staged. A miss is a build failure with the number, never a quiet oversize app.
+    budget=2000000000
+    # Logical file sizes (what the bundle carries), not allocated blocks: APFS compression,
+    # clones and block rounding make `du` the wrong instrument for a byte contract.
+    staged_bytes="$(find "$resources" -type f -exec stat -f%z {} + | awk '{s += $1} END {print s + 0}')"
+    if [ "$staged_bytes" -gt "$budget" ]; then
+        printf 'build-ios-package: FAIL — staged resources are %s bytes, over the %s-byte bundle budget\n' "$staged_bytes" "$budget" >&2
+        exit 1
+    fi
+    printf '    staged resources %s bytes of the %s-byte budget\n' "$staged_bytes" "$budget"
 fi
 
 if [ "$with_app" = true ]; then

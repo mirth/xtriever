@@ -22,6 +22,7 @@ mod error;
 mod filter;
 mod index;
 mod query;
+mod readonly;
 mod schema;
 mod search;
 mod stats;

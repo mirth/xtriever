@@ -15,8 +15,7 @@ pub struct XtrieverIndex { /* Mutex<HybridIndex>, load timings */ }
 #[uniffi::export]
 impl XtrieverIndex {
     /// Open a hybrid index read-only with the pinned embedder and, optionally, the pinned re-ranker.
-    /// The content is never modified, but `index_dir` must be writable: the lexical backend opens its
-    /// lock file for writing at every open (F-001) — copy a bundled index out first.
+    /// Locked open when the directory permits; lock-free only when it refuses the lock file (an app bundle) — 008 D11.
     #[uniffi::constructor]
     pub fn open(index_dir: String, embedder_dir: String, reranker_dir: Option<String>, load_path: LoadPath) -> Result<Arc<Self>, XtrieverError>;
     /// Identity and configuration of the open index.

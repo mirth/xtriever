@@ -75,3 +75,9 @@ print(response.stages)      // what ran, what was skipped and why, how many were
 `search` never blocks the caller; calls on one instance run one at a time; cancelling the task
 drops the result when it arrives (the time budget is the bound). Every engine error is a
 `XtrieverError` case with the engine's message (`error.message`).
+
+The index directory may live inside the app bundle: it is opened **in place**, read-only, with
+nothing created in it (Feature 008). For the Wikipedia corpus, `hit.titleAndPassage` splits the
+stored text at its title line and `hit.wikipediaURL` is the article's URL (derived from the
+title exactly as the build verified against the snapshot); `HarnessResources.wikipediaAttribution`
+is the licence text the app must show.

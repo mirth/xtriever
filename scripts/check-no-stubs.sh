@@ -10,11 +10,13 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Features 002–005 use the same device: `xtriever-lexical`'s scaffold module returns
 # `Error::backend(NotImplemented(..))` from every method until the real modules replace it (T060).
+# Feature 008's binary crate uses `anyhow::bail!("not implemented")` for the same purpose.
 status=0
-for crate in xtriever-ffi xtriever-lexical xtriever-eval xtriever-dense xtriever-pipeline xtriever-rerank; do
-    if grep -rq 'NotImplemented' "$repo_root/crates/$crate/src/"; then
-        printf 'check-no-stubs: FAIL — NotImplemented scaffolding still present in crates/%s/src/:\n' "$crate" >&2
-        grep -rn 'NotImplemented' "$repo_root/crates/$crate/src/" | sed 's/^/  /' >&2
+crates="xtriever-ffi xtriever-lexical xtriever-eval xtriever-dense xtriever-pipeline xtriever-rerank xtriever-analysis xtriever-cli"
+for crate in $crates; do
+    if grep -rqE 'NotImplemented|"not implemented"' "$repo_root/crates/$crate/src/"; then
+        printf 'check-no-stubs: FAIL — scaffolding still present in crates/%s/src/:\n' "$crate" >&2
+        grep -rnE 'NotImplemented|"not implemented"' "$repo_root/crates/$crate/src/" | sed 's/^/  /' >&2
         status=1
     fi
 done
@@ -22,4 +24,4 @@ if [ "$status" -ne 0 ]; then
     printf '  The operations are implemented; the scaffold must be removed.\n' >&2
     exit 1
 fi
-printf 'check-no-stubs: PASS — no scaffolding left in crates/{xtriever-ffi,xtriever-lexical,xtriever-eval,xtriever-dense,xtriever-pipeline,xtriever-rerank}/src/\n'
+printf 'check-no-stubs: PASS — no scaffolding left in crates/{%s}/src/\n' "$(echo $crates | tr ' ' ',')"

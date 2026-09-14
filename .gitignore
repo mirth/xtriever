@@ -38,3 +38,9 @@ build/
 # BEIR evaluation datasets: ~23 MB fetched by scripts/fetch-beir.sh, pinned by hash in
 # reference/datasets/beir-manifest.json, never committed (Feature 003 FR-008).
 reference/datasets/beir/
+
+# Simple English Wikipedia snapshot (Feature 008): 157 MB parquet + ~300 MB JSONL fetched by
+# scripts/fetch-wiki.sh, pinned by hash in reference/datasets/wiki-manifest.json, never
+# committed. The built index (target/xt-wiki*) and its embedding cache are under target/; the
+# staged copy lives under swift/Xtriever/Sources/Xtriever/XtrieverData/ (already ignored above).
+reference/datasets/wiki/

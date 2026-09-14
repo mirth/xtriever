@@ -1,0 +1,1510 @@
+[
+ {
+  "name": "single paragraph under budget",
+  "budget": 1,
+  "body": "The quick brown fox jumps over the lazy dog.",
+  "passages": [
+   {
+    "text": "The",
+    "byte_range": [
+     0,
+     3
+    ],
+    "cost": 1
+   },
+   {
+    "text": "quick",
+    "byte_range": [
+     4,
+     9
+    ],
+    "cost": 1
+   },
+   {
+    "text": "brown",
+    "byte_range": [
+     10,
+     15
+    ],
+    "cost": 1
+   },
+   {
+    "text": "fox",
+    "byte_range": [
+     16,
+     19
+    ],
+    "cost": 1
+   },
+   {
+    "text": "jumps",
+    "byte_range": [
+     20,
+     25
+    ],
+    "cost": 1
+   },
+   {
+    "text": "over",
+    "byte_range": [
+     26,
+     30
+    ],
+    "cost": 1
+   },
+   {
+    "text": "the",
+    "byte_range": [
+     31,
+     34
+    ],
+    "cost": 1
+   },
+   {
+    "text": "lazy",
+    "byte_range": [
+     35,
+     39
+    ],
+    "cost": 1
+   },
+   {
+    "text": "dog.",
+    "byte_range": [
+     40,
+     44
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "single paragraph under budget",
+  "budget": 3,
+  "body": "The quick brown fox jumps over the lazy dog.",
+  "passages": [
+   {
+    "text": "The quick brown",
+    "byte_range": [
+     0,
+     15
+    ],
+    "cost": 3
+   },
+   {
+    "text": "fox jumps over",
+    "byte_range": [
+     16,
+     30
+    ],
+    "cost": 3
+   },
+   {
+    "text": "the lazy dog.",
+    "byte_range": [
+     31,
+     44
+    ],
+    "cost": 3
+   }
+  ]
+ },
+ {
+  "name": "single paragraph under budget",
+  "budget": 8,
+  "body": "The quick brown fox jumps over the lazy dog.",
+  "passages": [
+   {
+    "text": "The quick brown fox jumps over the lazy",
+    "byte_range": [
+     0,
+     39
+    ],
+    "cost": 8
+   },
+   {
+    "text": "dog.",
+    "byte_range": [
+     40,
+     44
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "single paragraph under budget",
+  "budget": 40,
+  "body": "The quick brown fox jumps over the lazy dog.",
+  "passages": [
+   {
+    "text": "The quick brown fox jumps over the lazy dog.",
+    "byte_range": [
+     0,
+     44
+    ],
+    "cost": 9
+   }
+  ]
+ },
+ {
+  "name": "two paragraphs packed",
+  "budget": 1,
+  "body": "One two three.\n\nFour five six.",
+  "passages": [
+   {
+    "text": "One",
+    "byte_range": [
+     0,
+     3
+    ],
+    "cost": 1
+   },
+   {
+    "text": "two",
+    "byte_range": [
+     4,
+     7
+    ],
+    "cost": 1
+   },
+   {
+    "text": "three.",
+    "byte_range": [
+     8,
+     14
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Four",
+    "byte_range": [
+     16,
+     20
+    ],
+    "cost": 1
+   },
+   {
+    "text": "five",
+    "byte_range": [
+     21,
+     25
+    ],
+    "cost": 1
+   },
+   {
+    "text": "six.",
+    "byte_range": [
+     26,
+     30
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "two paragraphs packed",
+  "budget": 3,
+  "body": "One two three.\n\nFour five six.",
+  "passages": [
+   {
+    "text": "One two three.",
+    "byte_range": [
+     0,
+     14
+    ],
+    "cost": 3
+   },
+   {
+    "text": "Four five six.",
+    "byte_range": [
+     16,
+     30
+    ],
+    "cost": 3
+   }
+  ]
+ },
+ {
+  "name": "two paragraphs packed",
+  "budget": 8,
+  "body": "One two three.\n\nFour five six.",
+  "passages": [
+   {
+    "text": "One two three.\nFour five six.",
+    "byte_range": [
+     0,
+     30
+    ],
+    "cost": 6
+   }
+  ]
+ },
+ {
+  "name": "two paragraphs packed",
+  "budget": 40,
+  "body": "One two three.\n\nFour five six.",
+  "passages": [
+   {
+    "text": "One two three.\nFour five six.",
+    "byte_range": [
+     0,
+     30
+    ],
+    "cost": 6
+   }
+  ]
+ },
+ {
+  "name": "paragraph over budget splits to sentences",
+  "budget": 1,
+  "body": "First sentence here. Second sentence there! Third one? Fourth.",
+  "passages": [
+   {
+    "text": "First",
+    "byte_range": [
+     0,
+     5
+    ],
+    "cost": 1
+   },
+   {
+    "text": "sentence",
+    "byte_range": [
+     6,
+     14
+    ],
+    "cost": 1
+   },
+   {
+    "text": "here.",
+    "byte_range": [
+     15,
+     20
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Second",
+    "byte_range": [
+     21,
+     27
+    ],
+    "cost": 1
+   },
+   {
+    "text": "sentence",
+    "byte_range": [
+     28,
+     36
+    ],
+    "cost": 1
+   },
+   {
+    "text": "there!",
+    "byte_range": [
+     37,
+     43
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Third",
+    "byte_range": [
+     44,
+     49
+    ],
+    "cost": 1
+   },
+   {
+    "text": "one?",
+    "byte_range": [
+     50,
+     54
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Fourth.",
+    "byte_range": [
+     55,
+     62
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "paragraph over budget splits to sentences",
+  "budget": 3,
+  "body": "First sentence here. Second sentence there! Third one? Fourth.",
+  "passages": [
+   {
+    "text": "First sentence here.",
+    "byte_range": [
+     0,
+     20
+    ],
+    "cost": 3
+   },
+   {
+    "text": "Second sentence there!",
+    "byte_range": [
+     21,
+     43
+    ],
+    "cost": 3
+   },
+   {
+    "text": "Third one? Fourth.",
+    "byte_range": [
+     44,
+     62
+    ],
+    "cost": 3
+   }
+  ]
+ },
+ {
+  "name": "paragraph over budget splits to sentences",
+  "budget": 8,
+  "body": "First sentence here. Second sentence there! Third one? Fourth.",
+  "passages": [
+   {
+    "text": "First sentence here. Second sentence there! Third one?",
+    "byte_range": [
+     0,
+     54
+    ],
+    "cost": 8
+   },
+   {
+    "text": "Fourth.",
+    "byte_range": [
+     55,
+     62
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "paragraph over budget splits to sentences",
+  "budget": 40,
+  "body": "First sentence here. Second sentence there! Third one? Fourth.",
+  "passages": [
+   {
+    "text": "First sentence here. Second sentence there! Third one? Fourth.",
+    "byte_range": [
+     0,
+     62
+    ],
+    "cost": 9
+   }
+  ]
+ },
+ {
+  "name": "sentence over budget splits to words",
+  "budget": 1,
+  "body": "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+  "passages": [
+   {
+    "text": "alpha",
+    "byte_range": [
+     0,
+     5
+    ],
+    "cost": 1
+   },
+   {
+    "text": "beta",
+    "byte_range": [
+     6,
+     10
+    ],
+    "cost": 1
+   },
+   {
+    "text": "gamma",
+    "byte_range": [
+     11,
+     16
+    ],
+    "cost": 1
+   },
+   {
+    "text": "delta",
+    "byte_range": [
+     17,
+     22
+    ],
+    "cost": 1
+   },
+   {
+    "text": "epsilon",
+    "byte_range": [
+     23,
+     30
+    ],
+    "cost": 1
+   },
+   {
+    "text": "zeta",
+    "byte_range": [
+     31,
+     35
+    ],
+    "cost": 1
+   },
+   {
+    "text": "eta",
+    "byte_range": [
+     36,
+     39
+    ],
+    "cost": 1
+   },
+   {
+    "text": "theta",
+    "byte_range": [
+     40,
+     45
+    ],
+    "cost": 1
+   },
+   {
+    "text": "iota",
+    "byte_range": [
+     46,
+     50
+    ],
+    "cost": 1
+   },
+   {
+    "text": "kappa",
+    "byte_range": [
+     51,
+     56
+    ],
+    "cost": 1
+   },
+   {
+    "text": "lambda",
+    "byte_range": [
+     57,
+     63
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "sentence over budget splits to words",
+  "budget": 3,
+  "body": "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+  "passages": [
+   {
+    "text": "alpha beta gamma",
+    "byte_range": [
+     0,
+     16
+    ],
+    "cost": 3
+   },
+   {
+    "text": "delta epsilon zeta",
+    "byte_range": [
+     17,
+     35
+    ],
+    "cost": 3
+   },
+   {
+    "text": "eta theta iota",
+    "byte_range": [
+     36,
+     50
+    ],
+    "cost": 3
+   },
+   {
+    "text": "kappa lambda",
+    "byte_range": [
+     51,
+     63
+    ],
+    "cost": 2
+   }
+  ]
+ },
+ {
+  "name": "sentence over budget splits to words",
+  "budget": 8,
+  "body": "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+  "passages": [
+   {
+    "text": "alpha beta gamma delta epsilon zeta eta theta",
+    "byte_range": [
+     0,
+     45
+    ],
+    "cost": 8
+   },
+   {
+    "text": "iota kappa lambda",
+    "byte_range": [
+     46,
+     63
+    ],
+    "cost": 3
+   }
+  ]
+ },
+ {
+  "name": "sentence over budget splits to words",
+  "budget": 40,
+  "body": "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+  "passages": [
+   {
+    "text": "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+    "byte_range": [
+     0,
+     63
+    ],
+    "cost": 11
+   }
+  ]
+ },
+ {
+  "name": "mr smith is two sentences",
+  "budget": 1,
+  "body": "Mr. Smith went to Washington. He came back.",
+  "passages": [
+   {
+    "text": "Mr.",
+    "byte_range": [
+     0,
+     3
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Smith",
+    "byte_range": [
+     4,
+     9
+    ],
+    "cost": 1
+   },
+   {
+    "text": "went",
+    "byte_range": [
+     10,
+     14
+    ],
+    "cost": 1
+   },
+   {
+    "text": "to",
+    "byte_range": [
+     15,
+     17
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Washington.",
+    "byte_range": [
+     18,
+     29
+    ],
+    "cost": 1
+   },
+   {
+    "text": "He",
+    "byte_range": [
+     30,
+     32
+    ],
+    "cost": 1
+   },
+   {
+    "text": "came",
+    "byte_range": [
+     33,
+     37
+    ],
+    "cost": 1
+   },
+   {
+    "text": "back.",
+    "byte_range": [
+     38,
+     43
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "mr smith is two sentences",
+  "budget": 3,
+  "body": "Mr. Smith went to Washington. He came back.",
+  "passages": [
+   {
+    "text": "Mr. Smith went",
+    "byte_range": [
+     0,
+     14
+    ],
+    "cost": 3
+   },
+   {
+    "text": "to Washington.",
+    "byte_range": [
+     15,
+     29
+    ],
+    "cost": 2
+   },
+   {
+    "text": "He came back.",
+    "byte_range": [
+     30,
+     43
+    ],
+    "cost": 3
+   }
+  ]
+ },
+ {
+  "name": "mr smith is two sentences",
+  "budget": 8,
+  "body": "Mr. Smith went to Washington. He came back.",
+  "passages": [
+   {
+    "text": "Mr. Smith went to Washington. He came back.",
+    "byte_range": [
+     0,
+     43
+    ],
+    "cost": 8
+   }
+  ]
+ },
+ {
+  "name": "mr smith is two sentences",
+  "budget": 40,
+  "body": "Mr. Smith went to Washington. He came back.",
+  "passages": [
+   {
+    "text": "Mr. Smith went to Washington. He came back.",
+    "byte_range": [
+     0,
+     43
+    ],
+    "cost": 8
+   }
+  ]
+ },
+ {
+  "name": "blank lines with tab and cr runs",
+  "budget": 1,
+  "body": "Para one.\n \t\r\nPara two.\n\n\n\nPara three.",
+  "passages": [
+   {
+    "text": "Para",
+    "byte_range": [
+     0,
+     4
+    ],
+    "cost": 1
+   },
+   {
+    "text": "one.",
+    "byte_range": [
+     5,
+     9
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Para",
+    "byte_range": [
+     14,
+     18
+    ],
+    "cost": 1
+   },
+   {
+    "text": "two.",
+    "byte_range": [
+     19,
+     23
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Para",
+    "byte_range": [
+     27,
+     31
+    ],
+    "cost": 1
+   },
+   {
+    "text": "three.",
+    "byte_range": [
+     32,
+     38
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "blank lines with tab and cr runs",
+  "budget": 3,
+  "body": "Para one.\n \t\r\nPara two.\n\n\n\nPara three.",
+  "passages": [
+   {
+    "text": "Para one.",
+    "byte_range": [
+     0,
+     9
+    ],
+    "cost": 2
+   },
+   {
+    "text": "Para two.",
+    "byte_range": [
+     14,
+     23
+    ],
+    "cost": 2
+   },
+   {
+    "text": "Para three.",
+    "byte_range": [
+     27,
+     38
+    ],
+    "cost": 2
+   }
+  ]
+ },
+ {
+  "name": "blank lines with tab and cr runs",
+  "budget": 8,
+  "body": "Para one.\n \t\r\nPara two.\n\n\n\nPara three.",
+  "passages": [
+   {
+    "text": "Para one.\nPara two.\nPara three.",
+    "byte_range": [
+     0,
+     38
+    ],
+    "cost": 6
+   }
+  ]
+ },
+ {
+  "name": "blank lines with tab and cr runs",
+  "budget": 40,
+  "body": "Para one.\n \t\r\nPara two.\n\n\n\nPara three.",
+  "passages": [
+   {
+    "text": "Para one.\nPara two.\nPara three.",
+    "byte_range": [
+     0,
+     38
+    ],
+    "cost": 6
+   }
+  ]
+ },
+ {
+  "name": "leading and trailing whitespace",
+  "budget": 1,
+  "body": "   \n  Leading spaces.  \n\n  Trailing too.   \n\n",
+  "passages": [
+   {
+    "text": "Leading",
+    "byte_range": [
+     6,
+     13
+    ],
+    "cost": 1
+   },
+   {
+    "text": "spaces.",
+    "byte_range": [
+     14,
+     21
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Trailing",
+    "byte_range": [
+     27,
+     35
+    ],
+    "cost": 1
+   },
+   {
+    "text": "too.",
+    "byte_range": [
+     36,
+     40
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "leading and trailing whitespace",
+  "budget": 3,
+  "body": "   \n  Leading spaces.  \n\n  Trailing too.   \n\n",
+  "passages": [
+   {
+    "text": "Leading spaces.",
+    "byte_range": [
+     6,
+     21
+    ],
+    "cost": 2
+   },
+   {
+    "text": "Trailing too.",
+    "byte_range": [
+     27,
+     40
+    ],
+    "cost": 2
+   }
+  ]
+ },
+ {
+  "name": "leading and trailing whitespace",
+  "budget": 8,
+  "body": "   \n  Leading spaces.  \n\n  Trailing too.   \n\n",
+  "passages": [
+   {
+    "text": "Leading spaces.\nTrailing too.",
+    "byte_range": [
+     6,
+     40
+    ],
+    "cost": 4
+   }
+  ]
+ },
+ {
+  "name": "leading and trailing whitespace",
+  "budget": 40,
+  "body": "   \n  Leading spaces.  \n\n  Trailing too.   \n\n",
+  "passages": [
+   {
+    "text": "Leading spaces.\nTrailing too.",
+    "byte_range": [
+     6,
+     40
+    ],
+    "cost": 4
+   }
+  ]
+ },
+ {
+  "name": "internal whitespace runs collapsed",
+  "budget": 1,
+  "body": "many    spaces\tand\ttabs nbsp　ideographic here",
+  "passages": [
+   {
+    "text": "many",
+    "byte_range": [
+     0,
+     4
+    ],
+    "cost": 1
+   },
+   {
+    "text": "spaces",
+    "byte_range": [
+     8,
+     14
+    ],
+    "cost": 1
+   },
+   {
+    "text": "and",
+    "byte_range": [
+     15,
+     18
+    ],
+    "cost": 1
+   },
+   {
+    "text": "tabs",
+    "byte_range": [
+     19,
+     23
+    ],
+    "cost": 1
+   },
+   {
+    "text": "nbsp",
+    "byte_range": [
+     25,
+     29
+    ],
+    "cost": 1
+   },
+   {
+    "text": "ideographic",
+    "byte_range": [
+     32,
+     43
+    ],
+    "cost": 1
+   },
+   {
+    "text": "here",
+    "byte_range": [
+     44,
+     48
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "internal whitespace runs collapsed",
+  "budget": 3,
+  "body": "many    spaces\tand\ttabs nbsp　ideographic here",
+  "passages": [
+   {
+    "text": "many spaces and",
+    "byte_range": [
+     0,
+     18
+    ],
+    "cost": 3
+   },
+   {
+    "text": "tabs nbsp ideographic",
+    "byte_range": [
+     19,
+     43
+    ],
+    "cost": 3
+   },
+   {
+    "text": "here",
+    "byte_range": [
+     44,
+     48
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "internal whitespace runs collapsed",
+  "budget": 8,
+  "body": "many    spaces\tand\ttabs nbsp　ideographic here",
+  "passages": [
+   {
+    "text": "many spaces and tabs nbsp ideographic here",
+    "byte_range": [
+     0,
+     48
+    ],
+    "cost": 7
+   }
+  ]
+ },
+ {
+  "name": "internal whitespace runs collapsed",
+  "budget": 40,
+  "body": "many    spaces\tand\ttabs nbsp　ideographic here",
+  "passages": [
+   {
+    "text": "many spaces and tabs nbsp ideographic here",
+    "byte_range": [
+     0,
+     48
+    ],
+    "cost": 7
+   }
+  ]
+ },
+ {
+  "name": "empty body",
+  "budget": 1,
+  "body": "",
+  "passages": []
+ },
+ {
+  "name": "empty body",
+  "budget": 3,
+  "body": "",
+  "passages": []
+ },
+ {
+  "name": "empty body",
+  "budget": 8,
+  "body": "",
+  "passages": []
+ },
+ {
+  "name": "empty body",
+  "budget": 40,
+  "body": "",
+  "passages": []
+ },
+ {
+  "name": "cjk and combining characters",
+  "budget": 1,
+  "body": "東京は日本の首都です。 人口が多い。\n\ncafé résumé naïve",
+  "passages": [
+   {
+    "text": "東京は日本の首都です。",
+    "byte_range": [
+     0,
+     33
+    ],
+    "cost": 1
+   },
+   {
+    "text": "人口が多い。",
+    "byte_range": [
+     34,
+     52
+    ],
+    "cost": 1
+   },
+   {
+    "text": "café",
+    "byte_range": [
+     54,
+     60
+    ],
+    "cost": 1
+   },
+   {
+    "text": "résumé",
+    "byte_range": [
+     61,
+     69
+    ],
+    "cost": 1
+   },
+   {
+    "text": "naïve",
+    "byte_range": [
+     70,
+     76
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "cjk and combining characters",
+  "budget": 3,
+  "body": "東京は日本の首都です。 人口が多い。\n\ncafé résumé naïve",
+  "passages": [
+   {
+    "text": "東京は日本の首都です。 人口が多い。",
+    "byte_range": [
+     0,
+     52
+    ],
+    "cost": 2
+   },
+   {
+    "text": "café résumé naïve",
+    "byte_range": [
+     54,
+     76
+    ],
+    "cost": 3
+   }
+  ]
+ },
+ {
+  "name": "cjk and combining characters",
+  "budget": 8,
+  "body": "東京は日本の首都です。 人口が多い。\n\ncafé résumé naïve",
+  "passages": [
+   {
+    "text": "東京は日本の首都です。 人口が多い。\ncafé résumé naïve",
+    "byte_range": [
+     0,
+     76
+    ],
+    "cost": 5
+   }
+  ]
+ },
+ {
+  "name": "cjk and combining characters",
+  "budget": 40,
+  "body": "東京は日本の首都です。 人口が多い。\n\ncafé résumé naïve",
+  "passages": [
+   {
+    "text": "東京は日本の首都です。 人口が多い。\ncafé résumé naïve",
+    "byte_range": [
+     0,
+     76
+    ],
+    "cost": 5
+   }
+  ]
+ },
+ {
+  "name": "no terminator at the end",
+  "budget": 1,
+  "body": "This body just ends without a terminator and it is long enough to need splitting",
+  "passages": [
+   {
+    "text": "This",
+    "byte_range": [
+     0,
+     4
+    ],
+    "cost": 1
+   },
+   {
+    "text": "body",
+    "byte_range": [
+     5,
+     9
+    ],
+    "cost": 1
+   },
+   {
+    "text": "just",
+    "byte_range": [
+     10,
+     14
+    ],
+    "cost": 1
+   },
+   {
+    "text": "ends",
+    "byte_range": [
+     15,
+     19
+    ],
+    "cost": 1
+   },
+   {
+    "text": "without",
+    "byte_range": [
+     20,
+     27
+    ],
+    "cost": 1
+   },
+   {
+    "text": "a",
+    "byte_range": [
+     28,
+     29
+    ],
+    "cost": 1
+   },
+   {
+    "text": "terminator",
+    "byte_range": [
+     30,
+     40
+    ],
+    "cost": 1
+   },
+   {
+    "text": "and",
+    "byte_range": [
+     41,
+     44
+    ],
+    "cost": 1
+   },
+   {
+    "text": "it",
+    "byte_range": [
+     45,
+     47
+    ],
+    "cost": 1
+   },
+   {
+    "text": "is",
+    "byte_range": [
+     48,
+     50
+    ],
+    "cost": 1
+   },
+   {
+    "text": "long",
+    "byte_range": [
+     51,
+     55
+    ],
+    "cost": 1
+   },
+   {
+    "text": "enough",
+    "byte_range": [
+     56,
+     62
+    ],
+    "cost": 1
+   },
+   {
+    "text": "to",
+    "byte_range": [
+     63,
+     65
+    ],
+    "cost": 1
+   },
+   {
+    "text": "need",
+    "byte_range": [
+     66,
+     70
+    ],
+    "cost": 1
+   },
+   {
+    "text": "splitting",
+    "byte_range": [
+     71,
+     80
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "no terminator at the end",
+  "budget": 3,
+  "body": "This body just ends without a terminator and it is long enough to need splitting",
+  "passages": [
+   {
+    "text": "This body just",
+    "byte_range": [
+     0,
+     14
+    ],
+    "cost": 3
+   },
+   {
+    "text": "ends without a",
+    "byte_range": [
+     15,
+     29
+    ],
+    "cost": 3
+   },
+   {
+    "text": "terminator and it",
+    "byte_range": [
+     30,
+     47
+    ],
+    "cost": 3
+   },
+   {
+    "text": "is long enough",
+    "byte_range": [
+     48,
+     62
+    ],
+    "cost": 3
+   },
+   {
+    "text": "to need splitting",
+    "byte_range": [
+     63,
+     80
+    ],
+    "cost": 3
+   }
+  ]
+ },
+ {
+  "name": "no terminator at the end",
+  "budget": 8,
+  "body": "This body just ends without a terminator and it is long enough to need splitting",
+  "passages": [
+   {
+    "text": "This body just ends without a terminator and",
+    "byte_range": [
+     0,
+     44
+    ],
+    "cost": 8
+   },
+   {
+    "text": "it is long enough to need splitting",
+    "byte_range": [
+     45,
+     80
+    ],
+    "cost": 7
+   }
+  ]
+ },
+ {
+  "name": "no terminator at the end",
+  "budget": 40,
+  "body": "This body just ends without a terminator and it is long enough to need splitting",
+  "passages": [
+   {
+    "text": "This body just ends without a terminator and it is long enough to need splitting",
+    "byte_range": [
+     0,
+     80
+    ],
+    "cost": 15
+   }
+  ]
+ },
+ {
+  "name": "terminator not followed by whitespace",
+  "budget": 1,
+  "body": "Version 2.0 is out.Now what? e.g. this. Done",
+  "passages": [
+   {
+    "text": "Version",
+    "byte_range": [
+     0,
+     7
+    ],
+    "cost": 1
+   },
+   {
+    "text": "2.0",
+    "byte_range": [
+     8,
+     11
+    ],
+    "cost": 1
+   },
+   {
+    "text": "is",
+    "byte_range": [
+     12,
+     14
+    ],
+    "cost": 1
+   },
+   {
+    "text": "out.Now",
+    "byte_range": [
+     15,
+     22
+    ],
+    "cost": 1
+   },
+   {
+    "text": "what?",
+    "byte_range": [
+     23,
+     28
+    ],
+    "cost": 1
+   },
+   {
+    "text": "e.g.",
+    "byte_range": [
+     29,
+     33
+    ],
+    "cost": 1
+   },
+   {
+    "text": "this.",
+    "byte_range": [
+     34,
+     39
+    ],
+    "cost": 1
+   },
+   {
+    "text": "Done",
+    "byte_range": [
+     40,
+     44
+    ],
+    "cost": 1
+   }
+  ]
+ },
+ {
+  "name": "terminator not followed by whitespace",
+  "budget": 3,
+  "body": "Version 2.0 is out.Now what? e.g. this. Done",
+  "passages": [
+   {
+    "text": "Version 2.0 is",
+    "byte_range": [
+     0,
+     14
+    ],
+    "cost": 3
+   },
+   {
+    "text": "out.Now what? e.g.",
+    "byte_range": [
+     15,
+     33
+    ],
+    "cost": 3
+   },
+   {
+    "text": "this. Done",
+    "byte_range": [
+     34,
+     44
+    ],
+    "cost": 2
+   }
+  ]
+ },
+ {
+  "name": "terminator not followed by whitespace",
+  "budget": 8,
+  "body": "Version 2.0 is out.Now what? e.g. this. Done",
+  "passages": [
+   {
+    "text": "Version 2.0 is out.Now what? e.g. this. Done",
+    "byte_range": [
+     0,
+     44
+    ],
+    "cost": 8
+   }
+  ]
+ },
+ {
+  "name": "terminator not followed by whitespace",
+  "budget": 40,
+  "body": "Version 2.0 is out.Now what? e.g. this. Done",
+  "passages": [
+   {
+    "text": "Version 2.0 is out.Now what? e.g. this. Done",
+    "byte_range": [
+     0,
+     44
+    ],
+    "cost": 8
+   }
+  ]
+ }
+]

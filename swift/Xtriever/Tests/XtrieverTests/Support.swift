@@ -29,10 +29,9 @@ enum Support {
     static func openFixture(withReranker: Bool = true, loadPath: LoadPath = .buffered) async throws -> (XtrieverIndex, Expected) {
         let m = try models()
         let f = try fixture()
-        // Bundles are read-only on a device (report F-001); the copy is a no-op on re-runs.
-        let writable = try XtrieverIndex.writableCopy(of: f.index, named: "fixture")
+        // Opened in place — the bundle is read-only on a device and that is fine (008 D11).
         let index = try await XtrieverIndex.open(
-            indexDir: writable, embedderDir: m.embedder,
+            indexDir: f.index, embedderDir: m.embedder,
             rerankerDir: withReranker ? m.reranker : nil, loadPath: loadPath)
         return (index, f.expected)
     }

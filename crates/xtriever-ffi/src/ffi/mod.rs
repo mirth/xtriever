@@ -38,11 +38,9 @@ impl std::fmt::Debug for IndexHandle {
 #[uniffi::export]
 impl IndexHandle {
     /// Open a hybrid index read-only with the pinned embedder and, optionally, the pinned
-    /// re-ranker. The index content is never modified — but `index_dir` must be **writable**:
-    /// the lexical backend opens a zero-byte lock file (`lexical/.tantivy-meta.lock`) for
-    /// writing at every open and refuses a directory where it cannot, so an index inside a
-    /// read-only app bundle must be copied out first (the Swift package's
-    /// `XtrieverIndex.writableCopy`; 007 report F-001).
+    /// re-ranker. A writable directory is opened with the lexical backend's lock (readers stay
+    /// safe from a concurrent writer); a directory that refuses the lock file — an app bundle —
+    /// is opened in place, lock-free (Feature 008 D11; the 007 copy-out, report F-001, is gone).
     ///
     /// # Errors
     ///

@@ -2,17 +2,19 @@ import Foundation
 import XCTest
 import Xtriever
 
-/// US5 — the pipeline's on-device cost, measured (spec FR-013, FR-014; research D9).
+/// 007 US5 / 008 US4 — the pipeline's on-device cost, measured (007 FR-013, FR-014; 008 FR-016).
 ///
-/// Opens the SciFact index with both models, runs the 20 measurement queries at re-rank depths
-/// 0 / 5 / 20, samples the process footprint around every call, checks parity against the
-/// host's `expected-scifact.json`, and emits one run record (data-model "Device run record") on
-/// the console and as an `XCTAttachment` for committing under `specs/007-ffi-surface/runs/`.
+/// Opens a bundled index **in place** with both models, runs its 20 measurement queries at
+/// re-rank depths 0 / 5 / 20, samples the process footprint around every call, checks parity
+/// against the host's goldens (matched by id), and emits one run record (data-model "Device
+/// run record") on the console and as an `XCTAttachment` for committing under the feature's
+/// `runs/`.
 ///
-/// Runs wherever the resources are bundled (`scripts/build-ios-package.sh --with-models
-/// --with-scifact`); the verdict is `PASS`/`FAIL` only on a physical device in Release with
-/// valid `task_info` readings, and `untested` otherwise (a simulator number is not a device
-/// number). Select the load path with `TEST_RUNNER_XTRIEVER_LOAD_PATH=buffered|mmap`.
+/// The corpus is `TEST_RUNNER_XTRIEVER_CORPUS=scifact` (default; `--with-scifact`) or
+/// `wikipedia` (`--with-wiki`). Runs wherever the resources are bundled; the verdict is
+/// `PASS`/`FAIL` only on a physical device in Release with valid `task_info` readings, and
+/// `untested` otherwise (a simulator number is not a device number). Select the load path with
+/// `TEST_RUNNER_XTRIEVER_LOAD_PATH=buffered|mmap`.
 final class DeviceMeasurementTests: XCTestCase {
     /// Constitution v1.4.0 Principle III default (ADR-0010): 600 MB for the full pipeline. The
     /// three 007 runs were judged against the pre-amendment 300 MB and are kept as recorded.
@@ -34,6 +36,8 @@ final class DeviceMeasurementTests: XCTestCase {
             let formatVersion: UInt32
             let embedderFingerprint: String
             let rerankerModelId: String?
+            /// Sum of the index directory's file sizes as staged (Feature 008).
+            let bytes: UInt64
         }
         struct Footprint: Codable {
             let baselineBytes: UInt64
@@ -66,6 +70,13 @@ final class DeviceMeasurementTests: XCTestCase {
         }
         let schemaVersion: Int
         let feature: String
+        /// `scifact` or `wikipedia` — from `TEST_RUNNER_XTRIEVER_CORPUS` (Feature 008).
+        let corpus: String
+        /// The index was opened inside the bundle; no copy-out (008 D11).
+        let openedInPlace: Bool
+        /// Always present in the record: `null` for an in-place open (synthesized Codable would
+        /// omit a nil optional, and the schema requires the key).
+        let firstLaunchCopyMs: Nullable<UInt64>
         let device: String
         let os: String
         let thermalState: String
@@ -114,17 +125,29 @@ final class DeviceMeasurementTests: XCTestCase {
 
     // MARK: the run
 
-    func testMeasureSciFactRun() async throws {
-        guard HarnessResources.scifactIsBundled, HarnessResources.modelsAreBundled,
-              let indexDir = HarnessResources.scifactIndexDirectory,
-              let queriesURL = HarnessResources.scifactQueries,
-              let truthURL = HarnessResources.scifactExpected,
+    func testMeasureRun() async throws {
+        let env = ProcessInfo.processInfo.environment
+        // The corpus under measurement: SciFact (007, the default so 007's runs stay
+        // reproducible) or the Wikipedia index (008).
+        let corpus = env["XTRIEVER_CORPUS"] ?? "scifact"
+        let bundled: (index: URL?, queries: URL?, truth: URL?, isBundled: Bool, flag: String)
+        switch corpus {
+        case "wikipedia":
+            bundled = (HarnessResources.wikipediaIndexDirectory, HarnessResources.wikipediaQueries,
+                       HarnessResources.wikipediaExpected, HarnessResources.wikipediaIsBundled, "--with-wiki")
+        case "scifact":
+            bundled = (HarnessResources.scifactIndexDirectory, HarnessResources.scifactQueries,
+                       HarnessResources.scifactExpected, HarnessResources.scifactIsBundled, "--with-scifact")
+        default:
+            throw XCTSkip("XTRIEVER_CORPUS=\(corpus) is not scifact or wikipedia")
+        }
+        guard bundled.isBundled, HarnessResources.modelsAreBundled,
+              let indexDir = bundled.index, let queriesURL = bundled.queries, let truthURL = bundled.truth,
               let embedderDir = HarnessResources.embedderDirectory,
               let rerankerDir = HarnessResources.rerankerDirectory
         else {
-            throw XCTSkip("SciFact and both models must be bundled: scripts/build-ios-package.sh --with-models --with-scifact")
+            throw XCTSkip("\(corpus) and both models must be bundled: scripts/build-ios-package.sh --with-models \(bundled.flag)")
         }
-        let env = ProcessInfo.processInfo.environment
         let loadPath: LoadPath = env["XTRIEVER_LOAD_PATH"] == "buffered" ? .buffered : .mmap
         let loadPathName = loadPath == .buffered ? "buffered" : "mmap"
         #if targetEnvironment(simulator)
@@ -140,12 +163,11 @@ final class DeviceMeasurementTests: XCTestCase {
         let truth = try JSONDecoder().decode(Truth.self, from: Data(contentsOf: truthURL))
 
         // --- baseline, open ------------------------------------------------------------------
-        // The bundle is read-only on a device and the lexical backend needs to open its lock
-        // file for writing (report F-001): copy the index out once. Not part of the timed open.
-        let writableIndex = try XtrieverIndex.writableCopy(of: indexDir, named: "scifact-measurement")
+        // Opened in place, inside the read-only bundle: no copy-out, no lock file (008 D11).
+        let indexBytes = Self.directoryBytes(indexDir)
         let baseline = Measure.snapshot()
         let openStart = Measure.nowNanos()
-        let index = try await XtrieverIndex.open(indexDir: writableIndex, embedderDir: embedderDir,
+        let index = try await XtrieverIndex.open(indexDir: indexDir, embedderDir: embedderDir,
                                                  rerankerDir: rerankerDir, loadPath: loadPath)
         let openMs = (Measure.nowNanos() &- openStart) / 1_000_000
         let afterOpen = Measure.snapshot()
@@ -250,7 +272,8 @@ final class DeviceMeasurementTests: XCTestCase {
 
         let formatter = ISO8601DateFormatter()
         let record = RunRecord(
-            schemaVersion: 1, feature: "007-ffi-surface",
+            schemaVersion: 2, feature: corpus == "wikipedia" ? "008-wiki-corpus" : "007-ffi-surface",
+            corpus: corpus, openedInPlace: true, firstLaunchCopyMs: Nullable(nil),
             device: Measure.deviceModel,
             os: ProcessInfo.processInfo.operatingSystemVersionString,
             thermalState: Measure.thermalState,
@@ -258,7 +281,8 @@ final class DeviceMeasurementTests: XCTestCase {
             build: .init(configuration: Measure.isDebugBuild ? "Debug" : "Release",
                          rayonNumThreads: env["RAYON_NUM_THREADS"], loadPath: loadPathName, isSimulator: isSimulator),
             index: .init(documents: index.info.documents, formatVersion: index.info.formatVersion,
-                         embedderFingerprint: index.info.embedderFingerprint, rerankerModelId: index.info.rerankerModelId),
+                         embedderFingerprint: index.info.embedderFingerprint, rerankerModelId: index.info.rerankerModelId,
+                         bytes: indexBytes),
             openMs: openMs, embedderLoadMs: index.info.embedderLoadMs, rerankerLoadMs: index.info.rerankerLoadMs,
             footprint: .init(baselineBytes: baseline.footprintBytes, afterOpenBytes: afterOpen.footprintBytes,
                              peakBytes: peak, peakMethod: ledgerPeak >= sampledMax ? "ledger" : "sampled",
@@ -273,6 +297,30 @@ final class DeviceMeasurementTests: XCTestCase {
         if verdict == "FAIL" {
             XCTFail("peak footprint \(peak) B exceeds the \(Self.ceilingBytes / 1_000_000) MB ceiling (ADR-0010) — stop and report (Rule 6)")
         }
+    }
+
+    /// An optional that encodes as JSON `null` rather than being omitted.
+    struct Nullable<T: Codable>: Codable {
+        let value: T?
+        init(_ value: T?) { self.value = value }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            value = c.decodeNil() ? nil : try c.decode(T.self)
+        }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.singleValueContainer()
+            if let value { try c.encode(value) } else { try c.encodeNil() }
+        }
+    }
+
+    private static func directoryBytes(_ dir: URL) -> UInt64 {
+        var total: UInt64 = 0
+        if let e = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
+            for case let url as URL in e {
+                total += UInt64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+        }
+        return total
     }
 
     private func emit(_ record: RunRecord) throws {

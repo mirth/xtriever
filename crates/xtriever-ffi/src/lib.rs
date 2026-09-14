@@ -4,10 +4,10 @@
 //!
 //! - [`IndexHandle::open`] opens a hybrid index directory **read-only** with the pinned embedder
 //!   and, optionally, the pinned re-ranker, through one [`LoadPath`] for both models. The index
-//!   content is never modified: the pipeline's lexical stage creates its writer lazily, on
-//!   mutations this crate never issues. The directory must still be writable, for the lexical
-//!   backend's lock file (see the constructor's docs). The pipeline's own refusals (format
-//!   version, fingerprint, interrupted commit, torn store) apply unchanged.
+//!   content is never modified. A writable directory is opened with the lexical backend's lock
+//!   file (the reader's protection against a concurrent writer); one that refuses the lock file
+//!   — an app bundle — is opened in place, lock-free (Feature 008 D11). The pipeline's own
+//!   refusals (format version, fingerprint, interrupted commit, torn store) apply unchanged.
 //! - [`IndexHandle::info`] reports the index's identity and configuration plus the models' load
 //!   times; [`IndexHandle::search`] runs one search under wire [`SearchOptions`] and returns the
 //!   pipeline's hits — external ids, passage text, fused and re-rank scores, explanation — and
