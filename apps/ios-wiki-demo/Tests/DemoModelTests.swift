@@ -31,7 +31,7 @@ final class DemoModelTests: XCTestCase {
         guard case .ready(let info) = model.preparation else { return XCTFail() }
         XCTAssertEqual(info.info.documents, 40)
         XCTAssertGreaterThan(info.openMs, 0)
-        XCTAssertNotNil(info.warmMs)
+        XCTAssertGreaterThan(info.warmMs, 0)
         XCTAssertNil(info.corpus, "the fixture has no corpus sidecar")
         XCTAssertNil(info.attribution)
         XCTAssertTrue(info.indexName.contains("fixture"))

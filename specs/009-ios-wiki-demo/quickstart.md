@@ -59,6 +59,8 @@ median fused ≤ 1 s and median total ≤ 3 s after warm-up (SC-001), maxima bes
 
 ```bash
 cargo fmt --all --check && RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets && cargo nextest run --workspace && cargo deny check
+for t in aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android; do cargo check --workspace --target $t; done   # every PR (constitution III), Rust changed or not
+cargo check --workspace --target wasm32-unknown-unknown                     # best-effort (tracked)
 git diff --stat main -- crates/ swift/Xtriever/Sources/                      # empty, or only what the plan names
 git diff --stat main -- .github/                                             # empty (standing rule)
 cd swift/Xtriever && xcodebuild test -scheme Xtriever -destination 'platform=iOS Simulator,id=822F3C90-5124-432B-B84A-75426A04722D' -configuration Release ARCHS=arm64 -skip-testing:XtrieverTests/DeviceMeasurementTests   # still 18 / 18

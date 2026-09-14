@@ -26,7 +26,7 @@ enum Preparation: Equatable {
 struct ReadyInfo: Equatable {
     let info: IndexInfo
     let openMs: UInt64
-    let warmMs: UInt64?
+    let warmMs: UInt64
     let corpus: CorpusSidecar?
     let attribution: String?
     /// "Simple English Wikipedia" or "007 fixture (40 documents)".

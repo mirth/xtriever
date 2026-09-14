@@ -48,7 +48,7 @@ struct AboutView: View {
                     row("open", "\(info.openMs) ms")
                     row("embedder load", "\(info.info.embedderLoadMs) ms")
                     row("re-ranker load", info.info.rerankerLoadMs.map { "\($0) ms" } ?? "—")
-                    row("warm-up search", info.warmMs.map { "\($0) ms" } ?? "—")
+                    row("warm-up search", "\(info.warmMs) ms")
                 }
                 Section("Attribution") {
                     if let attribution = info.attribution {

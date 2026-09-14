@@ -75,11 +75,23 @@ final class DemoModel: ObservableObject {
 
         preparation = .warming
         let warmStart = Measure.nowNanos()
-        var warmMs: UInt64?
-        if (try? await opened.search("warm up", options: settings.fusedOptions)) != nil {
-            warmMs = (Measure.nowNanos() &- warmStart) / 1_000_000
+        do {
+            // The warm-up is the first real engine call; if it fails, a search cannot succeed
+            // and the field must not open (FR-002).
+            _ = try await opened.search("warm up", options: settings.fusedOptions)
+        } catch let error as XtrieverError {
+            index = nil
+            preparation = .failed(.engine(message: error.message))
+            return
+        } catch {
+            index = nil
+            preparation = .failed(.engine(message: String(describing: error)))
+            return
         }
+        let warmMs = (Measure.nowNanos() &- warmStart) / 1_000_000
 
+        // The sidecar and the attribution are display metadata, not search preconditions: a
+        // build that staged the index without them still searches, and About says so.
         let corpus = isWikipedia ? try? CorpusSidecar.load(from: indexDir) : nil
         let attribution = isWikipedia
             ? HarnessResources.wikipediaAttribution.flatMap { try? String(decoding: Data(contentsOf: $0), as: UTF8.self) }

@@ -21,7 +21,7 @@ struct SearchView: View {
                     if let response = search.current {
                         Section {
                             ForEach(DisplayedHit.list(from: response, marks: search.reranked == nil ? nil : search.marks)) { hit in
-                                NavigationLink(value: hit.id) { HitRow(hit: hit) }
+                                NavigationLink(value: hit) { HitRow(hit: hit) }
                             }
                             if !search.dropped.isEmpty {
                                 Text("\(search.dropped.count) fused hit\(search.dropped.count == 1 ? "" : "s") fell out of the re-ranked top \(response.hits.count)")
@@ -43,12 +43,9 @@ struct SearchView: View {
             }
             .animation(.default, value: model.search?.reranked != nil)
             .navigationTitle(info.indexName == "Simple English Wikipedia" ? "Wikipedia" : "Fixture")
-            .navigationDestination(for: String.self) { id in
-                if let response = model.search?.current,
-                   let hit = DisplayedHit.list(from: response, marks: model.search?.marks).first(where: { $0.id == id }) {
-                    HitDetailView(hit: hit)
-                }
-            }
+            // The tapped hit travels with the navigation: if re-ranking finishes while the
+            // detail is open and the hit drops out of the list, the detail stays as tapped.
+            .navigationDestination(for: DisplayedHit.self) { hit in HitDetailView(hit: hit) }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Ask Simple English Wikipedia")
             .onSubmit(of: .search) { model.submit(query) }
             .autocorrectionDisabled()

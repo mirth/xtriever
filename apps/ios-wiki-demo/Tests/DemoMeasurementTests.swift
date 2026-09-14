@@ -12,7 +12,16 @@ final class DemoMeasurementTests: XCTestCase {
     static let ceilingBytes: UInt64 = 600 * 1_000_000
 
     struct RunRecord: Codable {
-        struct Build: Codable { let configuration: String; let rayonNumThreads: String?; let loadPath: String; let isSimulator: Bool }
+        struct Build: Codable {
+            let configuration: String
+            /// `RAYON_NUM_THREADS` if set, else the active processor count — what candle sizes its
+            /// pool from when the variable is absent (004 research D3); the engine exposes no
+            /// thread count on the wire, so this is the documented default, not a readback.
+            let effectiveThreads: Int
+            let threadSource: String
+            let loadPath: String
+            let isSimulator: Bool
+        }
         struct IndexIdentity: Codable { let documents: UInt64; let formatVersion: UInt32; let embedderFingerprint: String; let rerankerModelId: String?; let bytes: UInt64 }
         struct Footprint: Codable {
             let baselineBytes: UInt64; let afterOpenBytes: UInt64; let sampledMaxBytes: UInt64; let ledgerPeakBytes: UInt64
@@ -55,7 +64,11 @@ final class DemoMeasurementTests: XCTestCase {
         for q in queries {
             model.submit(q.text)
             try await Support.waitUntil(120) { if case .done = model.search?.phase { return true }; if case .failed = model.search?.phase { return true }; return false }
-            guard let s = model.search, let fused = s.fused else { return XCTFail("\(q.id): \(String(describing: model.search?.phase))") }
+            // Only a completed, re-ranked query is a data point; anything else is a failed run,
+            // never a query that silently contributes zero to the totals.
+            guard let s = model.search, case .done = s.phase, let fused = s.fused, s.reranked != nil, s.rerankedMs != nil else {
+                return XCTFail("\(q.id): expected .done with a re-ranked response, got \(String(describing: model.search?.phase))")
+            }
             let snap = Measure.snapshot(); samples.append(snap)
             runs.append(.init(id: q.id, fusedMs: s.fusedMs ?? 0, rerankedMs: s.rerankedMs, engineFusedMs: fused.elapsedMs,
                               engineRerankedMs: s.reranked?.elapsedMs, hits: (s.reranked ?? fused).hits.count,
@@ -87,7 +100,10 @@ final class DemoMeasurementTests: XCTestCase {
             schemaVersion: 2, feature: "009-ios-wiki-demo", corpus: "wikipedia", openedInPlace: true,
             device: Measure.deviceModel, os: ProcessInfo.processInfo.operatingSystemVersionString,
             thermalState: Measure.thermalState, recordedAt: ISO8601DateFormatter().string(from: Date()),
-            build: .init(configuration: Measure.isDebugBuild ? "Debug" : "Release", rayonNumThreads: env["RAYON_NUM_THREADS"], loadPath: "mmap", isSimulator: isSimulator),
+            build: .init(configuration: Measure.isDebugBuild ? "Debug" : "Release",
+                         effectiveThreads: env["RAYON_NUM_THREADS"].flatMap(Int.init) ?? ProcessInfo.processInfo.activeProcessorCount,
+                         threadSource: env["RAYON_NUM_THREADS"] != nil ? "RAYON_NUM_THREADS" : "activeProcessorCount (candle's default when unset)",
+                         loadPath: "mmap", isSimulator: isSimulator),
             index: .init(documents: info.info.documents, formatVersion: info.info.formatVersion, embedderFingerprint: info.info.embedderFingerprint,
                          rerankerModelId: info.info.rerankerModelId, bytes: info.indexBytes),
             openMs: info.openMs, warmMs: info.warmMs, embedderLoadMs: info.info.embedderLoadMs, rerankerLoadMs: info.info.rerankerLoadMs,

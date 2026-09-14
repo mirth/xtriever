@@ -4,7 +4,14 @@ import Xtriever
 /// A hit as the screens show it (data-model "DisplayedHit"): derived from the engine's `Hit`
 /// and nothing else. A non-008 index (the fixture) has no title line, so the whole text is
 /// the passage and the external id stands in for the title.
-struct DisplayedHit: Identifiable {
+struct DisplayedHit: Identifiable, Hashable {
+    // Navigation carries the hit itself (SwiftUI's path needs Hashable), so an opened detail
+    // stays what was tapped even if the list changes underneath it.
+    static func == (a: DisplayedHit, b: DisplayedHit) -> Bool {
+        a.id == b.id && a.rank == b.rank && a.mark == b.mark && a.title == b.title && a.passage == b.passage
+    }
+    func hash(into hasher: inout Hasher) { hasher.combine(id); hasher.combine(rank) }
+
     let id: String
     let rank: Int
     let title: String
