@@ -158,7 +158,7 @@ the cause.
 ### F-006 — The signing team is not the certificate's parenthetical
 
 `DEVELOPMENT_TEAM=<certificate suffix>` failed with "No profiles for 'dev.xtriever.harness'";
-the valid wildcard iOS profile on this Mac belongs to team `<team_id>`, which is what the
+the valid wildcard iOS profile on this Mac belongs to team `XXXXXXX`, which is what the
 `Developer ID` identity's suffix shows but the `Apple Development` identity's does not.
 `security cms -D -i <profile>` on the installed `.mobileprovision` files gives the team that
 works. Recorded for the next person running the harness.

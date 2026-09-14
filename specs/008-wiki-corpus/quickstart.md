@@ -95,7 +95,7 @@ crate gained a read-only directory and the pipeline a merge that the eval does n
 ```bash
 scripts/build-ios-package.sh --with-models --with-wiki --app
 TEST_RUNNER_XTRIEVER_CORPUS=wikipedia xcodebuild test -project swift/XtrieverHarnessApp/XtrieverHarnessApp.xcodeproj -scheme XtrieverHarnessApp -configuration Release \
-  -destination 'platform=iOS,id=<device_id>' -skipMacroValidation -allowProvisioningUpdates ARCHS=arm64 DEVELOPMENT_TEAM=<team_id> \
+  -destination 'platform=iOS,id=XXXXX' -skipMacroValidation -allowProvisioningUpdates ARCHS=arm64 DEVELOPMENT_TEAM=XXXXX \
   -only-testing:XtrieverHarnessAppTests/DeviceMeasurementTests 2>&1 | tee /tmp/wiki-device.log
 # TEST_RUNNER_* must be an *environment* variable of xcodebuild, not a trailing NAME=VALUE argument (that is a build setting and never reaches the test)
 scripts/extract-device-run.py /tmp/wiki-device.log specs/008-wiki-corpus/runs/

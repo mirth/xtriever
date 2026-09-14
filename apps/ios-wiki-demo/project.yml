@@ -1,0 +1,110 @@
+# The iOS Wikipedia demo (Feature 009): a SwiftUI app over the Xtriever Swift package (007) and
+# the shipped Simple English Wikipedia index (008). Thin by design — it owns no retrieval logic;
+# every number it shows is the engine's.
+#
+# Generated with `xcodegen generate` (see scripts/build-ios-package.sh --demo); the .xcodeproj is
+# gitignored because it is derived, not authored. The shape is the harness app's
+# (swift/XtrieverHarnessApp/project.yml), which already encodes the traps.
+name: XtrieverWikiDemo
+options:
+  bundleIdPrefix: dev.xtriever
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+# arm64 only, on purpose. The crate targets `aarch64-apple-ios` and `aarch64-apple-ios-sim`
+# (Principle III) and the Rust staticlibs carry no x86_64 slice. Left at ARCHS_STANDARD, a Release
+# build also tries x86_64 for the simulator and fails with "symbol(s) not found for architecture
+# x86_64" — which reads like a missing symbol but is really a missing slice nobody asked for.
+settings:
+  base:
+    ARCHS: arm64
+    VALID_ARCHS: arm64
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+
+packages:
+  Xtriever:
+    path: ../../swift/Xtriever
+
+targets:
+  XtrieverWikiDemo:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: Xtriever
+        product: Xtriever
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.xtriever.wikidemo
+        INFOPLIST_KEY_CFBundleDisplayName: Wiki Demo
+        # The measurement scheme tests the Release app (`Measure` refuses to give a verdict on a
+        # Debug build) and the tests `@testable import` the app (007 F-005); testability keeps
+        # -O and only makes internal symbols visible to the test bundle.
+        ENABLE_TESTABILITY: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.9"
+
+  XtrieverWikiDemoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: XtrieverWikiDemo
+      - package: Xtriever
+        product: Xtriever
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.xtriever.wikidemo.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.9"
+
+  XtrieverWikiDemoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: XtrieverWikiDemo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.xtriever.wikidemo.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.9"
+
+schemes:
+  # Day-to-day: the app in Release, the tests in Debug on the simulator (`@testable import`
+  # does not survive a Release test build — 007 F-005; these tests are not measurements).
+  XtrieverWikiDemo:
+    build:
+      targets:
+        XtrieverWikiDemo: all
+        XtrieverWikiDemoTests: [test]
+        XtrieverWikiDemoUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - XtrieverWikiDemoTests
+        - XtrieverWikiDemoUITests
+    run:
+      config: Release
+  # The device measurement: Release, the phone's default thread count (owner decision, Q2).
+  XtrieverWikiDemo-Measure:
+    build:
+      targets:
+        XtrieverWikiDemo: all
+        XtrieverWikiDemoTests: [test]
+    test:
+      config: Release
+      targets:
+        - XtrieverWikiDemoTests
+    run:
+      config: Release
