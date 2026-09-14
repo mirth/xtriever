@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "feature": "008-wiki-corpus",
+  "recorded_at": "2026-09-14T04:00:46Z",
+  "corpus_identity": "ea0fc78c4dce30cebf066033327cc7a442385c605be8c67eadb772329eab2027",
+  "host": {
+    "os": "macos",
+    "arch": "aarch64",
+    "threads": 4
+  },
+  "models": {
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2@1110a243fdf4706b3f48f1d95db1a4f5529b4d41;weights=sha256:53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=f32;prefix=none;engine=candle-0.9.2",
+    "reranker_for_demo": "cross-encoder/ms-marco-MiniLM-L-6-v2@233902d25c440f23af6f7d6e94d2946bac0bee0a;weights=sha256:821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=f32;engine=candle-0.9.2"
+  },
+  "counts": {
+    "articles": 241787,
+    "excluded": {
+      "lead_contains:may mean:300": 378,
+      "lead_contains:may refer to:300": 1159,
+      "title_suffix: (disambiguation)": 814
+    },
+    "selected": 239436,
+    "passages": 427947,
+    "passages_over_window": 0,
+    "url_mismatches": 0
+  },
+  "phases_ms": {
+    "chunk": 49419,
+    "commit": 4186,
+    "embed": 39932047,
+    "fetch_verify": 427,
+    "ingest": 14174,
+    "merge": 3178,
+    "read_exclude": 48210,
+    "total": 40109858,
+    "verify": 57971
+  },
+  "embedding_cache": {
+    "dir": "target/xt-wiki-cache/85f54a0006757e2b",
+    "shards": 105,
+    "hits": 2,
+    "misses": 103
+  },
+  "artefact_bytes": {
+    "corpus.json": 1382,
+    "dense/index.bin": 660750511,
+    "ids.json": 32037349,
+    "lexical/.managed.json": 258,
+    "lexical/.tantivy-meta.lock": 0,
+    "lexical/.tantivy-writer.lock": 0,
+    "lexical/badbdad141f942f2b581d07507f2ac37.fast": 749823,
+    "lexical/badbdad141f942f2b581d07507f2ac37.fieldnorm": 1283961,
+    "lexical/badbdad141f942f2b581d07507f2ac37.idx": 49062814,
+    "lexical/badbdad141f942f2b581d07507f2ac37.pos": 44805867,
+    "lexical/badbdad141f942f2b581d07507f2ac37.store": 1722357,
+    "lexical/badbdad141f942f2b581d07507f2ac37.term": 9529448,
+    "lexical/meta.json": 1367,
+    "lexical/xtriever-lexical.json": 412,
+    "passages.bin": 276466788,
+    "total": 1076413167,
+    "xtriever-pipeline.json": 830
+  },
+  "verify": {
+    "passages_checked": 427947,
+    "max_tokens_seen": 256,
+    "window": 256,
+    "verdict": "PASS"
+  }
+}

@@ -5,10 +5,17 @@
 
 use xtriever_core::{Error, FieldName};
 
-/// Map any backend error. I/O errors keep their variant so callers can match on them.
+/// Map any backend error. I/O errors keep their variant so callers can match on them — including
+/// a lock the *directory* refused (`LockFailure(LockError::IoError)`, e.g. `PermissionDenied` on
+/// a read-only location; Feature 008 D11), which is an I/O fact about the directory. A lock that
+/// is merely busy (`LockBusy`: another writer holds it) stays `Backend` (D14).
 pub(crate) fn map(e: tantivy::TantivyError) -> Error {
     match e {
         tantivy::TantivyError::IoError(arc) => Error::Io(std::io::Error::new(arc.kind(), arc)),
+        tantivy::TantivyError::LockFailure(
+            tantivy::directory::error::LockError::IoError(arc),
+            _,
+        ) => Error::Io(std::io::Error::new(arc.kind(), arc)),
         other => Error::backend(other),
     }
 }

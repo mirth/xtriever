@@ -71,8 +71,8 @@ pub use fusion::rrf;
 pub use index::HybridIndex;
 pub use rerank::order_reranked;
 pub use types::{
-    Degradation, DegradeReason, HitExplain, HybridConfig, HybridHit, RERANK_RANK, RerankReport,
-    Response, SearchOptions, SourceDocument, StageReport,
+    Degradation, DegradeReason, HitExplain, HybridConfig, HybridHit, OpenOptions, RERANK_RANK,
+    RerankReport, Response, SearchOptions, SourceDocument, StageReport,
 };
 
 /// On-disk format version of the pipeline descriptor and id map this build reads and writes.

@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use xtriever_dense::MiniLmEmbedder;
-use xtriever_pipeline::{HybridIndex, Response};
+use xtriever_pipeline::{HybridIndex, OpenOptions, Response};
 use xtriever_rerank::MiniLmCrossEncoder;
 
 use crate::ffi::error::{XtrieverError, poisoned};
@@ -46,9 +46,13 @@ impl From<LoadPath> for xtriever_rerank::LoadPath {
 }
 
 /// Open read-only: the embedder, then the pipeline directory, then the optional re-ranker.
-/// The index content is never modified — the pipeline's lexical stage creates its writer lazily,
-/// on a mutation this surface never issues — but the lexical backend does open its lock file
-/// for writing, so the directory itself must be writable (see [`crate::IndexHandle::open`]).
+///
+/// The directory is opened **with** the lexical backend's meta lock whenever it can be taken —
+/// that lock is what keeps a reader safe from a concurrent writer's garbage collection, and a
+/// non-mutating handle does not make a writable directory immutable. Only when the directory
+/// itself refuses the lock file (`PermissionDenied`: an app bundle, a read-only mount) is it
+/// reopened `read_only`, lock-free — a directory this process cannot write is one no writer of
+/// this process's rights can change under it (Feature 008 D11; resolves 007 F-001).
 pub(crate) fn open(
     index_dir: &str,
     embedder_dir: &str,
@@ -60,9 +64,28 @@ pub(crate) fn open(
     let embedder_load = t.elapsed();
 
     let dir = std::path::Path::new(index_dir);
-    let mut index = match load_path {
-        LoadPath::Buffered => HybridIndex::open(dir, Box::new(embedder))?,
-        LoadPath::Mmap => HybridIndex::open_mapped(dir, Box::new(embedder))?,
+    let mapped = matches!(load_path, LoadPath::Mmap);
+    let mut index = match HybridIndex::open_with(
+        dir,
+        Box::new(embedder),
+        OpenOptions {
+            mapped,
+            read_only: false,
+        },
+    ) {
+        Err(xtriever_core::Error::Io(e)) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            // The embedder moved into the failed open; load it again (~100 ms mapped).
+            let embedder = MiniLmEmbedder::load(embedder_dir.as_ref(), load_path.into())?;
+            HybridIndex::open_with(
+                dir,
+                Box::new(embedder),
+                OpenOptions {
+                    mapped,
+                    read_only: true,
+                },
+            )?
+        }
+        other => other?,
     };
 
     let reranker_load = match reranker_dir {

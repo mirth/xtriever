@@ -10,6 +10,17 @@ use xtriever_core::{
 use xtriever_dense::FlatIndex;
 use xtriever_lexical::TantivyIndex;
 
+use crate::types::OpenOptions;
+
+/// The lexical stage's own refusal, repeated here for the pipeline-level operations that never
+/// reach it (an unstaged `commit`, a `merge`).
+fn read_only() -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "read-only index",
+    ))
+}
+
 use crate::FORMAT_VERSION;
 use crate::descriptor::Descriptor;
 use crate::error::{corrupt, schema_err};
@@ -145,7 +156,7 @@ impl HybridIndex {
     /// `Error::Corrupt` (format version, schema disagreement, partial commit — all naming both
     /// sides), `Error::FingerprintMismatch`, `Error::Io`.
     pub fn open(dir: &Path, embedder: Box<dyn Embedder>) -> Result<Self> {
-        Self::open_with(dir, embedder, false)
+        Self::open_with(dir, embedder, OpenOptions::default())
     }
 
     /// Open with the dense stage memory-mapped (feature `mmap`; the dense stage's precondition on
@@ -156,10 +167,30 @@ impl HybridIndex {
     /// As [`open`](Self::open).
     #[cfg(feature = "mmap")]
     pub fn open_mapped(dir: &Path, embedder: Box<dyn Embedder>) -> Result<Self> {
-        Self::open_with(dir, embedder, true)
+        Self::open_with(
+            dir,
+            embedder,
+            OpenOptions {
+                mapped: true,
+                read_only: false,
+            },
+        )
     }
 
-    fn open_with(dir: &Path, embedder: Box<dyn Embedder>, mapped: bool) -> Result<Self> {
+    /// Open with explicit [`OpenOptions`] (Feature 008 D11). `read_only` opens the lexical
+    /// backend without its lock file so a directory nobody can write — an app bundle — opens;
+    /// `add`, `delete`, `commit` and `merge` then return `Error::Io` "read-only index".
+    /// `mapped` without the `mmap` feature is `Error::Backend`, not a panic.
+    ///
+    /// # Errors
+    ///
+    /// As [`open`](Self::open), plus the two above.
+    pub fn open_with(
+        dir: &Path,
+        embedder: Box<dyn Embedder>,
+        options: OpenOptions,
+    ) -> Result<Self> {
+        let OpenOptions { mapped, read_only } = options;
         let descriptor = Descriptor::read(dir)?;
         // An interrupted commit leaves its marker; refuse before looking at anything else. The
         // count check below cannot see a same-cardinality partial commit (a replace that
@@ -173,7 +204,11 @@ impl HybridIndex {
                 generation.trim()
             )));
         }
-        let lexical = TantivyIndex::open(&dir.join(LEXICAL_DIR))?;
+        let lexical = if read_only {
+            TantivyIndex::open_read_only(&dir.join(LEXICAL_DIR))?
+        } else {
+            TantivyIndex::open(&dir.join(LEXICAL_DIR))?
+        };
         descriptor.check_identity(lexical.schema(), embedder.fingerprint())?;
         let ids = IdMap::read(dir)?;
         // The store's slot count must equal the id map's length (the fifth count, ADR-0008).
@@ -186,7 +221,9 @@ impl HybridIndex {
             }
             #[cfg(not(feature = "mmap"))]
             {
-                unreachable!("mapped open is only reachable with the `mmap` feature")
+                return Err(Error::Backend(
+                    "mapped open needs the `mmap` feature of xtriever-pipeline".into(),
+                ));
             }
         } else {
             FlatIndex::open_for(&dense_dir, embedder.as_ref())?
@@ -225,6 +262,22 @@ impl HybridIndex {
             embedder,
             reranker: None,
         })
+    }
+
+    /// The stored passage text of a committed internal id — the text the dense stage embedded
+    /// (Feature 008: the build's verify pass walks every passage).
+    ///
+    /// # Errors
+    ///
+    /// `Error::Corrupt` for an id the store has no slot for; `Error::Io`/`Corrupt` from the store.
+    pub fn passage_text(&self, id: DocId) -> Result<String> {
+        self.passages.read(id)
+    }
+
+    /// The external id of a committed internal id, if live.
+    #[must_use]
+    pub fn external_id(&self, id: DocId) -> Option<&str> {
+        self.committed_ids.external(id)
     }
 
     /// The configuration the index was created with.
@@ -362,6 +415,24 @@ impl HybridIndex {
         Ok(())
     }
 
+    /// Commit, then merge the lexical stage's segments into one (Feature 008 D10). The dense
+    /// stage and the passage store have no segments. A shipped artefact is one segment: fewer
+    /// files to map, and `DocAddress` order equal to `DocId` order. Scores do not depend on the
+    /// segment layout (the backend computes IDF and average field length from searcher-wide
+    /// totals); the pipeline tests assert every hit and score bit-identical across a merge.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Io` "read-only index" on a read-only open; otherwise as [`commit`](Self::commit)
+    /// and the lexical merge.
+    pub fn merge(&mut self) -> Result<()> {
+        if self.lexical.is_read_only() {
+            return Err(read_only());
+        }
+        self.commit()?;
+        self.lexical.merge()
+    }
+
     /// Commit both stages, then the passage store, the id map and the descriptor (research
     /// D3; 006 D7). No-op when nothing is staged.
     ///
@@ -369,6 +440,9 @@ impl HybridIndex {
     ///
     /// `Error::Io`, stage errors. A failure between the steps leaves a state `open` refuses.
     pub fn commit(&mut self) -> Result<()> {
+        if self.lexical.is_read_only() {
+            return Err(read_only());
+        }
         if !self.dirty {
             return Ok(());
         }

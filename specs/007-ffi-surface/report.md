@@ -76,7 +76,7 @@ been comparable (001 F-009); the three runs agree on footprint within 3 %.
 
 ## Findings
 
-### F-001 — The lexical backend needs a writable directory to open (device bundles are read-only)
+### F-001 — The lexical backend needs a writable directory to open (device bundles are read-only) — resolved by 008
 
 The first device run failed at `open` with `Failed to acquire Lockfile: … PermissionDenied`:
 tantivy's `MmapDirectory` opens `lexical/.tantivy-meta.lock` for writing at every `Index::open`,
@@ -89,6 +89,12 @@ bundled index into Application Support once (keyed by the descriptor bytes) and 
 tests open the copy. Documented on `open`. The cost is one copy of the index on first launch
 (19 MB here; the Wikipedia index of Feature 008 will be far larger — that feature should weigh a
 lock-free read-only open in `xtriever-lexical` against the copy).
+
+**Resolution (Feature 008, D11)**: the lock file was the only write, and it guards a reader
+against a concurrent *writer's* garbage collection — meaningless for an index nobody can
+write. `xtriever-lexical` gained a read-only directory wrapper that takes no lock,
+`HybridIndex::open_with(.., read_only: true)` uses it, and the FFI opens every index that
+way. The app opens the bundle in place; `XtrieverIndex.writableCopy` is gone.
 
 ### F-002 — ⛔ Two resident models put the full pipeline over the 300 MB ceiling on device — resolved by ADR-0010
 
