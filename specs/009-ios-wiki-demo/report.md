@@ -9,8 +9,8 @@ a person searches all of Simple English Wikipedia through the whole pipeline and
 work — the fused list in **339 ms** (median), the re-ranked order replacing it with what moved
 **2.3 s** later, every hit explaining itself under the engine's feature names, the engine's
 stage report on screen, the corpus's identity and the CC BY-SA attribution one tap away. The
-full app peaks at **546.4 MB against the 600 MB ceiling — PASS**, 10 MB above the bare
-harness on the same index (008). The app owns no retrieval logic: its tests prove the hits it
+full app peaks at **533.0 MB against the 600 MB ceiling — PASS**, within 3 MB of the bare
+harness on the same index (008: 535.8 MB). The app owns no retrieval logic: its tests prove the hits it
 shows are the engine's bit for bit (fused = the 007 goldens without a re-ranker, re-ranked =
 with one), that a second submission cancels the first 20 / 20 times, that the main thread keeps
 its cadence, and — driven as a finger would on the simulator — that the screens show it.
@@ -40,22 +40,21 @@ settings, about). ~760 lines of app Swift, ~480 of tests, one UI walk. Staged an
 
 | | |
 |---|---|
-| Baseline / after open (with warm-up) / peak | 12.0 MB / 540.7 MB / **546.4 MB** (ledger) → **PASS vs 600 MB** (SC-005) |
-| Open / embedder / re-ranker / warm-up | 922 ms / 160 ms / 146 ms / 486 ms |
-| Fused search (app wall clock), median / max | **339 ms** / 369 ms |
-| Re-ranked search, median / max | **2,311 ms** / 2,723 ms |
-| Total per query, median / max | **2,656 ms** / 3,053 ms → SC-001 (median ≤ 3 s; fused ≤ 1 s) met; the max sits just over 3 s, reported, not hidden |
+| Baseline / after open (with warm-up) / peak | 12.0 MB / 531.9 MB / **533.0 MB** (ledger) → **PASS vs 600 MB** (SC-005) |
+| Open / warm-up | 1,079 ms / 477 ms |
+| Fused search (app wall clock), median / max | **339 ms** / 361 ms |
+| Re-ranked search, median / max | **2,288 ms** / 2,731 ms |
+| Total per query, median / max | **2,631 ms** / 3,070 ms → SC-001 (median ≤ 3 s; fused ≤ 1 s) met; the max sits just over 3 s, reported, not hidden |
 | Re-rank pairs scored | 20 of 20 on every query — the 4,000 ms budget never cut a stage (research D5) |
-| Footprint after each search | 449–477 MB |
-| Engine `elapsedMs` medians | fused 339, re-ranked 2,338 — the app's wall clock adds ≤ 1 ms |
+| Threads | `effectiveThreads: 6` — the 16e's active processor count, candle's default when `RAYON_NUM_THREADS` is unset (recorded as such; the engine exposes no readback) |
 
 vs 008's harness on the same index (run 2, default threads): depth-0 339 vs 339 ms; depth-20
-2,311 vs 2,285 ms; peak 546 vs 536 MB. The app costs nothing measurable beyond the fused pass
+2,288 vs 2,285 ms; peak 533 vs 536 MB. The app costs nothing measurable beyond the fused pass
 it deliberately adds (D2): a person waits 0.34 s for a first list instead of 2.3 s for the only
 one. Record verbatim under [`runs/`](./runs/).
 
 **Thread count**: the process default (owner decision Q2). The engine exposes no knob and iOS
-sets none; the per-pair cost — (2,311 − 339) / 20 ≈ 99 ms — equals 008's 97 ms at the default
+sets none; the per-pair cost — (2,288 − 339) / 20 ≈ 97 ms — equals 008's 97 ms at the default
 and half the 1-thread figure, so the default is what the phone uses and it is the better number.
 
 ## Gate (Rule 5)
@@ -109,11 +108,38 @@ model takes a `corpus:` selector (`.preferWikipedia` default, `.fixture` for the
 device record was taken before this test-only parameter existed and the default path is the
 one measured. The suite now passes with either staging: 15 / 15 with both.
 
+### F-006 — "Lost pending connection to the test runner before launch" is a stale process, not the app
+
+Two consecutive device runs failed at bootstrap after a code change; the app launched and
+stayed up when started directly (`devicectl device process launch`). Terminating the running
+instance and re-running the test succeeded. Record: the third attempt, committed.
+
+## Review round 1
+
+GitHub Copilot, six comments: four taken, one taken with a stated caveat, one partly declined.
+
+| # | Comment | Action |
+|---|---|---|
+| 1 | Warm-up failure discarded, `.ready` reached | Taken: an engine error during warm-up → `.failed(.engine)`, index dropped. **Declined for the sidecar/attribution `try?`** it also flagged: those are display metadata, not search preconditions; About shows their absence |
+| 2 | Value-based `NavigationLink` re-resolves by id; a hit dropped by re-ranking blanks the open detail | Taken: the `DisplayedHit` travels with the navigation (`Hashable`) |
+| 3 | The measurement accepted `.failed` and recorded queries with no re-rank time | Taken: only `.done` with a re-ranked response is a data point; anything else fails the run |
+| 4 | Effective thread count lost when `RAYON_NUM_THREADS` is unset | Taken with a caveat: the record carries `effectiveThreads` (env, else `activeProcessorCount`) and `threadSource`; candle's documented default, not a readback — the engine has no thread count on the wire (out of scope). 007/008's records share the omission; not changed here |
+| 5 | The quickstart's gate omitted the cross-target `cargo check`s | Taken: added and run (0 errors, three targets; wasm best-effort as tracked) |
+| 6 | T028 open while downstream tasks are done | The hand walk is the owner's task and the report attributes hit navigation to it rather than claiming it; closed when the owner reports it (below) |
+
+## Hand walk (T028)
+
+Owner, iPhone 16e, 2026-09-14, after the review-round build: "It works." — preparation with the
+warm-up, a search showing the fused list and then the re-ranked order with marks, a hit's
+detail with its passage and "Why this hit", the article link, Settings and About. Earlier in
+the session the owner had also confirmed on the simulator that tapping a row opens the detail
+with the full passage and the "Why this hit" table (F-001).
+
 ## Known costs (stated, not claimed small)
 
 - The fused-first design runs the lexical and dense stages twice per query (D2): ~0.34 s of
-  the 2.66 s median. A "re-rank this list" entry point would remove it — an engine change.
-- The maximum total per query (3.05 s) is over SC-001's 3 s; the median (2.66 s) is what the
+  the 2.63 s median. A "re-rank this list" entry point would remove it — an engine change.
+- The maximum total per query (3.07 s) is over SC-001's 3 s; the median (2.63 s) is what the
   criterion measures, and the max is one query on a nominal-thermal phone.
 - Half a gigabyte resident after open, of which ~200 MB is the id map held twice (008 F-002).
 - Retrieval quality of the corpus is unmeasured; the demo makes no claim about it.
