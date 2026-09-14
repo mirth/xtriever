@@ -30,5 +30,9 @@ fp = record["footprint"]
 print(f"wrote {path}")
 print(f"  device {record['device']} {record['os']} thermal={record['thermalState']} {record['build']['configuration']} sim={record['build']['isSimulator']}")
 print(f"  footprint peak {fp['peakBytes']:,} B ({fp['peakMethod']}) vs ceiling {fp['ceilingBytes']:,} → {fp['verdict']}")
-print(f"  per-depth mean ms {record['perDepthMeanMs']}  per-pair {record['derivedPerPairMs']}")
-print(f"  parity {record['parity']['verdict']} (lexical {record['parity']['lexicalBitIdentical']}/{record['parity']['queriesCompared']}, dense Δ {record['parity']['denseMaxAbsDiff']}, rerank Δ {record['parity']['rerankMaxAbsDiff']})")
+if "perDepthMeanMs" in record:  # 007/008 harness records
+    print(f"  per-depth mean ms {record['perDepthMeanMs']}  per-pair {record['derivedPerPairMs']}")
+    p = record["parity"]
+    print(f"  parity {p['verdict']} (lexical {p['lexicalBitIdentical']}/{p['queriesCompared']}, dense Δ {p['denseMaxAbsDiff']}, rerank Δ {p['rerankMaxAbsDiff']})")
+if "latency" in record:  # 009 demo records
+    print(f"  latency {record['latency']}")

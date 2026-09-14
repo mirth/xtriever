@@ -45,8 +45,9 @@ Settings, About saying "fixture index".
 scripts/build-ios-package.sh --with-models --with-fixtures --with-wiki --demo
 # run the app on the phone from Xcode (Release), airplane mode on: search, open a hit, open the article, About
 TEST_RUNNER_XTRIEVER_CORPUS=wikipedia xcodebuild test -project apps/ios-wiki-demo/XtrieverWikiDemo.xcodeproj -scheme XtrieverWikiDemo-Measure \
-  -configuration Release -destination 'platform=iOS,id=A3C0F8DE-11F1-5D1E-AA6F-C728A4F91BB4' -skipMacroValidation -allowProvisioningUpdates \
-  ARCHS=arm64 DEVELOPMENT_TEAM=J483F464F3 -only-testing:XtrieverWikiDemoTests/DemoMeasurementTests 2>&1 | tee /tmp/demo-device.log
+  -configuration Release -destination 'platform=iOS,id=XXXXXX' -skipMacroValidation -allowProvisioningUpdates \
+  ARCHS=arm64 DEVELOPMENT_TEAM=XXXXXX -only-testing:XtrieverWikiDemoTests/DemoMeasurementTests 2>&1 | tee /tmp/demo-device.log
+# ALONE in its process: another test in the same run (AboutTests) keeps its own opened index alive and doubles the baseline — 009 report F-002. Run AboutTests separately.
 scripts/extract-device-run.py /tmp/demo-device.log specs/009-ios-wiki-demo/runs/
 ```
 
