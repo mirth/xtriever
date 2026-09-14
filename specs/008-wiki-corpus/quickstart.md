@@ -94,9 +94,10 @@ crate gained a read-only directory and the pipeline a merge that the eval does n
 
 ```bash
 scripts/build-ios-package.sh --with-models --with-wiki --app
-xcodebuild test -project swift/XtrieverHarnessApp/XtrieverHarnessApp.xcodeproj -scheme XtrieverHarnessApp -configuration Release \
+TEST_RUNNER_XTRIEVER_CORPUS=wikipedia xcodebuild test -project swift/XtrieverHarnessApp/XtrieverHarnessApp.xcodeproj -scheme XtrieverHarnessApp -configuration Release \
   -destination 'platform=iOS,id=A3C0F8DE-11F1-5D1E-AA6F-C728A4F91BB4' -skipMacroValidation -allowProvisioningUpdates ARCHS=arm64 DEVELOPMENT_TEAM=J483F464F3 \
-  TEST_RUNNER_XTRIEVER_CORPUS=wikipedia -only-testing:XtrieverHarnessAppTests/DeviceMeasurementTests 2>&1 | tee /tmp/wiki-device.log
+  -only-testing:XtrieverHarnessAppTests/DeviceMeasurementTests 2>&1 | tee /tmp/wiki-device.log
+# TEST_RUNNER_* must be an *environment* variable of xcodebuild, not a trailing NAME=VALUE argument (that is a build setting and never reaches the test)
 scripts/extract-device-run.py /tmp/wiki-device.log specs/008-wiki-corpus/runs/
 ```
 
@@ -112,7 +113,7 @@ cargo fmt --all --check
 RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets
 RUSTFLAGS="-D warnings" cargo clippy -p xtriever-ffi --features cli --all-targets
 cargo nextest run --workspace
-cargo nextest run -p xtriever-ffi -p xtriever-dense --release --run-ignored only
+cargo nextest run -p xtriever-ffi -p xtriever-dense -p xtriever-cli --release --run-ignored only -j 1   # serial: the 007 budget test needs an unloaded CPU (report F-007)
 cargo deny check
 cargo check --workspace --target aarch64-apple-ios
 cargo check --workspace --target aarch64-apple-ios-sim
