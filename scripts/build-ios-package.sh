@@ -7,7 +7,7 @@
 # Rust; the resources are pinned elsewhere). Feature 007 — replaces the 001 spike's
 # build-ios-harness.sh and encodes the traps that spike recorded (001 report F-004–F-008).
 #
-#     scripts/build-ios-package.sh [--debug] [--with-models] [--with-fixtures] [--with-scifact] [--with-wiki|--with-wiki-dev] [--app]
+#     scripts/build-ios-package.sh [--debug] [--with-models] [--with-fixtures] [--with-scifact] [--with-wiki|--with-wiki-dev] [--app] [--demo]
 #
 #   --with-models    stage both pinned models into the library bundle (~175 MB; needed by every
 #                    Swift test and by any device run — a device has no host filesystem)
@@ -17,6 +17,7 @@
 #                    record, attribution, queries, host goldens); fails over the bundle budget
 #   --with-wiki-dev  the same from target/xt-wiki-dev (a --limit build) — simulator work only
 #   --app            regenerate swift/XtrieverHarnessApp/*.xcodeproj (needs xcodegen)
+#   --demo           regenerate apps/ios-wiki-demo/*.xcodeproj — the Feature 009 demo app (needs xcodegen)
 #
 # Prerequisite: scripts/check-toolchain.sh must pass. A cross-target build recorded without it
 # is void (001 research D14).
@@ -33,6 +34,7 @@ with_fixtures=false
 with_scifact=false
 with_wiki=""
 with_app=false
+with_demo=false
 for arg in "$@"; do
     case "$arg" in
         --debug)         profile="debug"; profile_flag="" ;;
@@ -42,6 +44,7 @@ for arg in "$@"; do
         --with-wiki)     with_wiki="target/xt-wiki" ;;
         --with-wiki-dev) with_wiki="target/xt-wiki-dev" ;;
         --app)           with_app=true ;;
+        --demo)          with_demo=true ;;
         *) echo "unknown option: $arg" >&2; exit 1 ;;
     esac
 done
@@ -211,6 +214,17 @@ if [ "$with_app" = true ]; then
         printf 'build-ios-package: INCOMPLETE — xcodegen is not installed, so the host app project\n' >&2
         printf '  was not generated. The SIMULATOR path works; a DEVICE run cannot. Install it with\n' >&2
         printf '  `brew install xcodegen` and re-run with --app.\n' >&2
+        exit 2
+    fi
+fi
+
+if [ "$with_demo" = true ]; then
+    if command -v xcodegen >/dev/null 2>&1; then
+        (cd "$repo_root/apps/ios-wiki-demo" && xcodegen generate >/dev/null)
+        printf '    XtrieverWikiDemo.xcodeproj regenerated\n'
+    else
+        printf 'build-ios-package: INCOMPLETE — xcodegen is not installed, so the demo app project\n' >&2
+        printf '  was not generated. Install it with `brew install xcodegen` and re-run with --demo.\n' >&2
         exit 2
     fi
 fi
