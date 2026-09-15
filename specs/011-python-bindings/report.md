@@ -55,12 +55,12 @@ types and seven exports, all conversions; no pipeline, stage, core or format cha
 
 | | asked | measured |
 |---|---|---|
-| SC-001 | wheel installs on a clean interpreter, no toolchain, both platforms | macOS arm64: `uv venv --python 3.13` (CPython 3.13.11), `env -i PATH=/usr/bin:/bin`, 30 / 30 (after B2); Linux x86_64: the CI job builds, installs and runs the model-free subset (@@CI@@) |
+| SC-001 | wheel installs on a clean interpreter, no toolchain, both platforms | macOS arm64: `uv venv --python 3.13` (CPython 3.13.11), `env -i PATH=/usr/bin:/bin`, 30 / 30 (after B2); Linux x86_64: the CI job builds `xtriever-0.1.0-py3-none-manylinux_2_39_x86_64.whl` (4.1 MB), installs it into CPython 3.12.3 and runs the model-free subset, 9 / 9 |
 | SC-002 | 100 % of the goldens bit-identical from Python, with and without the re-ranker | 16 / 16 pairs (`test_search.py`), plus stage reports and `info()` |
 | SC-003 | one exception class per engine kind | 11 nested classes, all subclasses of `XtrieverError` (`test_surface.py`); `Model`, `Corrupt` (missing dir, bad format version), `BudgetExhausted`, `Schema` (dense field, counts), `DimensionMismatch` provoked (`test_errors.py`, `test_build.py`) |
 | SC-004 | binding overhead ≤ 5 % of `elapsed_ms` | **median 0.36 %**, max 0.66 % (24 samples, `test_overhead.py`) |
 | SC-005 | a second thread completes during a search | the thread's work took < 25 % of the search's wall time (`test_threads.py`); two threads × 5 searches on one handle: 10 × 10 hits, no error |
-| SC-006 | the CI job under 10 minutes, downloads crates only | @@CI@@ |
+| SC-006 | the CI job under 10 minutes, downloads crates only | **9 min 47 s** on the first green run — a cold run: `CACHE_ON_FAILURE: false` meant the two failed attempts saved no cache, so this run seeded it; met with 13 s to spare (F-006). Downloads: crates, `uv`, `maturin`, `pytest` |
 | SC-007 | an index built from Python equals the Rust-built fixture on every query | 16 / 16 pairs from Python (`test_build.py`) and at the FFI (`tests/build.rs`, also after `merge`) |
 
 Suites: Python 30 / 30 (`-m "not models"` 9 / 9); FFI model-backed 15 / 15 (`-j 1`, incl. the
@@ -105,6 +105,15 @@ requires: fullfp16" from `gemm-common`'s inline assembly; the release/wheel prof
 CI is x86_64 and unaffected; noted for anyone building the Python package on an arm64 Linux
 box (use `--profile wheel` for the bin too, or a newer `gemm`).
 
+### F-006 — The Linux wheel is tagged by the runner's glibc; the job is 13 s under budget cold
+
+maturin's audit tagged the wheel `manylinux_2_39_x86_64`: the cdylib links symbols of the
+runner's glibc 2.39 (Ubuntu 24.04), so it installs on distributions at least that new — the
+spec's "host platforms", not a portable wheel. A `manylinux_2_28` wheel would need building
+inside a manylinux container (or `--zig`), which is left undone. The job took 9 min 47 s
+uncached (the release build of the FFI tree); the cache now exists, so the next runs are
+shorter — recorded as measured, not projected.
+
 ## Review rounds
 
 _None yet._
@@ -123,6 +132,7 @@ touched) · no device/team identifier in the tree.
 - An async facade (spec assumption) — the lock is released; `asyncio.to_thread` is one line
   for a caller.
 - A model downloader in the package — `scripts/fetch-model.sh` is the pinned, verified path.
-- PyPI publication, Windows wheels, arm64 Linux wheels (build from source, unverified).
+- PyPI publication, Windows wheels, arm64 Linux wheels, a portable `manylinux_2_28` wheel
+  (container build) — F-006.
 - Python-side ergonomics beyond re-exports (FR-014): variant constructors are the
   generator's (`FieldValue.TEXT("…")`).

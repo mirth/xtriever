@@ -38,7 +38,7 @@ during engine calls.
   documents: 16 / 16 too (SC-007), and at the FFI (`tests/build.rs`, also after `merge`).
 - Binding overhead: median **0.36 %** of the engine's `elapsed_ms` (SC-004 ≤ 5 %).
 - GIL: a Python thread's work completes during a search; two threads on one handle, no error.
-- Clean install: Python 3.13, no `cargo` on `PATH`, 30 / 30. Linux: the CI job (@@CI@@).
+- Clean install: Python 3.13, no `cargo` on `PATH`, 30 / 30. Linux: the CI job builds `manylinux_2_39_x86_64` (the runner's glibc; report F-006), installs, 9 / 9 model-free; 9 min 47 s cold (SC-006 < 10 min).
 - Suites: Python 30 / 30; FFI model-backed 15 / 15; workspace 263 / 263; Swift 17 run / 0
   failures with the new exports generated and unused; `git diff main -- swift/ apps/` empty.
 
