@@ -241,7 +241,8 @@ and searches; the results equal what the Rust surface produces for the same docu
 - **SC-005**: With one search in flight, a second Python thread completes 100 % of 20
   short computations without waiting for the search to finish (the interpreter lock is
   released).
-- **SC-006**: CI's added job runs in under 10 minutes and downloads nothing but crates.
+- **SC-006**: CI's added job runs in under 10 minutes and downloads no model and no dataset
+  (crates and the Python build/test tooling only — review round 1 #6 corrected the wording).
 - **SC-007**: An index built from Python with the fixture's 40 documents produces the
   same hits as the fixture index built by Rust for every fixture query.
 

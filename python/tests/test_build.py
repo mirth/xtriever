@@ -135,3 +135,16 @@ def test_create_refusals(tmp_path):
     bad.dense_fields = ["not-a-field"]
     with pytest.raises(xtriever.XtrieverError.Schema):
         xtriever.IndexHandle.create(str(tmp_path / "idx2"), bad, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+
+
+def test_a_failed_model_load_at_create_leaves_nothing_behind(tmp_path):
+    """Review round 1 #1: models load before the directory is touched; a retry succeeds."""
+    h = fixture()
+    target = tmp_path / "idx"
+    with pytest.raises(xtriever.XtrieverError.Model):
+        xtriever.IndexHandle.create(
+            str(target), config(h), str(EMBEDDER), str(tmp_path / "no-such-model"), xtriever.LoadPath.MMAP
+        )
+    assert not target.exists()
+    handle = xtriever.IndexHandle.create(str(target), config(h), str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP)
+    assert handle.info().documents == 0 and handle.info().reranker_model_id is not None

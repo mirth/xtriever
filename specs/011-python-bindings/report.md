@@ -63,8 +63,8 @@ types and seven exports, all conversions; no pipeline, stage, core or format cha
 | SC-006 | the CI job under 10 minutes, downloads crates only | **9 min 47 s** on the first green run — a cold run: `CACHE_ON_FAILURE: false` meant the two failed attempts saved no cache, so this run seeded it; met with 13 s to spare (F-006). Downloads: crates, `uv`, `maturin`, `pytest` |
 | SC-007 | an index built from Python equals the Rust-built fixture on every query | 16 / 16 pairs from Python (`test_build.py`) and at the FFI (`tests/build.rs`, also after `merge`) |
 
-Suites: Python 30 / 30 (`-m "not models"` 9 / 9); FFI model-backed 15 / 15 (`-j 1`, incl. the
-4 builder tests); workspace nextest 263 / 263; Swift simulator suite 17 run / 0 failures (the
+Suites: Python 31 / 31 (`-m "not models"` 9 / 9); FFI model-backed 16 / 16 (`-j 1`, incl. the
+5 builder tests); workspace nextest 263 / 263; Swift simulator suite 17 run / 0 failures (the
 Wikipedia test skipped: not staged for this check), `git diff main -- swift/ apps/` empty.
 
 ## Findings
@@ -114,9 +114,20 @@ inside a manylinux container (or `--zig`), which is left undone. The job took 9 
 uncached (the release build of the FFI tree); the cache now exists, so the next runs are
 shorter — recorded as measured, not projected.
 
-## Review rounds
+## Review round 1
 
-_None yet._
+GitHub Copilot, six comments: all taken.
+
+| # | Comment | Action |
+|---|---|---|
+| 1 | `create` loaded the re-ranker after `HybridIndex::create` had written the directory — a wrong model path left a non-empty index behind and a retry failed with `Corrupt`; "also at line 212" (`open`) | Taken: `load_models` loads the embedder and the re-ranker before any directory is opened or created, for both paths; `finish` only attaches. Tests: `tests/build.rs::a_failed_model_load_at_create_leaves_nothing_behind` (fails on the old code — checked by stashing the fix) and the same from Python. On `open` nothing was ever mutated (the directory exists; the lock file is the backend's own), but the restructuring covers it |
+| 2 | The `python` job's path filter omitted the root `Cargo.toml`, where the `wheel` profile lives | Taken: `Cargo.toml` added to the filter |
+| 3 | The GIL test's worker could finish before the main thread entered the foreign call | Taken: the worker waits on an `Event` the main thread sets immediately before the call and records its finish time; the test asserts the worker finished **before the search returned** (impossible if the call held the lock) and that its work took under 25 % of the search's wall time. Passes 3 / 3 runs |
+| 4 | `IndexHandle`'s docs still said "a read-only open hybrid index" | Taken: the type and `open` docs now say writable when the lock can be taken, read-only fallback, `create` always writable, writes on a read-only handle → `Io` |
+| 5 | "in call order" is not a guarantee a `Mutex` gives | Taken: README and the `search` doc say "one at a time — a lock, not a queue"; the Swift wrapper's serial queue keeps its own FIFO statement, which is true of the queue |
+| 6 | SC-006 said "downloads nothing but crates" while the job installs `uv`, `maturin`, `pytest` | Taken: the criterion's wording corrected in the spec to its intent — no model, no dataset — with the correction noted inline; the measured result is unchanged |
+
+After the round: Python 31 / 31 (`-m "not models"` 9 / 9), FFI builder suite 5 / 5, clippy clean.
 
 ## Gate (Rule 5)
 

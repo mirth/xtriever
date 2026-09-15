@@ -39,7 +39,7 @@ during engine calls.
 - Binding overhead: median **0.36 %** of the engine's `elapsed_ms` (SC-004 ≤ 5 %).
 - GIL: a Python thread's work completes during a search; two threads on one handle, no error.
 - Clean install: Python 3.13, no `cargo` on `PATH`, 30 / 30. Linux: the CI job builds `manylinux_2_39_x86_64` (the runner's glibc; report F-006), installs, 9 / 9 model-free; 9 min 47 s cold (SC-006 < 10 min).
-- Suites: Python 30 / 30; FFI model-backed 15 / 15; workspace 263 / 263; Swift 17 run / 0
+- Suites: Python 31 / 31; FFI model-backed 16 / 16; workspace 263 / 263; Swift 17 run / 0
   failures with the new exports generated and unused; `git diff main -- swift/ apps/` empty.
 
 ## Behaviour to review
@@ -52,6 +52,15 @@ during engine calls.
 - `[profile.wheel]` in the workspace `Cargo.toml` (report F-001): the wheel's cdylib keeps its
   symbol table; nothing else uses the profile.
 - The bindgen bin dispatches on `generate`; the iOS script's invocation is unchanged.
+
+## Review round 1
+
+Copilot, six comments, all taken (report table): models load before any directory is touched
+(a failed re-ranker load at `create` leaves nothing behind — tested in Rust and Python); the
+CI filter includes the root `Cargo.toml`; the GIL test synchronises on an `Event` and asserts
+the worker finished before the search returned; handle/open docs say writable-or-read-only;
+"in call order" dropped (a lock, not a queue); SC-006's wording corrected to "no model, no
+dataset".
 
 ## Gate
 

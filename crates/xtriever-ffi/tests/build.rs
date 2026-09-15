@@ -347,3 +347,27 @@ fn merge_leaves_identical_hits() {
     let without = open(tmp.path(), false);
     assert_goldens(&with, &without);
 }
+
+/// Review round 1 #1: a wrong re-ranker path at `create` leaves no directory behind, and a
+/// retry with the right one succeeds — the models load before the directory is touched.
+#[test]
+#[ignore = "needs both models"]
+fn a_failed_model_load_at_create_leaves_nothing_behind() {
+    let tmp = tempfile::tempdir().unwrap();
+    let h = support::fixture_docs();
+    let dir = tmp.path().join("idx");
+    let err = IndexHandle::create(
+        s(&dir),
+        config(&h),
+        s(&support::embedder_dir()),
+        Some(s(&tmp.path().join("no-such-model"))),
+        LoadPath::Buffered,
+    )
+    .err()
+    .unwrap();
+    assert!(matches!(err, XtrieverError::Model { .. }), "{err:?}");
+    assert!(!dir.exists(), "the directory must not have been created");
+    let handle = create(&dir, &h, true);
+    assert_eq!(handle.info().documents, 0);
+    assert!(handle.info().reranker_model_id.is_some());
+}

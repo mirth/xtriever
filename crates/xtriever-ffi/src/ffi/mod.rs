@@ -22,7 +22,10 @@ pub use types::{
     StageReport,
 };
 
-/// A read-only open hybrid index with its models; searches are serialised per handle. The
+/// An open hybrid index with its models; calls on one handle are serialised by a lock (no
+/// ordering guarantee among waiters). `open` gives a **writable** handle whenever the directory's
+/// lock can be taken and a read-only one otherwise (an app bundle); `create` (Feature 011) is
+/// always writable; on a read-only handle every write returns `Io` "read-only index". The
 /// Swift package wraps this as `XtrieverIndex` with the async layer.
 #[derive(uniffi::Object)]
 pub struct IndexHandle {
@@ -68,7 +71,8 @@ impl IndexHandle {
         crate::index::info(&self.inner)
     }
 
-    /// One search. Calls on one handle run one at a time, in call order; the time budget is
+    /// One search. Calls on one handle run one at a time (a lock, not a queue: waiters are not
+    /// ordered); the time budget is
     /// measured from the moment the call takes the handle.
     ///
     /// # Errors

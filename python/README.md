@@ -83,8 +83,9 @@ the engine's decision, unchanged from Rust.
 ## Threads
 
 Calls release the interpreter lock for the duration of the engine call, so other Python
-threads keep running during a search. Searches on one handle are serialised by the engine,
-in call order; a time budget counts from the moment the call takes the handle.
+threads keep running during a search. Calls on one handle run one at a time — a lock, not a
+queue, so concurrent callers are not ordered; a time budget counts from the moment the call
+takes the handle.
 
 ## Building an index
 

@@ -49,7 +49,8 @@ impl From<LoadPath> for xtriever_rerank::LoadPath {
     }
 }
 
-/// Open read-only: the embedder, then the pipeline directory, then the optional re-ranker.
+/// Open an existing index: both models first (nothing is touched if one fails), then the
+/// directory — writable when its lock can be taken, read-only otherwise (below).
 ///
 /// The directory is opened **with** the lexical backend's meta lock whenever it can be taken —
 /// that lock is what keeps a reader safe from a concurrent writer's garbage collection, and a
@@ -63,9 +64,11 @@ pub(crate) fn open(
     reranker_dir: Option<&str>,
     load_path: LoadPath,
 ) -> Result<Inner, XtrieverError> {
-    let t = Instant::now();
-    let embedder = MiniLmEmbedder::load(embedder_dir.as_ref(), load_path.into())?;
-    let embedder_load = t.elapsed();
+    let Models {
+        embedder,
+        embedder_load,
+        reranker,
+    } = load_models(embedder_dir, reranker_dir, load_path)?;
 
     let dir = std::path::Path::new(index_dir);
     let mapped = matches!(load_path, LoadPath::Mmap);
@@ -91,13 +94,14 @@ pub(crate) fn open(
         }
         other => other?,
     };
-
-    finish(index, embedder_load, reranker_dir, load_path)
+    Ok(finish(index, embedder_load, reranker))
 }
 
-/// Create an empty index at `index_dir` (absent or empty) with `config`, the embedder loaded
-/// as `open` loads it, the optional re-ranker attached the same way (Feature 011 US4). The
-/// directory is created writable: the handle can `add`, `delete` and `commit` at once.
+/// Create an empty index at `index_dir` (absent or empty) with `config`, the embedder and the
+/// optional re-ranker loaded as `open` loads them (Feature 011 US4). Every requested model is
+/// loaded **before** the directory is touched, so a wrong model path leaves nothing behind
+/// and a retry with the right one succeeds (review round 1 #1). The directory is created
+/// writable: the handle can `add`, `delete` and `commit` at once.
 pub(crate) fn create(
     index_dir: &str,
     config: IndexConfig,
@@ -105,38 +109,66 @@ pub(crate) fn create(
     reranker_dir: Option<&str>,
     load_path: LoadPath,
 ) -> Result<Inner, XtrieverError> {
-    let t = Instant::now();
-    let embedder = MiniLmEmbedder::load(embedder_dir.as_ref(), load_path.into())?;
-    let embedder_load = t.elapsed();
+    let Models {
+        embedder,
+        embedder_load,
+        reranker,
+    } = load_models(embedder_dir, reranker_dir, load_path)?;
     let index = HybridIndex::create(
         std::path::Path::new(index_dir),
         HybridConfig::from(config),
         Box::new(embedder),
     )?;
-    finish(index, embedder_load, reranker_dir, load_path)
+    Ok(finish(index, embedder_load, reranker))
 }
 
-/// Attach the optional re-ranker (timed) and wrap the index for the boundary.
-fn finish(
-    mut index: HybridIndex,
+/// The embedder with its load time and, if asked for, the re-ranker with its own.
+struct Models {
+    embedder: MiniLmEmbedder,
     embedder_load: Duration,
+    reranker: Option<(MiniLmCrossEncoder, Duration)>,
+}
+
+/// Both models, timed, before any directory is opened or created — a model failure mutates
+/// nothing.
+fn load_models(
+    embedder_dir: &str,
     reranker_dir: Option<&str>,
     load_path: LoadPath,
-) -> Result<Inner, XtrieverError> {
-    let reranker_load = match reranker_dir {
+) -> Result<Models, XtrieverError> {
+    let t = Instant::now();
+    let embedder = MiniLmEmbedder::load(embedder_dir.as_ref(), load_path.into())?;
+    let embedder_load = t.elapsed();
+    let reranker = match reranker_dir {
         Some(rdir) => {
             let t = Instant::now();
             let reranker = MiniLmCrossEncoder::load(rdir.as_ref(), load_path.into())?;
-            index.set_reranker(Some(Box::new(reranker)));
-            Some(t.elapsed())
+            Some((reranker, t.elapsed()))
         }
         None => None,
     };
-    Ok(Inner {
+    Ok(Models {
+        embedder,
+        embedder_load,
+        reranker,
+    })
+}
+
+/// Attach the re-ranker, if one was loaded, and wrap the index for the boundary.
+fn finish(
+    mut index: HybridIndex,
+    embedder_load: Duration,
+    reranker: Option<(MiniLmCrossEncoder, Duration)>,
+) -> Inner {
+    let reranker_load = reranker.map(|(reranker, load)| {
+        index.set_reranker(Some(Box::new(reranker)));
+        load
+    });
+    Inner {
         index: Mutex::new(index),
         embedder_load,
         reranker_load,
-    })
+    }
 }
 
 // ── Feature 011: the builder — wire → core/pipeline, and the write operations ────────────────

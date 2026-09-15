@@ -112,6 +112,7 @@ jobs:
             python:
               - 'crates/xtriever-ffi/**'
               - 'python/**'
+              - 'Cargo.toml'        # the `wheel` profile that keeps uniffi's metadata (report F-001)
               - 'Cargo.lock'
               - '.github/workflows/ci.yml'
       - if: steps.filter.outputs.python == 'true'
