@@ -1,0 +1,20 @@
+# Direct dependencies for reference/sparse_spike.py (Feature 012: the sparse-expansion spike).
+#
+# torch / transformers / tokenizers / safetensors / numpy are Feature 004's pins
+# (reference/requirements-004.in) — the same builds that mint the dense goldens, so the two
+# reference stacks agree. pytrec_eval is Feature 003's scorer pin: the spike imports
+# reference/gen_003_fixtures.py and scores every run through it. scipy holds the CSR matrices
+# for the dot product and the BM25-over-expansions variant; snowballstemmer approximates the
+# engine's `standard_en` for the spike's own text BM25 (research D5); huggingface-hub only
+# pins models (`sparse_spike.py pin`).
+torch==2.14.0
+transformers==5.17.0
+tokenizers==0.23.2
+safetensors==0.8.0
+numpy==2.5.3
+pytrec_eval==0.5
+scipy
+snowballstemmer
+huggingface-hub==1.31.0
+pytest
+pip-tools

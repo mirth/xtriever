@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "note": "Feature 012 sparse-expansion spike: an inference-free document encoder (OpenSearch neural sparse), pinned by revision and file hash; fetched by scripts/fetch-model.sh, never committed. Query side: tokenizer + idf.json, no model call (research D1).",
+  "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill",
+  "revision": "8921a26c78b8559d6604eb1f5c0b74c079bee38f",
+  "local_dir": "opensearch-neural-sparse-encoding-doc-v2-distill",
+  "license": "apache-2.0",
+  "parameters": 66985530,
+  "activation": "log1p_relu",
+  "files": [
+    {
+      "name": "config.json",
+      "bytes": 596,
+      "sha256": "58b5b9fb5eedb959e14778311cd2ec7b33e40010b8ccbe5766e20a6d446920b8"
+    },
+    {
+      "name": "tokenizer.json",
+      "bytes": 711396,
+      "sha256": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66"
+    },
+    {
+      "name": "model.safetensors",
+      "bytes": 267954840,
+      "sha256": "f7fe70615311c89eb762b1a4059a94a4a2f146ff062296c95f29a2d6951eda95"
+    },
+    {
+      "name": "idf.json",
+      "bytes": 889360,
+      "sha256": "da23a1c0b9252776cc8c6d70fd14723e218f484d489cd9027ac6e4065d5b9edd"
+    }
+  ]
+}
