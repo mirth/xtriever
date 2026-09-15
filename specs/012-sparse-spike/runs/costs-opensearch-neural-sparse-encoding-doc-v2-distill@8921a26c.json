@@ -1,0 +1,122 @@
+{
+ "datasets": {
+  "fiqa": {
+   "batch": 8,
+   "dataset": "fiqa",
+   "device": "mps",
+   "docs_per_s": 30.7,
+   "documents": 57638,
+   "empty_queries": 0,
+   "idf_entries": 30517,
+   "max_length": 512,
+   "model": {
+    "license": "apache-2.0",
+    "parameters": 66985530,
+    "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill",
+    "revision": "8921a26c78b8559d6604eb1f5c0b74c079bee38f"
+   },
+   "model_bytes": 269556192,
+   "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",
+   "nnz_doc": {
+    "max": 1567,
+    "mean": 244.9727610257122,
+    "p95": 432.0
+   },
+   "nnz_query": {
+    "max": 29,
+    "mean": 12.916666666666666,
+    "p95": 21.0
+   },
+   "queries": 648,
+   "shards": 58,
+   "threads": 8,
+   "timed_documents": 57638,
+   "truncated_docs": 2417,
+   "wall_s": 1877.4
+  },
+  "nfcorpus": {
+   "batch": 8,
+   "dataset": "nfcorpus",
+   "device": "mps",
+   "docs_per_s": 27.5,
+   "documents": 3633,
+   "empty_queries": 0,
+   "idf_entries": 30517,
+   "max_length": 512,
+   "model": {
+    "license": "apache-2.0",
+    "parameters": 66985530,
+    "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill",
+    "revision": "8921a26c78b8559d6604eb1f5c0b74c079bee38f"
+   },
+   "model_bytes": 269556192,
+   "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",
+   "nnz_doc": {
+    "max": 1282,
+    "mean": 291.8596201486375,
+    "p95": 486.0
+   },
+   "nnz_query": {
+    "max": 19,
+    "mean": 4.925696594427245,
+    "p95": 11.0
+   },
+   "queries": 323,
+   "shards": 4,
+   "threads": 8,
+   "timed_documents": 3633,
+   "truncated_docs": 330,
+   "wall_s": 131.9
+  },
+  "scifact": {
+   "batch": 8,
+   "dataset": "scifact",
+   "device": "mps",
+   "docs_per_s": 27.3,
+   "documents": 5183,
+   "empty_queries": 0,
+   "idf_entries": 30517,
+   "max_length": 512,
+   "model": {
+    "license": "apache-2.0",
+    "parameters": 66985530,
+    "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill",
+    "revision": "8921a26c78b8559d6604eb1f5c0b74c079bee38f"
+   },
+   "model_bytes": 269556192,
+   "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",
+   "nnz_doc": {
+    "max": 1458,
+    "mean": 385.5685896199112,
+    "p95": 625.0
+   },
+   "nnz_query": {
+    "max": 53,
+    "mean": 19.55,
+    "p95": 33.0
+   },
+   "queries": 300,
+   "shards": 6,
+   "threads": 8,
+   "timed_documents": 5183,
+   "truncated_docs": 455,
+   "wall_s": 190.0
+  }
+ },
+ "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",
+ "wikipedia_projection": {
+  "basis": "SciFact's mean non-zeros per document (abstracts of ~200-300 tokens, the closest analogue to 256-token passages)",
+  "bytes_estimate_range": [
+   247504382,
+   412507303
+  ],
+  "bytes_per_posting_range": [
+   1.5,
+   2.5
+  ],
+  "method": "postings x a tantivy posting-with-term-frequency of 1.5-2.5 bytes (the literature's range; 013 measures)",
+  "nnz_per_passage_assumed": 385.6,
+  "passages": 427947,
+  "postings": 165002921
+ }
+}
