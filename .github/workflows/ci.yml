@@ -129,7 +129,7 @@ jobs:
       - if: steps.filter.outputs.python == 'true'
         run: uv pip install "maturin>=1.15,<2" pytest
       - if: steps.filter.outputs.python == 'true'
-        run: cd python && ../.venv/bin/maturin build --release
+        run: cd python && ../.venv/bin/maturin build
       - if: steps.filter.outputs.python == 'true'
         run: ls -la target/wheels && uv pip install target/wheels/xtriever-*.whl
       - if: steps.filter.outputs.python == 'true'

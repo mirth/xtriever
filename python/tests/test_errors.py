@@ -47,3 +47,24 @@ def test_strict_budget_is_budget_exhausted(handle):
     with pytest.raises(xtriever.XtrieverError.BudgetExhausted) as info:
         handle.search("lantern", xtriever.SearchOptions(k=5, max_time_ms=1, strict=True))
     assert "ms" in str(info.value)
+
+
+@pytest.mark.models
+def test_create_in_a_non_empty_directory_is_corrupt(tmp_path):
+    (tmp_path / "something").write_text("x")
+    config = xtriever.IndexConfig(
+        fields=[xtriever.FieldDef(name="text", kind=xtriever.FieldKind.TEXT(analyzer="standard"))],
+        dense_fields=["text"],
+    )
+    with pytest.raises(xtriever.XtrieverError.Corrupt):
+        xtriever.IndexHandle.create(str(tmp_path), config, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+
+
+@pytest.mark.models
+def test_create_with_a_bad_dense_field_is_schema(tmp_path):
+    config = xtriever.IndexConfig(
+        fields=[xtriever.FieldDef(name="text", kind=xtriever.FieldKind.TEXT(analyzer="standard"))],
+        dense_fields=["missing"],
+    )
+    with pytest.raises(xtriever.XtrieverError.Schema):
+        xtriever.IndexHandle.create(str(tmp_path / "idx"), config, str(EMBEDDER), None, xtriever.LoadPath.MMAP)

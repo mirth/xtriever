@@ -22,8 +22,8 @@ SEARCH_NAMES = [
     "StageReport",
     "XtrieverError",
 ]
-# PR B adds the builder (Feature 011 US4): IndexConfig, FieldDef, FieldKind, FieldValue, Document.
-EXPECTED_ALL = sorted(SEARCH_NAMES + ["__version__"])
+BUILDER_NAMES = ["Document", "FieldDef", "FieldKind", "FieldValue", "IndexConfig"]
+EXPECTED_ALL = sorted(SEARCH_NAMES + BUILDER_NAMES + ["__version__"])
 
 ERROR_KINDS = [
     "Schema",
@@ -71,6 +71,15 @@ def test_search_options_defaults():
 def test_load_paths():
     assert xtriever.LoadPath.MMAP is not xtriever.LoadPath.BUFFERED
     assert {p.name for p in xtriever.LoadPath} == {"BUFFERED", "MMAP"}
+
+
+def test_builder_defaults():
+    cfg = xtriever.IndexConfig(fields=[], dense_fields=["text"])
+    assert (cfg.candidate_depth, cfg.rrf_k, cfg.rerank_depth) == (100, 60, 20)
+    f = xtriever.FieldDef(name="text", kind=xtriever.FieldKind.TEXT(analyzer="standard"))
+    assert (f.indexed, f.stored, f.boost) == (True, False, 1.0)
+    d = xtriever.Document(external_id="x", fields={"text": xtriever.FieldValue.TEXT("t")})
+    assert d.chunk is None
 
 
 def test_hit_is_keyword_constructible():

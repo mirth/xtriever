@@ -29,6 +29,7 @@ manifest-path = "../crates/xtriever-ffi/Cargo.toml"
 bindings = "uniffi"
 python-source = "src"
 module-name = "xtriever._ffi"
+profile = "wheel"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
