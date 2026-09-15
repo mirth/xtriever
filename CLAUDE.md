@@ -39,6 +39,8 @@ cargo check --workspace --target aarch64-apple-ios
 cargo check --workspace --target aarch64-apple-ios-sim
 cargo check --workspace --target aarch64-linux-android
 cargo check --workspace --target wasm32-unknown-unknown   # best-effort, may fail (tracked)
+(cd python && .venv/bin/maturin build) && uv pip install --force-reinstall target/wheels/xtriever-*.whl \
+  && python/.venv/bin/pytest python/tests -q                # Feature 011: the Python surface, models present (CI runs only `-m "not models"`)
 ```
 
 Ranking-affecting changes to `lexical` / `dense` / `rerank` / `ltr` / `pipeline` additionally need

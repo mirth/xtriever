@@ -176,3 +176,96 @@ pub enum LoadPath {
     /// while the handle lives.
     Mmap,
 }
+
+// ── Feature 011: the builder on the wire (research D4) ───────────────────────────────────────
+
+/// The kind of a schema field — `xtriever_core::FieldKind` on the wire.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum FieldKind {
+    /// Full text, analyzed with the named analyzer (`"standard"`, `"standard_en"`, …).
+    Text {
+        /// The analyzer id the lexical stage knows; unknown ids are refused at create.
+        analyzer: String,
+    },
+    /// Exact-match string.
+    Keyword,
+    /// Unsigned integer.
+    U64,
+    /// Signed integer.
+    I64,
+    /// Floating point.
+    F64,
+    /// Boolean.
+    Bool,
+    /// Timestamp in Unix milliseconds.
+    DateMillis,
+}
+
+/// One schema field — `xtriever_core::FieldDef` on the wire.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct FieldDef {
+    /// Field name, unique within the schema.
+    pub name: String,
+    /// Field type.
+    pub kind: FieldKind,
+    /// Searchable (text) or filterable (other kinds).
+    #[uniffi(default = true)]
+    pub indexed: bool,
+    /// Original value stored and returnable with hits.
+    #[uniffi(default = false)]
+    pub stored: bool,
+    /// Query-time weight for text fields (1.0 = neutral).
+    #[uniffi(default = 1.0)]
+    pub boost: f32,
+}
+
+/// What an index is created with — the pipeline's `HybridConfig` on the wire, with its
+/// defaults (candidate depth 100, RRF k 60, re-rank depth 20).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct IndexConfig {
+    /// The lexical schema.
+    pub fields: Vec<FieldDef>,
+    /// Text fields joined by one space, in this order, into the dense passage; each must be a
+    /// `Text` field of `fields` (refused otherwise).
+    pub dense_fields: Vec<String>,
+    /// Candidates taken from each stage per search unless the caller overrides.
+    #[uniffi(default = 100)]
+    pub candidate_depth: u32,
+    /// Reciprocal rank fusion constant.
+    #[uniffi(default = 60)]
+    pub rrf_k: u32,
+    /// Fused candidates re-scored by an attached re-ranker unless the caller overrides.
+    #[uniffi(default = 20)]
+    pub rerank_depth: u32,
+}
+
+/// A field's value — `xtriever_core::Value` on the wire. The kind must match the field's.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum FieldValue {
+    /// Analyzed full text.
+    Text(String),
+    /// Exact-match string.
+    Keyword(String),
+    /// Unsigned integer.
+    U64(u64),
+    /// Signed integer.
+    I64(i64),
+    /// Floating point.
+    F64(f64),
+    /// Boolean.
+    Bool(bool),
+    /// Timestamp in Unix milliseconds.
+    DateMillis(i64),
+}
+
+/// A document to add — the pipeline's `SourceDocument` on the wire.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Document {
+    /// The caller's id; a known id replaces, an empty one is refused.
+    pub external_id: String,
+    /// Field values by field name.
+    pub fields: std::collections::HashMap<String, FieldValue>,
+    /// Chunk provenance, if the document is a chunk of a larger one.
+    #[uniffi(default = None)]
+    pub chunk: Option<ChunkInfo>,
+}

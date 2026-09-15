@@ -43,6 +43,19 @@
 //! code only. See [`ADR-0003`].
 //!
 //! [`ADR-0003`]: ../../../docs/adr/0003-uniffi-scaffolding-requires-unsafe-allow.md
+//!
+//! # Feature 011
+//!
+//! - **A second foreign surface**: the Python package (`python/`) is generated from the same
+//!   exports by uniffi's Python generator — the `uniffi-bindgen` bin dispatches `generate …` to
+//!   it and everything else to the Swift entry point — and packed into a wheel by maturin
+//!   (`[profile.wheel]` keeps the symbol table the metadata lives in).
+//! - **The builder on the wire**: [`IndexHandle::create`] with an [`IndexConfig`] (schema as
+//!   [`FieldDef`] / [`FieldKind`], dense fields, depths), [`IndexHandle::add`] /
+//!   [`add_embedded`](IndexHandle::add_embedded) with [`Document`]s ([`FieldValue`]s and
+//!   chunk provenance), [`delete`](IndexHandle::delete), [`commit`](IndexHandle::commit),
+//!   [`merge`](IndexHandle::merge), [`contains`](IndexHandle::contains) — conversions only;
+//!   every refusal and every view rule is the pipeline's.
 //
 // `unsafe_code` is denied workspace-wide. uniffi's `setup_scaffolding!`, `#[uniffi::export]` and
 // the `Record`/`Enum`/`Error`/`Object` derives emit `#[unsafe(no_mangle)] pub unsafe extern "C" fn`
@@ -53,12 +66,12 @@
 #![allow(unsafe_code)]
 
 uniffi::setup_scaffolding!();
-
 pub mod ffi;
 mod index;
 
 pub use ffi::{
-    ChunkInfo, Degradation, DegradeReason, Hit, HitExplain, IndexHandle, IndexInfo, LoadPath,
-    RerankReport, SearchOptions, SearchResponse, StageReport, XtrieverError,
+    ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
+    HitExplain, IndexConfig, IndexHandle, IndexInfo, LoadPath, RerankReport, SearchOptions,
+    SearchResponse, StageReport, XtrieverError,
 };
 pub use index::{from_response, to_pipeline_options};
