@@ -66,7 +66,7 @@ dense-field derivation; the v2 lexical baselines with their deltas.
 **Independent Test**: quickstart Step 2's second loop; SC-002; the smoke green on push.
 
 - [X] T008 [US2] Run `hybrid-baseline-v2` on the three sets with `--cache-dir target/xt-dense-cache --index-dir target/xt-rerank-index-v2/<d>` and `--export-run`; verify each run with the 003 scorer; `beir compare` against `specs/005-hybrid-pipeline/baselines/hybrid-baseline-v1.<d>.json`; paste the deltas. Also confirm the dense list is unchanged: `beir run --dataset scifact --config dense-baseline-v1 --cache-dir target/xt-dense-cache --out /tmp/dense-check.json` equals the 004 baseline (the cache is by value; a sanity check that T006's `dense_fields` change altered nothing dense)
-- [ ] T009 [US2] Run `hybrid-rerank-v2` on the three sets (`--rerank-model-dir reference/models/ms-marco-MiniLM-L-6-v2`, `RAYON_NUM_THREADS=4`, the same `--index-dir`), verify, `beir compare` against `specs/006-rerank-stage/baselines/hybrid-rerank-v1.<d>.json`; paste the deltas. **⛔** A fused (hybrid or re-rank) v2 mean nDCG@10 across the three sets below its v1 mean is stop-and-report (SC-002); a per-dataset drop is a finding, stated
+- [X] T009 [US2] Run `hybrid-rerank-v2` on the three sets (`--rerank-model-dir reference/models/ms-marco-MiniLM-L-6-v2`, `RAYON_NUM_THREADS=4`, the same `--index-dir`), verify, `beir compare` against `specs/006-rerank-stage/baselines/hybrid-rerank-v1.<d>.json`; paste the deltas. **⛔** A fused (hybrid or re-rank) v2 mean nDCG@10 across the three sets below its v1 mean is stop-and-report (SC-002); a per-dataset drop is a finding, stated
 - [X] T010 [US2] In `.github/workflows/ci.yml`, the `eval-smoke` step: `beir smoke --dataset scifact --config lexical-baseline-v2 --baseline specs/013-lexical-quality/baselines/lexical-baseline-v2.scifact.json` (confirm `smoke` honours `--config` through `evaluate` — `examples/beir.rs:786–790`; if it does not, make it), with a comment naming this feature and that v1 remains the example's default; add `specs/013-lexical-quality/baselines/**` to the job's path filter; run the same command locally → `eval-smoke: PASS`
 
 ---
@@ -74,14 +74,14 @@ dense-field derivation; the v2 lexical baselines with their deltas.
 ## Phase 5: User Story 3 — The measurements are on record (Priority: P2)
 
 - [X] T011 [P] [US3] Docs: `python/README.md` (the schema example — one `contents` text field for BM25, the `title`/`text` split kept only if a caller needs them separately, with research D1's +6.0 / +1.1 in one sentence); `crates/xtriever-cli/src/wiki/chunking.rs` schema comment (the Wikipedia index keeps `title` 2.0 / `text` until rebuilt; 014 decides); `crates/xtriever-eval/src/lib.rs` crate docs (the v2 configurations and why); `specs/012-sparse-spike/report.md` F-002 → "resolved by 013" with the measured engine deltas
-- [ ] T012 [US3] Write `specs/013-lexical-quality/report.md`: verdict; the attribution table (research D1, verbatim); the baselines table (v1 vs v2 for lexical / hybrid / rerank × 3 datasets, nDCG@10 and Recall@100, deltas); SC-001–SC-006 with numbers; findings (anything the engine's numbers showed that the spike's did not — e.g. the tokenizer's share; per-dataset fused drops if any); "Deliberately not done" (parameters, stop words, extra title field — with their numbers; Wikipedia rebuild; fixture goldens)
+- [X] T012 [US3] Write `specs/013-lexical-quality/report.md`: verdict; the attribution table (research D1, verbatim); the baselines table (v1 vs v2 for lexical / hybrid / rerank × 3 datasets, nDCG@10 and Recall@100, deltas); SC-001–SC-006 with numbers; findings (anything the engine's numbers showed that the spike's did not — e.g. the tokenizer's share; per-dataset fused drops if any); "Deliberately not done" (parameters, stop words, extra title field — with their numbers; Wikipedia rebuild; fixture goldens)
 
 ---
 
 ## Phase 6: Polish
 
-- [ ] T013 Gate (quickstart Step 4): fmt; clippy host + `x86_64-pc-windows-msvc`; `cargo nextest run --workspace`; deny; iOS / iOS-sim / Android checks; no-stubs; `git diff --stat main -- crates/ | grep -v xtriever-eval` empty; `git diff --stat main -- specs/003-eval-harness specs/004-dense-stage specs/005-hybrid-pipeline specs/006-rerank-stage` empty (SC-004); v1 reproduction (quickstart Step 3); no identifiers in the tree
-- [ ] T014 Write `specs/013-lexical-quality/pr-description.md` (for the reviewer: the one change, the attribution in three lines, the baselines table with deltas, what stays v1, the CI smoke move, the attribution lines). **⛔ Commit C3**; the owner pushes (the smoke runs on v2) and merges
+- [X] T013 Gate (quickstart Step 4): fmt; clippy host + `x86_64-pc-windows-msvc`; `cargo nextest run --workspace`; deny; iOS / iOS-sim / Android checks; no-stubs; `git diff --stat main -- crates/ | grep -v xtriever-eval` empty; `git diff --stat main -- specs/003-eval-harness specs/004-dense-stage specs/005-hybrid-pipeline specs/006-rerank-stage` empty (SC-004); v1 reproduction (quickstart Step 3); no identifiers in the tree
+- [X] T014 Write `specs/013-lexical-quality/pr-description.md` (for the reviewer: the one change, the attribution in three lines, the baselines table with deltas, what stays v1, the CI smoke move, the attribution lines). **⛔ Commit C3**; the owner pushes (the smoke runs on v2) and merges
 
 ---
 
