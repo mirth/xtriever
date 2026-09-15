@@ -1,12 +1,26 @@
-//! `ids.json` — external `String` ↔ internal `DocId`, plus chunk provenance (research D4).
+//! `ids.json` — external `String` ↔ internal `DocId`, plus chunk provenance (005 research
+//! D4; Feature 010 for the in-memory shape).
 //!
 //! Position = internal id; `null` = deleted. Ids are assigned in ingestion order and never
 //! reused, so a stale stage row can never attach to a new document.
+//!
+//! **In memory** (010 research D2): every id's bytes once, in one arena, with a `(start, end)`
+//! span per slot (an empty span is a deleted slot — empty ids are refused at assign); the
+//! reverse lookup is a `hashbrown::HashTable<u32>` hashed and compared on the arena; chunk
+//! provenance is one fixed-width slot per id, its parent interned in a second arena. About
+//! 52 bytes per slot plus the ids' own bytes (contract §3), instead of three std collections
+//! at ~200 bytes per slot. **On disk** nothing changed: `write` produces the same bytes as
+//! before (contract §1); `read` streams the file into the arena through a serde visitor so
+//! the transient never holds the old `Vec<Option<String>>` + `BTreeMap<String, _>` shape
+//! (research D4).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
+use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use hashbrown::HashTable;
+use serde::de::{self, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use xtriever_core::{ChunkInfo, DocId, Result};
 
 use crate::FORMAT_VERSION;
@@ -14,133 +28,556 @@ use crate::error::{corrupt, schema_err, write_atomically};
 
 pub(crate) const FILE: &str = "ids.json";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OnDisk {
+/// "No parent" in a chunk slot — the slot has no chunk provenance.
+const NONE: u32 = u32::MAX;
+
+/// The file's shape, used for writing only (byte-identical to the previous derive — the
+/// chunk keys are decimal ids in *string* order because the map is keyed by `String`).
+#[derive(Serialize)]
+struct OnDisk<'a> {
     format_version: u32,
-    external: Vec<Option<String>>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    external: Vec<Option<&'a str>>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     chunks: BTreeMap<String, ChunkInfo>,
 }
 
-#[derive(Debug, Clone, Default)]
+/// One slot's provenance: 32 bytes; `parent == NONE` means none. `Option<(u64, u64)>` is kept
+/// as is so every `ChunkInfo` value round-trips (research D2).
+#[derive(Debug, Clone, Copy)]
+struct ChunkSlot {
+    byte_range: Option<(u64, u64)>,
+    parent: u32,
+    ordinal: u32,
+}
+
+const NO_CHUNK: ChunkSlot = ChunkSlot {
+    byte_range: None,
+    parent: NONE,
+    ordinal: 0,
+};
+
+#[derive(Debug, Clone)]
 pub(crate) struct IdMap {
-    external: Vec<Option<String>>,
-    chunks: BTreeMap<u32, ChunkInfo>,
-    reverse: HashMap<String, u32>,
+    /// Every slot's external id, concatenated, in slot order.
+    id_bytes: Vec<u8>,
+    /// `(start, end)` into `id_bytes` per slot; `start == end` is a deleted slot.
+    spans: Vec<(u32, u32)>,
+    /// The live slots, hashed and compared on their bytes in `id_bytes`.
+    reverse: HashTable<u32>,
+    /// Empty until the first chunk is assigned, then one slot per id.
+    chunks: Vec<ChunkSlot>,
+    /// Distinct parent ids, interned at first use; never removed while open.
+    parent_bytes: Vec<u8>,
+    /// `parents + 1` offsets into `parent_bytes`.
+    parent_offsets: Vec<u32>,
+    /// Parent index by parent bytes.
+    parents: HashTable<u32>,
+}
+
+impl Default for IdMap {
+    fn default() -> Self {
+        Self {
+            id_bytes: Vec::new(),
+            spans: Vec::new(),
+            reverse: HashTable::new(),
+            chunks: Vec::new(),
+            parent_bytes: Vec::new(),
+            parent_offsets: vec![0],
+            parents: HashTable::new(),
+        }
+    }
+}
+
+/// Deterministic, dependency-free; always over bytes (`str` hashes differently).
+fn hash(bytes: &[u8]) -> u64 {
+    BuildHasherDefault::<DefaultHasher>::default().hash_one(bytes)
+}
+
+fn span_bytes<'a>(id_bytes: &'a [u8], spans: &[(u32, u32)], slot: u32) -> &'a [u8] {
+    spans
+        .get(slot as usize)
+        .and_then(|&(start, end)| id_bytes.get(start as usize..end as usize))
+        .unwrap_or(&[])
+}
+
+fn parent_bytes_of<'a>(parent_bytes: &'a [u8], offsets: &[u32], idx: u32) -> &'a [u8] {
+    let i = idx as usize;
+    match (offsets.get(i), offsets.get(i + 1)) {
+        (Some(&start), Some(&end)) => parent_bytes
+            .get(start as usize..end as usize)
+            .unwrap_or(&[]),
+        _ => &[],
+    }
 }
 
 impl IdMap {
+    // ── lookups on the arenas ─────────────────────────────────────────────────────────────
+
+    fn id_at(&self, slot: usize) -> Option<&str> {
+        let &(start, end) = self.spans.get(slot)?;
+        if start == end {
+            return None;
+        }
+        // The arena only ever receives `&str` bytes at span boundaries, so this cannot fail.
+        std::str::from_utf8(self.id_bytes.get(start as usize..end as usize)?).ok()
+    }
+
+    fn find_slot(&self, external: &str) -> Option<u32> {
+        let bytes = external.as_bytes();
+        self.reverse
+            .find(hash(bytes), |&s| {
+                span_bytes(&self.id_bytes, &self.spans, s) == bytes
+            })
+            .copied()
+    }
+
+    fn parent_at(&self, idx: u32) -> &str {
+        std::str::from_utf8(parent_bytes_of(
+            &self.parent_bytes,
+            &self.parent_offsets,
+            idx,
+        ))
+        .unwrap_or("")
+    }
+
+    // ── growth ────────────────────────────────────────────────────────────────────────────
+
+    /// Append `external` as a new slot's bytes (no reverse entry yet).
+    fn push_span(&mut self, external: &str) -> Result<u32> {
+        let slot = u32::try_from(self.spans.len())
+            .map_err(|_| corrupt("internal id space exhausted (u32)"))?;
+        let start = self.id_bytes.len();
+        let end =
+            u32::try_from(start + external.len()).map_err(|_| corrupt("id bytes exceed u32"))?;
+        self.id_bytes.extend_from_slice(external.as_bytes());
+        // `start <= end`, so it fits too.
+        self.spans.push((end - external.len() as u32, end));
+        Ok(slot)
+    }
+
+    /// Insert a slot into the reverse table; the caller has checked it is absent.
+    fn index_slot(&mut self, slot: u32) {
+        let (id_bytes, spans) = (&self.id_bytes, &self.spans);
+        let bytes = span_bytes(id_bytes, spans, slot);
+        self.reverse
+            .insert_unique(hash(bytes), slot, |&s| hash(span_bytes(id_bytes, spans, s)));
+    }
+
+    fn intern_parent(&mut self, parent: &str) -> Result<u32> {
+        let bytes = parent.as_bytes();
+        let h = hash(bytes);
+        let found = self
+            .parents
+            .find(h, |&i| {
+                parent_bytes_of(&self.parent_bytes, &self.parent_offsets, i) == bytes
+            })
+            .copied();
+        if let Some(i) = found {
+            return Ok(i);
+        }
+        let idx = u32::try_from(self.parent_offsets.len() - 1)
+            .ok()
+            .filter(|&i| i != NONE)
+            .ok_or_else(|| corrupt("parent table exhausted (u32)"))?;
+        let end = u32::try_from(self.parent_bytes.len() + bytes.len())
+            .map_err(|_| corrupt("parent bytes exceed u32"))?;
+        self.parent_bytes.extend_from_slice(bytes);
+        self.parent_offsets.push(end);
+        let (pb, po) = (&self.parent_bytes, &self.parent_offsets);
+        self.parents
+            .insert_unique(h, idx, |&i| hash(parent_bytes_of(pb, po, i)));
+        Ok(idx)
+    }
+
+    fn set_chunk(&mut self, slot: u32, chunk: Option<&ChunkInfo>) -> Result<()> {
+        match chunk {
+            Some(c) => {
+                let parent = self.intern_parent(&c.parent)?;
+                let needed = (slot as usize + 1).max(self.spans.len());
+                if self.chunks.len() < needed {
+                    self.chunks.resize(needed, NO_CHUNK);
+                }
+                if let Some(s) = self.chunks.get_mut(slot as usize) {
+                    *s = ChunkSlot {
+                        byte_range: c.byte_range,
+                        parent,
+                        ordinal: c.ordinal,
+                    };
+                }
+            }
+            None => {
+                if let Some(s) = self.chunks.get_mut(slot as usize) {
+                    *s = NO_CHUNK;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // ── the operations (contract §4) ──────────────────────────────────────────────────────
+
     /// Assign (or reuse) the internal id for `external`; a replace overwrites the chunk entry.
     pub fn assign(&mut self, external: &str, chunk: Option<ChunkInfo>) -> Result<DocId> {
         if external.is_empty() {
             return Err(schema_err("external id must not be empty"));
         }
-        let id = match self.reverse.get(external) {
-            Some(&id) => id,
+        let slot = match self.find_slot(external) {
+            Some(slot) => slot,
             None => {
-                let id = u32::try_from(self.external.len())
-                    .map_err(|_| corrupt("internal id space exhausted (u32)"))?;
-                self.external.push(Some(external.to_owned()));
-                self.reverse.insert(external.to_owned(), id);
-                id
+                let slot = self.push_span(external)?;
+                self.index_slot(slot);
+                slot
             }
         };
-        match chunk {
-            Some(c) => {
-                self.chunks.insert(id, c);
-            }
-            None => {
-                self.chunks.remove(&id);
-            }
-        }
-        Ok(DocId(id))
+        self.set_chunk(slot, chunk.as_ref())?;
+        Ok(DocId(slot))
     }
 
     /// Remove `external`; the slot stays reserved. `None` if unknown.
     pub fn remove(&mut self, external: &str) -> Option<DocId> {
-        let id = self.reverse.remove(external)?;
-        self.external[id as usize] = None;
-        self.chunks.remove(&id);
-        Some(DocId(id))
+        let bytes = external.as_bytes();
+        let (id_bytes, spans) = (&self.id_bytes, &self.spans);
+        let slot = match self
+            .reverse
+            .find_entry(hash(bytes), |&s| span_bytes(id_bytes, spans, s) == bytes)
+        {
+            Ok(entry) => entry.remove().0,
+            Err(_) => return None,
+        };
+        if let Some(span) = self.spans.get_mut(slot as usize) {
+            *span = (span.0, span.0);
+        }
+        if let Some(s) = self.chunks.get_mut(slot as usize) {
+            *s = NO_CHUNK;
+        }
+        Some(DocId(slot))
     }
 
     pub fn external(&self, id: DocId) -> Option<&str> {
-        self.external.get(id.0 as usize).and_then(|s| s.as_deref())
+        self.id_at(id.0 as usize)
     }
 
     pub fn internal(&self, external: &str) -> Option<DocId> {
-        self.reverse.get(external).map(|&id| DocId(id))
+        self.find_slot(external).map(DocId)
     }
 
-    pub fn chunk(&self, id: DocId) -> Option<&ChunkInfo> {
-        self.chunks.get(&id.0)
+    /// The chunk provenance of a slot, if any (owned: the parent is copied out of the arena).
+    pub fn chunk(&self, id: DocId) -> Option<ChunkInfo> {
+        let slot = self.chunks.get(id.0 as usize)?;
+        (slot.parent != NONE).then(|| ChunkInfo {
+            parent: self.parent_at(slot.parent).to_owned(),
+            ordinal: slot.ordinal,
+            byte_range: slot.byte_range,
+        })
     }
 
     /// The assigned-id space (deleted slots included) — the passage store's slot count.
     pub fn len(&self) -> usize {
-        self.external.len()
+        self.spans.len()
     }
 
     pub fn live(&self) -> u64 {
         self.reverse.len() as u64
     }
 
+    // ── the file ──────────────────────────────────────────────────────────────────────────
+
     pub fn write(&self, dir: &Path) -> Result<()> {
+        let chunks = self
+            .chunks
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.parent != NONE)
+            .map(|(i, s)| {
+                (
+                    i.to_string(),
+                    ChunkInfo {
+                        parent: self.parent_at(s.parent).to_owned(),
+                        ordinal: s.ordinal,
+                        byte_range: s.byte_range,
+                    },
+                )
+            })
+            .collect();
         let on_disk = OnDisk {
             format_version: FORMAT_VERSION,
-            external: self.external.clone(),
-            chunks: self
-                .chunks
-                .iter()
-                .map(|(id, c)| (id.to_string(), c.clone()))
-                .collect(),
+            external: (0..self.spans.len()).map(|i| self.id_at(i)).collect(),
+            chunks,
         };
         let json = serde_json::to_vec(&on_disk)
             .map_err(|e| corrupt(format!("cannot encode {FILE}: {e}")))?;
         write_atomically(&dir.join(FILE), &json)
     }
 
+    /// Read `<dir>/ids.json` straight into the arenas (research D4). Refusals: contract §2.
     pub fn read(dir: &Path) -> Result<Self> {
         let path = dir.join(FILE);
         let text = std::fs::read_to_string(&path)
             .map_err(|e| corrupt(format!("cannot read {}: {e}", path.display())))?;
-        let on_disk: OnDisk = serde_json::from_str(&text)
-            .map_err(|e| corrupt(format!("{} is not a valid id map: {e}", path.display())))?;
-        if on_disk.format_version != FORMAT_VERSION {
+        let invalid = |e: serde_json::Error| {
+            corrupt(format!("{} is not a valid id map: {e}", path.display()))
+        };
+        let mut map = IdMap::default();
+        let mut de = serde_json::Deserializer::from_str(&text);
+        let format_version = FileSeed { map: &mut map }
+            .deserialize(&mut de)
+            .map_err(invalid)?;
+        de.end().map_err(invalid)?;
+        drop(text);
+        if format_version != FORMAT_VERSION {
             return Err(corrupt(format!(
-                "{} is format version {}, this build reads {FORMAT_VERSION}",
-                path.display(),
-                on_disk.format_version
+                "{} is format version {format_version}, this build reads {FORMAT_VERSION}",
+                path.display()
             )));
         }
-        let mut reverse = HashMap::with_capacity(on_disk.external.len());
-        for (i, ext) in on_disk.external.iter().enumerate() {
-            if let Some(ext) = ext {
-                let id = u32::try_from(i).map_err(|_| corrupt("id map exceeds u32"))?;
-                if reverse.insert(ext.clone(), id).is_some() {
-                    return Err(corrupt(format!(
-                        "external id {ext:?} appears twice in {FILE}"
-                    )));
+        map.finish_read()
+    }
+
+    /// After the parse: the reverse table (duplicates refused), the chunk vector reconciled
+    /// with the slot count, capacities trimmed.
+    fn finish_read(mut self) -> Result<Self> {
+        let live = self.spans.iter().filter(|(s, e)| s != e).count();
+        self.reverse = HashTable::with_capacity(live);
+        for slot in 0..self.spans.len() {
+            let Some(ext) = self.id_at(slot) else {
+                continue;
+            };
+            if self.find_slot(ext).is_some() {
+                return Err(corrupt(format!(
+                    "external id {ext:?} appears twice in {FILE}"
+                )));
+            }
+            // `slot < spans.len() <= u32::MAX + 1`; the push already bounded it.
+            self.index_slot(slot as u32);
+        }
+        if self.chunks.len() > self.spans.len() {
+            if let Some((key, _)) = self
+                .chunks
+                .iter()
+                .enumerate()
+                .skip(self.spans.len())
+                .find(|(_, s)| s.parent != NONE)
+            {
+                return Err(corrupt(format!("chunk key {key} has no slot in {FILE}")));
+            }
+            self.chunks.truncate(self.spans.len());
+        } else if !self.chunks.is_empty() {
+            self.chunks.resize(self.spans.len(), NO_CHUNK);
+        }
+        self.id_bytes.shrink_to_fit();
+        self.spans.shrink_to_fit();
+        self.chunks.shrink_to_fit();
+        self.parent_bytes.shrink_to_fit();
+        self.parent_offsets.shrink_to_fit();
+        Ok(self)
+    }
+}
+
+// ── the streaming reader (research D4) ───────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+#[serde(field_identifier, rename_all = "snake_case")]
+enum Field {
+    FormatVersion,
+    External,
+    Chunks,
+    #[serde(other)]
+    Other,
+}
+
+const FIELDS: &[&str] = &["format_version", "external", "chunks"];
+
+/// The top-level object; yields `format_version`, fills the map through the seeds below.
+struct FileSeed<'m> {
+    map: &'m mut IdMap,
+}
+
+impl<'de> DeserializeSeed<'de> for FileSeed<'_> {
+    type Value = u32;
+
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<u32, D::Error> {
+        d.deserialize_struct("OnDisk", FIELDS, self)
+    }
+}
+
+impl<'de> Visitor<'de> for FileSeed<'_> {
+    type Value = u32;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("an id map object")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> std::result::Result<u32, A::Error> {
+        let mut version = None;
+        let (mut seen_external, mut seen_chunks) = (false, false);
+        while let Some(key) = access.next_key::<Field>()? {
+            match key {
+                Field::FormatVersion => {
+                    if version.is_some() {
+                        return Err(de::Error::duplicate_field("format_version"));
+                    }
+                    version = Some(access.next_value::<u32>()?);
+                }
+                Field::External => {
+                    if seen_external {
+                        return Err(de::Error::duplicate_field("external"));
+                    }
+                    seen_external = true;
+                    access.next_value_seed(ExternalSeq { map: self.map })?;
+                }
+                Field::Chunks => {
+                    if seen_chunks {
+                        return Err(de::Error::duplicate_field("chunks"));
+                    }
+                    seen_chunks = true;
+                    access.next_value_seed(ChunkMap { map: self.map })?;
+                }
+                Field::Other => {
+                    access.next_value::<IgnoredAny>()?;
                 }
             }
         }
-        let mut chunks = BTreeMap::new();
-        for (id, c) in on_disk.chunks {
-            let id: u32 = id
-                .parse()
-                .map_err(|_| corrupt(format!("chunk key {id:?} is not an internal id")))?;
-            chunks.insert(id, c);
+        if !seen_external {
+            return Err(de::Error::missing_field("external"));
         }
-        Ok(Self {
-            external: on_disk.external,
-            chunks,
-            reverse,
-        })
+        version.ok_or_else(|| de::Error::missing_field("format_version"))
+    }
+}
+
+/// `"external": [ "id" | null, … ]` — each entry straight into the arena.
+struct ExternalSeq<'m> {
+    map: &'m mut IdMap,
+}
+
+impl<'de> DeserializeSeed<'de> for ExternalSeq<'_> {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<(), D::Error> {
+        d.deserialize_seq(self)
+    }
+}
+
+impl<'de> Visitor<'de> for ExternalSeq<'_> {
+    type Value = ();
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("an array of external ids or nulls")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut access: A) -> std::result::Result<(), A::Error> {
+        while access
+            .next_element_seed(PushId { map: self.map })?
+            .is_some()
+        {}
+        Ok(())
+    }
+}
+
+/// One entry of `external`: a string (pushed) or `null` (an empty span).
+struct PushId<'m> {
+    map: &'m mut IdMap,
+}
+
+impl<'de> DeserializeSeed<'de> for PushId<'_> {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<(), D::Error> {
+        d.deserialize_option(self)
+    }
+}
+
+impl<'de> Visitor<'de> for PushId<'_> {
+    type Value = ();
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("an external id or null")
+    }
+
+    fn visit_none<E: de::Error>(self) -> std::result::Result<(), E> {
+        self.map
+            .push_span("")
+            .map(|_| ())
+            .map_err(de::Error::custom)
+    }
+
+    fn visit_unit<E: de::Error>(self) -> std::result::Result<(), E> {
+        self.visit_none()
+    }
+
+    fn visit_some<D: Deserializer<'de>>(self, d: D) -> std::result::Result<(), D::Error> {
+        d.deserialize_str(self)
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<(), E> {
+        if v.is_empty() {
+            return Err(de::Error::custom(format!("empty external id in {FILE}")));
+        }
+        self.map.push_span(v).map(|_| ()).map_err(de::Error::custom)
+    }
+}
+
+/// `"chunks": { "<id>": ChunkInfo, … }` — parsed into the slot vector, parents interned.
+struct ChunkMap<'m> {
+    map: &'m mut IdMap,
+}
+
+impl<'de> DeserializeSeed<'de> for ChunkMap<'_> {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<(), D::Error> {
+        d.deserialize_map(self)
+    }
+}
+
+impl<'de> Visitor<'de> for ChunkMap<'_> {
+    type Value = ();
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("an object of chunk provenance keyed by internal id")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> std::result::Result<(), A::Error> {
+        // With `external` already read (the order `write` produces), the vector is sized
+        // once; otherwise it grows and `finish_read` reconciles it.
+        if self.map.chunks.is_empty() && !self.map.spans.is_empty() {
+            self.map.chunks.reserve_exact(self.map.spans.len());
+        }
+        while let Some(key) = access.next_key_seed(ChunkKey)? {
+            let chunk: ChunkInfo = access.next_value()?;
+            self.map
+                .set_chunk(key, Some(&chunk))
+                .map_err(de::Error::custom)?;
+        }
+        Ok(())
+    }
+}
+
+/// A chunk key: the decimal internal id, parsed without an allocation.
+struct ChunkKey;
+
+impl<'de> DeserializeSeed<'de> for ChunkKey {
+    type Value = u32;
+
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<u32, D::Error> {
+        d.deserialize_str(self)
+    }
+}
+
+impl Visitor<'_> for ChunkKey {
+    type Value = u32;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a decimal internal id")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<u32, E> {
+        v.parse()
+            .map_err(|_| de::Error::custom(format!("chunk key {v:?} is not an internal id")))
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

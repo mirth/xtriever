@@ -141,6 +141,7 @@ with the full passage and the "Why this hit" table (F-001).
   the 2.63 s median. A "re-rank this list" entry point would remove it — an engine change.
 - The maximum total per query (3.07 s) is over SC-001's 3 s; the median (2.63 s) is what the
   criterion measures, and the max is one query on a nominal-thermal phone.
-- Half a gigabyte resident after open, of which ~200 MB is the id map held twice (008 F-002).
+- Half a gigabyte resident after open, of which ~200 MB was the id map held twice (008 F-002) —
+  reduced by Feature 010 (`specs/010-id-map-memory/report.md`); the app benefits at its next build.
 - Retrieval quality of the corpus is unmeasured; the demo makes no claim about it.
 - Sideload only: 1.26 GB of resources.

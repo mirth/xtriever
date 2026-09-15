@@ -56,6 +56,15 @@
 //!   re-ranker.
 //! - **Explanation**: [`HitExplain`] gains `rerank_score` and `rerank_rank` (1-based position
 //!   among the re-ranked hits) under the core's `rerank.score` and this crate's [`RERANK_RANK`].
+//!
+//! # Feature 010
+//!
+//! - **The id map's shape**: one map, shared between the committed and the pending view
+//!   (`Arc`, copied on the first staged change, rejoined at commit), held as arenas — every id's
+//!   bytes once, a span per slot, a hash table over the arena, fixed-width chunk slots with
+//!   interned parents — about 52 bytes per slot plus the ids' own bytes, read straight from the
+//!   file through a streaming visitor. `ids.json` itself is unchanged and byte-identical
+//!   (`specs/010-id-map-memory/contracts/id-map.md`).
 
 mod descriptor;
 mod error;

@@ -127,6 +127,9 @@ keeps **two** copies (`committed_ids` and `pending_ids`), plus the 32 MB `ids.js
 ~0.5 KB per passage, twice, this is the term that grows with the corpus. Under the ceiling
 today with 64 MB to spare; the obvious levers (share the two maps copy-on-write, a compact
 id encoding) are pipeline changes and belong to a feature of their own. Not changed here.
+**Resolved by Feature 010** (`specs/010-id-map-memory/report.md`): one shared map in a compact
+shape — 88.5 MB → 28.2 MB per map on the host, one copy instead of two; the device figure is
+in that report.
 
 ### F-003 — Fragments are unreachable under the real cost; covered synthetically
 
