@@ -1,0 +1,857 @@
+{
+ "costs": {
+  "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+   "fiqa": {
+    "dataset": "fiqa",
+    "device": "mps",
+    "docs_per_s": 32.6,
+    "documents": 57638,
+    "empty_queries": 0,
+    "idf_entries": 30517,
+    "max_length": 512,
+    "model": {
+     "license": "apache-2.0",
+     "parameters": 66985530,
+     "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill",
+     "revision": "8921a26c78b8559d6604eb1f5c0b74c079bee38f"
+    },
+    "model_bytes": 269556192,
+    "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",
+    "nnz_doc": {
+     "max": 1567,
+     "mean": 244.9727610257122,
+     "p95": 432.0
+    },
+    "nnz_query": {
+     "max": 29,
+     "mean": 12.916666666666666,
+     "p95": 21.0
+    },
+    "queries": 648,
+    "threads": 8,
+    "truncated_docs": 2417,
+    "wall_s": 1768.6
+   },
+   "nfcorpus": {
+    "dataset": "nfcorpus",
+    "device": "mps",
+    "docs_per_s": 26.8,
+    "documents": 3633,
+    "empty_queries": 0,
+    "idf_entries": 30517,
+    "max_length": 512,
+    "model": {
+     "license": "apache-2.0",
+     "parameters": 66985530,
+     "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill",
+     "revision": "8921a26c78b8559d6604eb1f5c0b74c079bee38f"
+    },
+    "model_bytes": 269556192,
+    "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",
+    "nnz_doc": {
+     "max": 1282,
+     "mean": 291.8596201486375,
+     "p95": 486.0
+    },
+    "nnz_query": {
+     "max": 19,
+     "mean": 4.925696594427245,
+     "p95": 11.0
+    },
+    "queries": 323,
+    "threads": 8,
+    "truncated_docs": 330,
+    "wall_s": 135.7
+   },
+   "scifact": {
+    "dataset": "scifact",
+    "device": "mps",
+    "docs_per_s": 26.6,
+    "documents": 5183,
+    "empty_queries": 0,
+    "idf_entries": 30517,
+    "max_length": 512,
+    "model": {
+     "license": "apache-2.0",
+     "parameters": 66985530,
+     "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill",
+     "revision": "8921a26c78b8559d6604eb1f5c0b74c079bee38f"
+    },
+    "model_bytes": 269556192,
+    "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",
+    "nnz_doc": {
+     "max": 1458,
+     "mean": 385.5685896199112,
+     "p95": 625.0
+    },
+    "nnz_query": {
+     "max": 53,
+     "mean": 19.55,
+     "p95": 33.0
+    },
+    "queries": 300,
+    "threads": 8,
+    "truncated_docs": 455,
+    "wall_s": 194.8
+   }
+  },
+  "opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+   "fiqa": {
+    "dataset": "fiqa",
+    "device": "mps",
+    "docs_per_s": 45.7,
+    "documents": 57638,
+    "empty_queries": 0,
+    "idf_entries": 30517,
+    "max_length": 512,
+    "model": {
+     "license": "apache-2.0",
+     "parameters": 66985530,
+     "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill",
+     "revision": "babf71f3c48695e2e53a978208e8aba48335e3c0"
+    },
+    "model_bytes": 269556373,
+    "model_key": "opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3",
+    "nnz_doc": {
+     "max": 730,
+     "mean": 223.88479822339428,
+     "p95": 281.0
+    },
+    "nnz_query": {
+     "max": 29,
+     "mean": 12.916666666666666,
+     "p95": 21.0
+    },
+    "queries": 648,
+    "threads": 8,
+    "truncated_docs": 1738,
+    "wall_s": 1262.3
+   },
+   "nfcorpus": {
+    "dataset": "nfcorpus",
+    "device": "mps",
+    "docs_per_s": 20.7,
+    "documents": 3633,
+    "empty_queries": 0,
+    "idf_entries": 30517,
+    "max_length": 512,
+    "model": {
+     "license": "apache-2.0",
+     "parameters": 66985530,
+     "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill",
+     "revision": "babf71f3c48695e2e53a978208e8aba48335e3c0"
+    },
+    "model_bytes": 269556373,
+    "model_key": "opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3",
+    "nnz_doc": {
+     "max": 333,
+     "mean": 217.36361134048994,
+     "p95": 264.0
+    },
+    "nnz_query": {
+     "max": 19,
+     "mean": 4.925696594427245,
+     "p95": 11.0
+    },
+    "queries": 323,
+    "threads": 8,
+    "truncated_docs": 330,
+    "wall_s": 175.7
+   },
+   "scifact": {
+    "dataset": "scifact",
+    "device": "mps",
+    "docs_per_s": 19.9,
+    "documents": 5183,
+    "empty_queries": 0,
+    "idf_entries": 30517,
+    "max_length": 512,
+    "model": {
+     "license": "apache-2.0",
+     "parameters": 66985530,
+     "repository": "opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill",
+     "revision": "babf71f3c48695e2e53a978208e8aba48335e3c0"
+    },
+    "model_bytes": 269556373,
+    "model_key": "opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3",
+    "nnz_doc": {
+     "max": 335,
+     "mean": 238.82288250048234,
+     "p95": 281.0
+    },
+    "nnz_query": {
+     "max": 53,
+     "mean": 19.55,
+     "p95": 33.0
+    },
+    "queries": 300,
+    "threads": 8,
+    "truncated_docs": 455,
+    "wall_s": 259.9
+   }
+  }
+ },
+ "datasets": {
+  "fiqa": {
+   "bm25x+text-b0.5@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.2822668560684854,
+    "recall_100": 0.5863872881233992,
+    "scored_queries": 648
+   },
+   "bm25x+text-b0.5@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.2899035024962215,
+    "recall_100": 0.5857456586623253,
+    "scored_queries": 648
+   },
+   "bm25x+text-b1.0@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.2701459150927569,
+    "recall_100": 0.5672522864652494,
+    "scored_queries": 648
+   },
+   "bm25x+text-b1.0@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.27834116865099096,
+    "recall_100": 0.5703583582055805,
+    "scored_queries": 648
+   },
+   "bm25x+text-b2.0@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.2443026466207318,
+    "recall_100": 0.5298931349857277,
+    "scored_queries": 648
+   },
+   "bm25x+text-b2.0@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.2527661589319886,
+    "recall_100": 0.5471257009451455,
+    "scored_queries": 648
+   },
+   "bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.19221573596712227,
+    "recall_100": 0.457079999904074,
+    "scored_queries": 648
+   },
+   "bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.1989080086610238,
+    "recall_100": 0.4898567867317867,
+    "scored_queries": 648
+   },
+   "dot-q1000@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3556982468974638,
+    "recall_100": 0.6359310613940243,
+    "scored_queries": 648
+   },
+   "dot-q1000@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.35727234643216876,
+    "recall_100": 0.6426721555193777,
+    "scored_queries": 648
+   },
+   "dot-q100@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3554430395161585,
+    "recall_100": 0.6351594564557528,
+    "scored_queries": 648
+   },
+   "dot-q100@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3589288491606021,
+    "recall_100": 0.6418491102518881,
+    "scored_queries": 648
+   },
+   "dot-q10@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3514818616307321,
+    "recall_100": 0.6375348031598032,
+    "scored_queries": 648
+   },
+   "dot-q10@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.34759744707137175,
+    "recall_100": 0.635962198809421,
+    "scored_queries": 648
+   },
+   "dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3553166545728188,
+    "recall_100": 0.6359310613940243,
+    "scored_queries": 648
+   },
+   "dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3571109070365972,
+    "recall_100": 0.6426721555193777,
+    "scored_queries": 648
+   },
+   "engine-dense": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3686713698407158,
+    "recall_100": 0.7060569574458463,
+    "scored_queries": 648
+   },
+   "engine-hybrid": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3692095204068091,
+    "recall_100": 0.707110966023003,
+    "scored_queries": 648
+   },
+   "engine-lexical": {
+    "empty_queries": 0,
+    "ndcg_10": 0.25023832752538144,
+    "recall_100": 0.5517754450624821,
+    "scored_queries": 648
+   },
+   "rrf-dense+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3562059244424434,
+    "recall_100": 0.6800227336106967,
+    "scored_queries": 648
+   },
+   "rrf-dense+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3613041465448766,
+    "recall_100": 0.683107316209168,
+    "scored_queries": 648
+   },
+   "rrf-dense+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.4032007884357998,
+    "recall_100": 0.7145355202068165,
+    "scored_queries": 648
+   },
+   "rrf-dense+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.40325380298783686,
+    "recall_100": 0.7107522064697991,
+    "scored_queries": 648
+   },
+   "rrf-lex+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.2777657881990214,
+    "recall_100": 0.5563402004374227,
+    "scored_queries": 648
+   },
+   "rrf-lex+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.27463549759780304,
+    "recall_100": 0.5614995986523764,
+    "scored_queries": 648
+   },
+   "rrf-lex+dense+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.36782973298496613,
+    "recall_100": 0.6885452938693679,
+    "scored_queries": 648
+   },
+   "rrf-lex+dense+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.36973097345829603,
+    "recall_100": 0.692513547837622,
+    "scored_queries": 648
+   },
+   "rrf-lex+dense+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3833080176850695,
+    "recall_100": 0.7046069242828502,
+    "scored_queries": 648
+   },
+   "rrf-lex+dense+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.38809707807268234,
+    "recall_100": 0.7007403262032891,
+    "scored_queries": 648
+   },
+   "rrf-lex+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.32411476233541353,
+    "recall_100": 0.6380982914547729,
+    "scored_queries": 648
+   },
+   "rrf-lex+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.324688516360266,
+    "recall_100": 0.6404828796032499,
+    "scored_queries": 648
+   },
+   "text-bm25@spike": {
+    "empty_queries": 0,
+    "ndcg_10": 0.24725207982494096,
+    "recall_100": 0.5526400768298916,
+    "scored_queries": 648
+   }
+  },
+  "nfcorpus": {
+   "bm25x+text-b0.5@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.33687362985202784,
+    "recall_100": 0.26874228689954005,
+    "scored_queries": 323
+   },
+   "bm25x+text-b0.5@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.3395963046259198,
+    "recall_100": 0.2741163746358495,
+    "scored_queries": 323
+   },
+   "bm25x+text-b1.0@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.32743626613544274,
+    "recall_100": 0.2678187164010378,
+    "scored_queries": 323
+   },
+   "bm25x+text-b1.0@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.33643941716317716,
+    "recall_100": 0.2717445991283318,
+    "scored_queries": 323
+   },
+   "bm25x+text-b2.0@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.3182977025829409,
+    "recall_100": 0.2634812419089258,
+    "scored_queries": 323
+   },
+   "bm25x+text-b2.0@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.32965366417452524,
+    "recall_100": 0.2683790622730457,
+    "scored_queries": 323
+   },
+   "bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.2951747445354409,
+    "recall_100": 0.2444717526025952,
+    "scored_queries": 323
+   },
+   "bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.31434705517441985,
+    "recall_100": 0.2574235381674009,
+    "scored_queries": 323
+   },
+   "dot-q1000@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.3437224078239826,
+    "recall_100": 0.2791872975180056,
+    "scored_queries": 323
+   },
+   "dot-q1000@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.34568872870959994,
+    "recall_100": 0.277647591372151,
+    "scored_queries": 323
+   },
+   "dot-q100@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.3437911262298877,
+    "recall_100": 0.2788278090167364,
+    "scored_queries": 323
+   },
+   "dot-q100@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.3451358512177536,
+    "recall_100": 0.2778879931669535,
+    "scored_queries": 323
+   },
+   "dot-q10@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.34303620904232796,
+    "recall_100": 0.28089380635128264,
+    "scored_queries": 323
+   },
+   "dot-q10@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.3440772291225606,
+    "recall_100": 0.2774604624089801,
+    "scored_queries": 323
+   },
+   "dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.3437313117117278,
+    "recall_100": 0.2791872975180056,
+    "scored_queries": 323
+   },
+   "dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.34540787312924237,
+    "recall_100": 0.2775542381997365,
+    "scored_queries": 323
+   },
+   "engine-dense": {
+    "empty_queries": 0,
+    "ndcg_10": 0.31667312754717797,
+    "recall_100": 0.3114503860264584,
+    "scored_queries": 323
+   },
+   "engine-hybrid": {
+    "empty_queries": 0,
+    "ndcg_10": 0.34500819891054324,
+    "recall_100": 0.32071983154135175,
+    "scored_queries": 323
+   },
+   "engine-lexical": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3115231535263847,
+    "recall_100": 0.24781998827361368,
+    "scored_queries": 323
+   },
+   "rrf-dense+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.33685777524775795,
+    "recall_100": 0.31370816935772194,
+    "scored_queries": 323
+   },
+   "rrf-dense+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.33751042170029427,
+    "recall_100": 0.31541816749129437,
+    "scored_queries": 323
+   },
+   "rrf-dense+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3357591708056562,
+    "recall_100": 0.32345082032297556,
+    "scored_queries": 323
+   },
+   "rrf-dense+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.33656994471010293,
+    "recall_100": 0.3242102048217539,
+    "scored_queries": 323
+   },
+   "rrf-lex+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.3313054248573516,
+    "recall_100": 0.2676075372878689,
+    "scored_queries": 323
+   },
+   "rrf-lex+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.3387423260042519,
+    "recall_100": 0.27400201040691624,
+    "scored_queries": 323
+   },
+   "rrf-lex+dense+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3573326576679271,
+    "recall_100": 0.31514585205897666,
+    "scored_queries": 323
+   },
+   "rrf-lex+dense+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.35581599838077543,
+    "recall_100": 0.3158752884316714,
+    "scored_queries": 323
+   },
+   "rrf-lex+dense+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3539448016153497,
+    "recall_100": 0.32049337134263484,
+    "scored_queries": 323
+   },
+   "rrf-lex+dense+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.3507859097758422,
+    "recall_100": 0.3216025711106194,
+    "scored_queries": 323
+   },
+   "rrf-lex+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 1,
+    "ndcg_10": 0.335269148932306,
+    "recall_100": 0.2805590397901459,
+    "scored_queries": 323
+   },
+   "rrf-lex+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 2,
+    "ndcg_10": 0.33543641282635883,
+    "recall_100": 0.27984036747628677,
+    "scored_queries": 323
+   },
+   "text-bm25@spike": {
+    "empty_queries": 15,
+    "ndcg_10": 0.3227766461133313,
+    "recall_100": 0.2492850279360599,
+    "scored_queries": 323
+   }
+  },
+  "scifact": {
+   "bm25x+text-b0.5@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7046887334385439,
+    "recall_100": 0.9326666666666668,
+    "scored_queries": 300
+   },
+   "bm25x+text-b0.5@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6989985857119331,
+    "recall_100": 0.9420000000000001,
+    "scored_queries": 300
+   },
+   "bm25x+text-b1.0@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6872520423834523,
+    "recall_100": 0.9243333333333333,
+    "scored_queries": 300
+   },
+   "bm25x+text-b1.0@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6967271254767784,
+    "recall_100": 0.937,
+    "scored_queries": 300
+   },
+   "bm25x+text-b2.0@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6714928783829506,
+    "recall_100": 0.9126666666666667,
+    "scored_queries": 300
+   },
+   "bm25x+text-b2.0@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6816392324918894,
+    "recall_100": 0.9436666666666668,
+    "scored_queries": 300
+   },
+   "bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6032995651575668,
+    "recall_100": 0.8913333333333333,
+    "scored_queries": 300
+   },
+   "bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6370699202137149,
+    "recall_100": 0.9153333333333334,
+    "scored_queries": 300
+   },
+   "dot-q1000@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7148131873743272,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "dot-q1000@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7079942151401242,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "dot-q100@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7147557521825666,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "dot-q100@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7095204306853797,
+    "recall_100": 0.9376666666666668,
+    "scored_queries": 300
+   },
+   "dot-q10@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7113232338647596,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "dot-q10@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7015876296484119,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7148131873743272,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7079942151401242,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "engine-dense": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6450816521455776,
+    "recall_100": 0.925,
+    "scored_queries": 300
+   },
+   "engine-hybrid": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6897268812060418,
+    "recall_100": 0.9416666666666667,
+    "scored_queries": 300
+   },
+   "engine-lexical": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6270437450360636,
+    "recall_100": 0.8875555555555555,
+    "scored_queries": 300
+   },
+   "rrf-dense+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6896827174389963,
+    "recall_100": 0.9460000000000001,
+    "scored_queries": 300
+   },
+   "rrf-dense+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6982909142341501,
+    "recall_100": 0.945,
+    "scored_queries": 300
+   },
+   "rrf-dense+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6997915861553585,
+    "recall_100": 0.955,
+    "scored_queries": 300
+   },
+   "rrf-dense+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6996731526863549,
+    "recall_100": 0.955,
+    "scored_queries": 300
+   },
+   "rrf-lex+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6886524265503254,
+    "recall_100": 0.9226666666666667,
+    "scored_queries": 300
+   },
+   "rrf-lex+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6932670463820352,
+    "recall_100": 0.9343333333333333,
+    "scored_queries": 300
+   },
+   "rrf-lex+dense+bm25x@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.718999098455904,
+    "recall_100": 0.9516666666666667,
+    "scored_queries": 300
+   },
+   "rrf-lex+dense+bm25x@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7199144381243334,
+    "recall_100": 0.9516666666666667,
+    "scored_queries": 300
+   },
+   "rrf-lex+dense+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7183150442281656,
+    "recall_100": 0.9583333333333334,
+    "scored_queries": 300
+   },
+   "rrf-lex+dense+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.7139414012642364,
+    "recall_100": 0.9516666666666667,
+    "scored_queries": 300
+   },
+   "rrf-lex+dot@opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6949900537422282,
+    "recall_100": 0.937,
+    "scored_queries": 300
+   },
+   "rrf-lex+dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6982917260218365,
+    "recall_100": 0.937,
+    "scored_queries": 300
+   },
+   "text-bm25@spike": {
+    "empty_queries": 0,
+    "ndcg_10": 0.6866510376753041,
+    "recall_100": 0.9246666666666666,
+    "scored_queries": 300
+   }
+  }
+ },
+ "quantisation": {
+  "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+   "fiqa": {
+    "loss_points": {
+     "10": 0.3834792942086718,
+     "100": -0.012638494333971906,
+     "1000": -0.038159232464501924
+    },
+    "smallest_ok": 100
+   },
+   "nfcorpus": {
+    "loss_points": {
+     "10": 0.06951026693998719,
+     "100": -0.005981451815989525,
+     "1000": 0.0008903887745215222
+    },
+    "smallest_ok": 10
+   },
+   "scifact": {
+    "loss_points": {
+     "10": 0.34899535095676004,
+     "100": 0.005743519176060197,
+     "1000": 0.0
+    },
+    "smallest_ok": 100
+   }
+  },
+  "opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+   "fiqa": {
+    "loss_points": {
+     "10": 0.9513459965225457,
+     "100": -0.18179421240048788,
+     "1000": -0.016143939557156095
+    },
+    "smallest_ok": 100
+   },
+   "nfcorpus": {
+    "loss_points": {
+     "10": 0.13306440066817582,
+     "100": 0.027202191148878452,
+     "1000": -0.02808555803575641
+    },
+    "smallest_ok": 100
+   },
+   "scifact": {
+    "loss_points": {
+     "10": 0.6406585491712247,
+     "100": -0.15262155452555604,
+     "1000": 0.0
+    },
+    "smallest_ok": 100
+   }
+  }
+ },
+ "text_overlap": {
+  "fiqa": 0.8612504399720602,
+  "nfcorpus": 0.5097143678889886,
+  "scifact": 0.3522055730647061
+ },
+ "verdicts": {
+  "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c": {
+   "bm25x_mean": 0.36356334855337663,
+   "dot_beats_lexical_on": 3,
+   "dot_mean": 0.4712870512196246,
+   "fused_mean": 0.48518928784286164,
+   "go": true,
+   "hybrid_mean": 0.4679815335077981,
+   "scoring": "dot"
+  },
+  "opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3": {
+   "bm25x_mean": 0.3834416613497195,
+   "dot_beats_lexical_on": 3,
+   "dot_mean": 0.47017099843532123,
+   "fused_mean": 0.48427479637092036,
+   "go": true,
+   "hybrid_mean": 0.4679815335077981,
+   "scoring": "dot"
+  }
+ }
+}
