@@ -9,14 +9,18 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use std::collections::BTreeMap;
+
+use xtriever_core::{AnalyzerId, FieldName, Schema, Value};
 use xtriever_dense::MiniLmEmbedder;
-use xtriever_pipeline::{HybridIndex, OpenOptions, Response};
+use xtriever_pipeline::{HybridConfig, HybridIndex, OpenOptions, Response, SourceDocument};
 use xtriever_rerank::MiniLmCrossEncoder;
 
 use crate::ffi::error::{XtrieverError, poisoned};
 use crate::ffi::types::{
-    ChunkInfo, Degradation, DegradeReason, Hit, HitExplain, IndexInfo, LoadPath, RerankReport,
-    SearchOptions, SearchResponse, StageReport,
+    ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
+    HitExplain, IndexConfig, IndexInfo, LoadPath, RerankReport, SearchOptions, SearchResponse,
+    StageReport,
 };
 
 /// The open index and what it cost to load.
@@ -45,7 +49,8 @@ impl From<LoadPath> for xtriever_rerank::LoadPath {
     }
 }
 
-/// Open read-only: the embedder, then the pipeline directory, then the optional re-ranker.
+/// Open an existing index: both models first (nothing is touched if one fails), then the
+/// directory — writable when its lock can be taken, read-only otherwise (below).
 ///
 /// The directory is opened **with** the lexical backend's meta lock whenever it can be taken —
 /// that lock is what keeps a reader safe from a concurrent writer's garbage collection, and a
@@ -59,13 +64,15 @@ pub(crate) fn open(
     reranker_dir: Option<&str>,
     load_path: LoadPath,
 ) -> Result<Inner, XtrieverError> {
-    let t = Instant::now();
-    let embedder = MiniLmEmbedder::load(embedder_dir.as_ref(), load_path.into())?;
-    let embedder_load = t.elapsed();
+    let Models {
+        embedder,
+        embedder_load,
+        reranker,
+    } = load_models(embedder_dir, reranker_dir, load_path)?;
 
     let dir = std::path::Path::new(index_dir);
     let mapped = matches!(load_path, LoadPath::Mmap);
-    let mut index = match HybridIndex::open_with(
+    let index = match HybridIndex::open_with(
         dir,
         Box::new(embedder),
         OpenOptions {
@@ -87,21 +94,218 @@ pub(crate) fn open(
         }
         other => other?,
     };
+    Ok(finish(index, embedder_load, reranker))
+}
 
-    let reranker_load = match reranker_dir {
+/// Create an empty index at `index_dir` (absent or empty) with `config`, the embedder and the
+/// optional re-ranker loaded as `open` loads them (Feature 011 US4). Every requested model is
+/// loaded **before** the directory is touched, so a wrong model path leaves nothing behind
+/// and a retry with the right one succeeds (review round 1 #1). The directory is created
+/// writable: the handle can `add`, `delete` and `commit` at once.
+pub(crate) fn create(
+    index_dir: &str,
+    config: IndexConfig,
+    embedder_dir: &str,
+    reranker_dir: Option<&str>,
+    load_path: LoadPath,
+) -> Result<Inner, XtrieverError> {
+    let Models {
+        embedder,
+        embedder_load,
+        reranker,
+    } = load_models(embedder_dir, reranker_dir, load_path)?;
+    let index = HybridIndex::create(
+        std::path::Path::new(index_dir),
+        HybridConfig::from(config),
+        Box::new(embedder),
+    )?;
+    Ok(finish(index, embedder_load, reranker))
+}
+
+/// The embedder with its load time and, if asked for, the re-ranker with its own.
+struct Models {
+    embedder: MiniLmEmbedder,
+    embedder_load: Duration,
+    reranker: Option<(MiniLmCrossEncoder, Duration)>,
+}
+
+/// Both models, timed, before any directory is opened or created — a model failure mutates
+/// nothing.
+fn load_models(
+    embedder_dir: &str,
+    reranker_dir: Option<&str>,
+    load_path: LoadPath,
+) -> Result<Models, XtrieverError> {
+    let t = Instant::now();
+    let embedder = MiniLmEmbedder::load(embedder_dir.as_ref(), load_path.into())?;
+    let embedder_load = t.elapsed();
+    let reranker = match reranker_dir {
         Some(rdir) => {
             let t = Instant::now();
             let reranker = MiniLmCrossEncoder::load(rdir.as_ref(), load_path.into())?;
-            index.set_reranker(Some(Box::new(reranker)));
-            Some(t.elapsed())
+            Some((reranker, t.elapsed()))
         }
         None => None,
     };
-    Ok(Inner {
+    Ok(Models {
+        embedder,
+        embedder_load,
+        reranker,
+    })
+}
+
+/// Attach the re-ranker, if one was loaded, and wrap the index for the boundary.
+fn finish(
+    mut index: HybridIndex,
+    embedder_load: Duration,
+    reranker: Option<(MiniLmCrossEncoder, Duration)>,
+) -> Inner {
+    let reranker_load = reranker.map(|(reranker, load)| {
+        index.set_reranker(Some(Box::new(reranker)));
+        load
+    });
+    Inner {
         index: Mutex::new(index),
         embedder_load,
         reranker_load,
-    })
+    }
+}
+
+// ── Feature 011: the builder — wire → core/pipeline, and the write operations ────────────────
+
+impl From<FieldKind> for xtriever_core::FieldKind {
+    fn from(k: FieldKind) -> Self {
+        match k {
+            FieldKind::Text { analyzer } => Self::Text(AnalyzerId(analyzer)),
+            FieldKind::Keyword => Self::Keyword,
+            FieldKind::U64 => Self::U64,
+            FieldKind::I64 => Self::I64,
+            FieldKind::F64 => Self::F64,
+            FieldKind::Bool => Self::Bool,
+            FieldKind::DateMillis => Self::DateMillis,
+        }
+    }
+}
+
+impl From<FieldDef> for xtriever_core::FieldDef {
+    fn from(f: FieldDef) -> Self {
+        Self {
+            name: FieldName::from(f.name.as_str()),
+            kind: f.kind.into(),
+            indexed: f.indexed,
+            stored: f.stored,
+            boost: f.boost,
+        }
+    }
+}
+
+impl From<IndexConfig> for HybridConfig {
+    fn from(c: IndexConfig) -> Self {
+        let to_usize = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
+        Self {
+            schema: Schema {
+                fields: c.fields.into_iter().map(Into::into).collect(),
+            },
+            dense_fields: c
+                .dense_fields
+                .iter()
+                .map(|n| FieldName::from(n.as_str()))
+                .collect(),
+            candidate_depth: to_usize(c.candidate_depth),
+            rrf_k: c.rrf_k,
+            rerank_depth: to_usize(c.rerank_depth),
+        }
+    }
+}
+
+impl From<FieldValue> for Value {
+    fn from(v: FieldValue) -> Self {
+        match v {
+            FieldValue::Text(t) => Self::Text(t),
+            FieldValue::Keyword(k) => Self::Keyword(k),
+            FieldValue::U64(n) => Self::U64(n),
+            FieldValue::I64(n) => Self::I64(n),
+            FieldValue::F64(x) => Self::F64(x),
+            FieldValue::Bool(b) => Self::Bool(b),
+            FieldValue::DateMillis(n) => Self::DateMillis(n),
+        }
+    }
+}
+
+impl From<Document> for SourceDocument {
+    fn from(d: Document) -> Self {
+        Self {
+            external_id: d.external_id,
+            fields: d
+                .fields
+                .into_iter()
+                .map(|(k, v)| (FieldName::from(k.as_str()), Value::from(v)))
+                .collect::<BTreeMap<_, _>>(),
+            chunk: d.chunk.map(|c| xtriever_core::ChunkInfo {
+                parent: c.parent,
+                ordinal: c.ordinal,
+                byte_range: c.byte_start.zip(c.byte_end),
+            }),
+        }
+    }
+}
+
+/// Take the handle for a write; a poisoned lock is the same error as for a search.
+fn write_guard(inner: &Inner) -> Result<std::sync::MutexGuard<'_, HybridIndex>, XtrieverError> {
+    inner.index.lock().map_err(|_| poisoned())
+}
+
+/// Stage documents, embedded by the index's embedder (`HybridIndex::add`).
+pub(crate) fn add(inner: &Inner, docs: Vec<Document>) -> Result<(), XtrieverError> {
+    let docs: Vec<SourceDocument> = docs.into_iter().map(Into::into).collect();
+    write_guard(inner)?.add(&docs)?;
+    Ok(())
+}
+
+/// Stage documents with caller-supplied vectors (`HybridIndex::add_embedded`); one vector per
+/// document, or `Schema`.
+pub(crate) fn add_embedded(
+    inner: &Inner,
+    docs: Vec<Document>,
+    vectors: Vec<Vec<f32>>,
+) -> Result<(), XtrieverError> {
+    if docs.len() != vectors.len() {
+        return Err(XtrieverError::Schema {
+            message: format!("{} documents but {} vectors", docs.len(), vectors.len()),
+        });
+    }
+    let pairs: Vec<(SourceDocument, Vec<f32>)> =
+        docs.into_iter().map(Into::into).zip(vectors).collect();
+    write_guard(inner)?.add_embedded(&pairs)?;
+    Ok(())
+}
+
+/// Stage deletions by external id; unknown ids are ignored (`HybridIndex::delete`).
+pub(crate) fn delete(inner: &Inner, external_ids: Vec<String>) -> Result<(), XtrieverError> {
+    let ids: Vec<&str> = external_ids.iter().map(String::as_str).collect();
+    write_guard(inner)?.delete(&ids)?;
+    Ok(())
+}
+
+/// Commit the staged changes (`HybridIndex::commit`); a no-op when nothing is staged.
+pub(crate) fn commit(inner: &Inner) -> Result<(), XtrieverError> {
+    write_guard(inner)?.commit()?;
+    Ok(())
+}
+
+/// Commit, then merge the lexical stage into one segment (`HybridIndex::merge`).
+pub(crate) fn merge(inner: &Inner) -> Result<(), XtrieverError> {
+    write_guard(inner)?.merge()?;
+    Ok(())
+}
+
+/// Whether `external_id` is a committed live document (`HybridIndex::contains`).
+pub(crate) fn contains(inner: &Inner, external_id: &str) -> bool {
+    inner
+        .index
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .contains(external_id)
 }
 
 fn ms(d: Duration) -> u64 {

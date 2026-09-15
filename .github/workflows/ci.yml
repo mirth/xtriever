@@ -92,3 +92,46 @@ jobs:
         run: ./scripts/fetch-beir.sh scifact
       - if: steps.filter.outputs.ranking == 'true'
         run: cargo run --release -p xtriever-eval --example beir -- smoke --dataset scifact --baseline specs/003-eval-harness/baselines/lexical-baseline-v1.scifact.json
+  # Feature 011: the Python package. Builds the wheel on Linux with maturin (which runs the
+  # crate's own `uniffi-bindgen` bin), installs it into a fresh interpreter and runs the
+  # model-free subset of the suite. Standing rules: no model, no dataset, no macOS runner;
+  # the model-backed tests (the 007 goldens, the builder) are a local obligation under Agent
+  # Operating Rule 5. Budget: under 10 minutes (spec SC-006) — the release build of the FFI
+  # cdylib and its tree is the cost, cached by rust-cache under its own key.
+  python:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'crates/xtriever-ffi/**'
+              - 'python/**'
+              - 'Cargo.toml'        # the `wheel` profile that keeps uniffi's metadata (report F-001)
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+      - if: steps.filter.outputs.python == 'true'
+        run: rustup toolchain install
+      - if: steps.filter.outputs.python == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: python-wheel
+      - if: steps.filter.outputs.python == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      # setup-uv with `python-version` creates `.venv` itself and exports VIRTUAL_ENV;
+      # `uv pip install` targets it.
+      - if: steps.filter.outputs.python == 'true'
+        run: uv pip install "maturin>=1.15,<2" pytest
+      - if: steps.filter.outputs.python == 'true'
+        run: cd python && ../.venv/bin/maturin build
+      - if: steps.filter.outputs.python == 'true'
+        run: ls -la target/wheels && uv pip install target/wheels/xtriever-*.whl
+      - if: steps.filter.outputs.python == 'true'
+        run: .venv/bin/pytest python/tests -q -m "not models"
