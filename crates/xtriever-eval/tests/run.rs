@@ -9,7 +9,9 @@ use xtriever_core::{
     LexicalIndex, LexicalQuery, Result as CoreResult, Schema, TermStats, Value,
 };
 use xtriever_eval::dataset::{Dataset, Manifest};
-use xtriever_eval::run::{EvalConfig, IdMap, Source, build, execute};
+use xtriever_eval::run::{
+    EvalConfig, FieldSpec, HybridConfig, IdMap, RerankConfig, Source, build, execute,
+};
 
 fn mini() -> (tempfile::TempDir, Manifest, Dataset) {
     let dir = tempfile::tempdir().unwrap();
@@ -33,6 +35,69 @@ fn baseline_config_is_as_specified() {
     assert_eq!(
         (text.from, text.analyzer.as_str(), text.boost),
         (Source::Text, "standard_en", 1.0)
+    );
+}
+
+// Feature 013 (spec FR-001, FR-002, FR-004): the v2 configurations differ from v1 only in the
+// lexical field layout — one joined `contents` field instead of `title` × 2.0 + `text`.
+#[test]
+fn v2_config_is_v1_with_one_joined_field() {
+    let v1 = EvalConfig::lexical_baseline_v1();
+    let v2 = EvalConfig::lexical_baseline_v2();
+    assert_eq!(v2.name, "lexical-baseline-v2");
+    assert_eq!(
+        v2.fields,
+        vec![FieldSpec {
+            name: "contents".into(),
+            from: Source::TitleAndText,
+            analyzer: "standard_en".into(),
+            boost: 1.0,
+        }],
+        "exactly one field, the joined one, boost 1.0"
+    );
+    assert_eq!(v2.k, v1.k);
+    assert_eq!(v2.omit_empty_fields, v1.omit_empty_fields);
+    assert_eq!(v2.query, v1.query);
+    v2.validate().unwrap();
+}
+
+#[test]
+fn v2_hybrid_and_rerank_wrap_the_v2_lexical() {
+    let h1 = HybridConfig::hybrid_baseline_v1();
+    let h2 = HybridConfig::hybrid_baseline_v2();
+    assert_eq!(h2.name, "hybrid-baseline-v2");
+    assert_eq!(h2.lexical, EvalConfig::lexical_baseline_v2());
+    assert_eq!(h2.dense, h1.dense);
+    assert_eq!(
+        (h2.candidate_depth, h2.rrf_k, h2.k),
+        (h1.candidate_depth, h1.rrf_k, h1.k)
+    );
+    h2.validate().unwrap();
+
+    let r1 = RerankConfig::hybrid_rerank_v1();
+    let r2 = RerankConfig::hybrid_rerank_v2();
+    assert_eq!(r2.name, "hybrid-rerank-v2");
+    assert_eq!(r2.hybrid, h2);
+    assert_eq!(r2.rerank_depth, r1.rerank_depth);
+    r2.validate().unwrap();
+}
+
+#[test]
+fn v1_is_unchanged() {
+    let v1 = EvalConfig::lexical_baseline_v1();
+    let names: Vec<(&str, Source, f32)> = v1
+        .fields
+        .iter()
+        .map(|f| (f.name.as_str(), f.from, f.boost))
+        .collect();
+    assert_eq!(
+        names,
+        vec![("title", Source::Title, 2.0), ("text", Source::Text, 1.0)]
+    );
+    assert_eq!(HybridConfig::hybrid_baseline_v1().lexical, v1);
+    assert_eq!(
+        RerankConfig::hybrid_rerank_v1().hybrid,
+        HybridConfig::hybrid_baseline_v1()
     );
 }
 

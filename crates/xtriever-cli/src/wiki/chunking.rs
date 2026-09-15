@@ -28,7 +28,13 @@ pub struct Article {
 }
 
 /// The index schema: `title` (boost 2.0) and `text` (boost 1.0), both `standard_en`, both
-/// indexed; `text` is the dense field. Mirrors the BEIR configurations' field shape.
+/// indexed; `text` is the dense field. Mirrors the 003 BEIR configuration's field shape.
+///
+/// Feature 013 measured that layout 5.9 nDCG@10 points behind one joined text field on
+/// SciFact (1.1 on NFCorpus): a boosted short `title` field lets one title term outweigh
+/// several body matches. The shipped Wikipedia index keeps this schema until it is rebuilt —
+/// the rebuild is hours plus a device record, and 014 (the sparse stage) re-encodes the
+/// corpus anyway and decides the schema then. New schemas should index one `contents` field.
 #[must_use]
 pub fn wiki_config() -> HybridConfig {
     let field = |name: &str, boost: f32| FieldDef {

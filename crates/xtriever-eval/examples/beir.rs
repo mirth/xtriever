@@ -11,6 +11,7 @@
 //! beir run    --dataset D --config dense-baseline-v1 [--model-dir M] [--cache-dir C] [--load-path buffered|mmap] [--out F] [--export-run F]
 //! beir run    --dataset D --config hybrid-baseline-v1 [--model-dir M] [--cache-dir C] [--index-dir DIR] [--load-path P] [--out F] [--export-run F] [--export-explain F]
 //! beir run    --dataset D --config hybrid-rerank-v1 [--rerank-model-dir R] (+ the hybrid flags; --load-path applies to both models)
+//! beir run    --dataset D --config lexical-baseline-v2 | hybrid-baseline-v2 | hybrid-rerank-v2   (Feature 013: one joined `contents` field for BM25; same flags as the v1)
 //! beir compare a.json b.json                        (cross-configuration table, no ADR line)
 //! beir delta  before.json... -- after.json...      (or two single files; same configuration only)
 //! beir smoke  --dataset scifact --baseline F [--cache DIR]
@@ -111,9 +112,12 @@ fn config(a: &Args) -> anyhow::Result<Config> {
         "dense-baseline-v1" => Ok(Config::Dense(DenseConfig::dense_baseline_v1())),
         "hybrid-baseline-v1" => Ok(Config::Hybrid(HybridConfig::hybrid_baseline_v1())),
         "hybrid-rerank-v1" => Ok(Config::Rerank(RerankConfig::hybrid_rerank_v1())),
+        "lexical-baseline-v2" => Ok(Config::Lexical(EvalConfig::lexical_baseline_v2())),
+        "hybrid-baseline-v2" => Ok(Config::Hybrid(HybridConfig::hybrid_baseline_v2())),
+        "hybrid-rerank-v2" => Ok(Config::Rerank(RerankConfig::hybrid_rerank_v2())),
         other => {
             bail!(
-                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1, hybrid-rerank-v1"
+                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1, hybrid-rerank-v1, lexical-baseline-v2, hybrid-baseline-v2, hybrid-rerank-v2"
             )
         }
     }
@@ -485,10 +489,14 @@ fn evaluate_hybrid(
         }
     };
     let (schema, _, _) = build(&ds, &cfg.lexical)?;
-    let dense_fields = vec![
-        xtriever_core::FieldName::from("title"),
-        xtriever_core::FieldName::from("text"),
-    ];
+    // The dense passage is the lexical fields joined in schema order: `title` + `text` for v1,
+    // the one `contents` field for v2 — the same text either way (Feature 013, research D3).
+    let dense_fields: Vec<xtriever_core::FieldName> = cfg
+        .lexical
+        .fields
+        .iter()
+        .map(|f| xtriever_core::FieldName::from(f.name.as_str()))
+        .collect();
     let mut hybrid_cfg = xtriever_pipeline::HybridConfig::new(schema, dense_fields);
     hybrid_cfg.candidate_depth = cfg.candidate_depth;
     hybrid_cfg.rrf_k = cfg.rrf_k;
