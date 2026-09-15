@@ -41,7 +41,7 @@ yields the same hits as the Rust-built fixture index for every fixture query (SC
 
 ## 4. Packaging
 
-- Build: `maturin build --release -m python/pyproject.toml` from a checkout with the pinned
+- Build: `cd python && maturin build --release` from a checkout with the pinned
   Rust toolchain → one wheel `xtriever-<version>-py3-none-<platform>.whl` under `target/wheels/`.
 - Install: `pip install <wheel>` (or `uv pip install`) into Python ≥ 3.9 on macOS arm64 or
   Linux x86_64; no Rust toolchain needed to install or import.

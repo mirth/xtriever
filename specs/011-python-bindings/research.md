@@ -140,7 +140,7 @@ with the committed/pending views the pipeline already has is the boring choice).
 
 `python` job on `ubuntu-latest`, path-filtered (`crates/xtriever-ffi/**`, `python/**`,
 `Cargo.lock`, the workflow): `rustup toolchain install`, `uv` (astral-sh/setup-uv), `uv venv`
-+ `maturin`, `maturin build --release -m python/pyproject.toml`, `uv pip install` the wheel,
++ `maturin`, `cd python && maturin build --release`, `uv pip install` the wheel,
 `pytest -m "not models"`. Release build of the FFI cdylib and its tree on the runner is the
 cost (candle, tantivy, tokenizers — estimated 5–7 min cold; `Swatinem/rust-cache` with its
 own key); SC-006 says under 10 minutes — measured on the first run and recorded. No model,

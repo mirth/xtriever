@@ -19,7 +19,7 @@ unset SDKROOT                                                     # a shell olde
 
 ```bash
 cargo nextest run -p xtriever-ffi --release --run-ignored only -j 1 -E 'binary(build)'   # tests/build.rs: fails to compile (no builder exports)
-python/.venv/bin/maturin build --release -m python/pyproject.toml                            # the wheel builds — the search surface exists
+(cd python && .venv/bin/maturin build --release)                            # the wheel builds — the search surface exists
 VIRTUAL_ENV=$PWD/python/.venv /opt/homebrew/bin/uv pip install --force-reinstall target/wheels/xtriever-*.whl
 python/.venv/bin/pytest python/tests -q                                                      # test_build: AttributeError (no create); test_search/options/threads/overhead: green by construction, stated; surface/errors: green
 ```
@@ -33,7 +33,7 @@ surface is 007's — the tests exist so the feature cannot change it).
 ```bash
 cargo nextest run -p xtriever-ffi                                              # model-free suite
 cargo nextest run -p xtriever-ffi --release --run-ignored only -j 1            # model-backed incl. tests/build.rs
-python/.venv/bin/maturin build --release -m python/pyproject.toml && VIRTUAL_ENV=$PWD/python/.venv /opt/homebrew/bin/uv pip install --force-reinstall target/wheels/xtriever-*.whl
+(cd python && .venv/bin/maturin build --release) && VIRTUAL_ENV=$PWD/python/.venv /opt/homebrew/bin/uv pip install --force-reinstall target/wheels/xtriever-*.whl
 python/.venv/bin/pytest python/tests -q                                        # all, models present
 python/.venv/bin/pytest python/tests -q -m "not models"                        # the CI subset
 ```
