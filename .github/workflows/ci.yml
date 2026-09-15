@@ -124,8 +124,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+      # setup-uv with `python-version` creates `.venv` itself and exports VIRTUAL_ENV;
+      # `uv pip install` targets it.
       - if: steps.filter.outputs.python == 'true'
-        run: uv venv .venv && uv pip install "maturin>=1.15,<2" pytest
+        run: uv pip install "maturin>=1.15,<2" pytest
       - if: steps.filter.outputs.python == 'true'
         run: cd python && ../.venv/bin/maturin build --release
       - if: steps.filter.outputs.python == 'true'
