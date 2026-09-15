@@ -77,16 +77,16 @@ fusions — is [`runs/summary.json`](./runs/summary.json). Model cards' claims: 
 | v3 | +0.64 / −0.15 / 0.00 | +0.13 / +0.03 / −0.03 | +0.95 / −0.18 / −0.02 | **×100** on all three |
 | v2 | +0.35 / +0.01 / 0.00 | +0.07 / −0.01 / 0.00 | +0.38 / −0.01 / −0.04 | ×100 (×10 on NFCorpus) |
 
-## Costs (this host: Apple M1, MPS, PyTorch 2.14, 8 threads; batch 8 after F-001)
+## Costs (this host: Apple M1, MPS, PyTorch 2.14, 8 threads; batch 8; every shard timed, aggregated per shard — review round 1 #1)
 
 | model | dataset | docs | docs/s | nnz/doc mean / p95 / max | nnz/query mean / p95 | truncated (> 512) |
 |---|---|---|---|---|---|---|
-| v3 | SciFact | 5,183 | 19.9 | 239 / 281 / 335 | 19.6 / 33 | 455 |
-| v3 | NFCorpus | 3,633 | 20.7 | 217 / 264 / 333 | 4.9 / 11 | 330 |
-| v3 | FiQA | 57,638 | 45.7 (F-003) | 224 / 281 / 730 | 12.9 / 21 | 2,417 (F-003) |
-| v2 | SciFact | 5,183 | 26.6 | 386 / 625 / 1,458 | 19.6 / 33 | 455 |
-| v2 | NFCorpus | 3,633 | 26.8 | 292 / 486 / 1,282 | 4.9 / 11 | 330 |
-| v2 | FiQA | 57,638 | 32.6 | 245 / 432 / 1,567 | 12.9 / 21 | 2,417 |
+| v3 | SciFact | 5,183 | 27.5 | 239 / 281 / 335 | 19.6 / 33 | 455 |
+| v3 | NFCorpus | 3,633 | 27.4 | 217 / 264 / 333 | 4.9 / 11 | 330 |
+| v3 | FiQA | 57,638 | 33.6 | 224 / 281 / 730 | 12.9 / 21 | 2,417 |
+| v2 | SciFact | 5,183 | 27.3 | 386 / 625 / 1,458 | 19.6 / 33 | 455 |
+| v2 | NFCorpus | 3,633 | 27.5 | 292 / 486 / 1,282 | 4.9 / 11 | 330 |
+| v2 | FiQA | 57,638 | 30.7 | 245 / 432 / 1,567 | 12.9 / 21 | 2,417 |
 
 Model on disk: 267 MB (f32 safetensors), 66,985,530 parameters, both. Query side at run time:
 the tokenizer and `idf.json` (30,522 entries, 889 KB) — no model, confirmed by
@@ -95,7 +95,7 @@ the tokenizer and `idf.json` (30,522 entries, 889 KB) — no model, confirmed by
 **Wikipedia projection** (v3; SciFact's 239 non-zeros per document as the analogue for
 256-token passages): 427,947 × 239 ≈ **102 M postings**; at 1.5–2.5 B per tantivy posting with
 a term frequency, **150–255 MB** on disk, memory-mapped like the rest of the index. Encoding
-time: this host's GPU did 20–46 docs/s → 2.6–6 h for the corpus in Python; **a CPU encode
+time: this host's GPU does 27–34 docs/s → 3.5–4.4 h for the corpus in Python; **a CPU encode
 through candle would be far slower** — DistilBERT plus a 768 × 30,522 masked-LM head is
 roughly 5× the FLOPs of the MiniLM embedder, whose 008 build took 11 h at 4 threads (F-004).
 
@@ -119,15 +119,14 @@ tantivy's `en_stem` (SimpleTokenizer + RemoveLong + LowerCaser + Stemmer). This 
 SPLADE result; it is the lexical-quality lead from the conversation before this spike
 (analyzer and field weighting), now with a number: a separate, cheap feature.
 
-### F-003 — Two FiQA figures for v3 are partial: throughput and the truncation count
+### F-003 — A resumed encode reported partial costs; now every shard carries its own
 
-The v3 FiQA encode was stopped after 9 shards (F-001) and resumed; the costs record sums
-only the shards encoded in the final run (49 of 58): 45.7 docs/s at batch 8 (the earlier 9
-shards ran at batch 32 in a run that also shared the GPU with a harness export), and 1,738
-truncated documents. The v2 run encoded all 58 shards in one go: 32.6 docs/s and **2,417**
-truncated — the true count, since truncation depends only on the shared tokenizer and window
-(the SciFact and NFCorpus counts agree between the models, 455 and 330). The table shows the
-v2 count for v3's FiQA row and marks the v3 throughput as partial.
+The first v3 FiQA record summed only the shards of the run that finished it (49 of 58: 45.7
+docs/s, 1,738 truncated), while dividing the whole corpus by that run's wall time. Each shard
+now stores its documents, wall time and truncation count, and the record aggregates every
+shard; every encoding was redone under one method (batch 8) — the table above. The metrics
+did not change by a digit (the encoder is deterministic on this device); the throughput did:
+27–34 docs/s, not 45.7. Raised by review round 1 #1.
 
 ### F-004 — The build cost moves from "hours" to "a GPU or a day"
 
@@ -156,6 +155,19 @@ NFCorpus and even fuses best of all there (0.720 / 0.356) — then scores 0.199 
 BM25 itself, because BM25's length normalisation and IDF fight the learned weights on a
 57k-document corpus with long documents. The dot product is the only scoring that holds on
 all three; 013 needs the custom scorer, not the free field.
+
+## Review round 1
+
+GitHub Copilot, four comments: all taken.
+
+| # | Comment | Action |
+|---|---|---|
+| 1 | Resume accounting mixed full-corpus and partial-run values (v3 FiQA: 45.7 docs/s and 1,738 truncations were partial) | Taken: per-shard metadata (documents, wall, truncated) saved in each shard and aggregated; throughput over timed documents; every encoding redone under one method and the committed costs regenerated (F-003) |
+| 2 | `dot-q10` / `dot-q1000` reports recorded `--scale` (100) instead of their own scale | Taken: `effective_scale(variant)` — the scale from the variant's name, `None` for the float dot product |
+| 3 | `--manifest` / `--dataset` / `--variant` were optional to argparse though required by the handlers (`Path(None)` crash) | Taken: required per subcommand; a missing flag is a usage error |
+| 4 | The query-side weight check looped over whatever came back and could pass vacuously | Taken: the test asserts the exact expected id list (distinct, non-special, non-zero IDF, ascending) before the weights |
+
+After the round: 16 / 16 checks; verdicts unchanged.
 
 ## Deliberately not done
 

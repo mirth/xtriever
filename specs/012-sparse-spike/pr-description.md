@@ -43,6 +43,13 @@ belongs outside the Rust build (report F-004). Two side findings for other featu
 engine's BM25 is 6 points behind a one-field Snowball BM25 on SciFact (F-002), and the
 masked-LM logits dominate memory — batch small (F-001).
 
+## Review round 1
+
+Copilot, four comments, all taken (report table): per-shard cost metadata and a full
+re-encode (the throughput figures changed, 27–34 docs/s; the metrics did not), effective
+quantisation scale in the reports' provenance, required CLI flags, an exact expected-id
+assertion in the recipe check.
+
 ## Gate
 
 `pytest reference/tests_012` 16 / 16 · `cargo nextest run --workspace` 263 / 263 (unchanged) ·

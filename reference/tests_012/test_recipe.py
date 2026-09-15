@@ -72,5 +72,11 @@ def test_queries_never_call_the_model(loaded, monkeypatch):
     from sparse_spike import id_to_token
 
     names = id_to_token(loaded)
+    # Exactly the query's distinct non-special token ids with a non-zero IDF, ascending.
+    tok = loaded.tokenizer
+    ids = tok("what is xtriever", add_special_tokens=True)["input_ids"]
+    expected = sorted({i for i in ids if i not in set(loaded.special_ids) and idf.get(names[i], 0) > 0})
+    assert expected, "the example query must tokenise to something"
+    assert q.indices[0].tolist() == expected
     for i, w in zip(q.indices[0], q.data[0]):
         assert abs(w - idf[names[i]]) < 1e-6, names[i]

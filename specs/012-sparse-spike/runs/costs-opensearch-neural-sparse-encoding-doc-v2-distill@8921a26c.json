@@ -1,9 +1,10 @@
 {
  "datasets": {
   "fiqa": {
+   "batch": 8,
    "dataset": "fiqa",
    "device": "mps",
-   "docs_per_s": 32.6,
+   "docs_per_s": 30.7,
    "documents": 57638,
    "empty_queries": 0,
    "idf_entries": 30517,
@@ -27,14 +28,17 @@
     "p95": 21.0
    },
    "queries": 648,
+   "shards": 58,
    "threads": 8,
+   "timed_documents": 57638,
    "truncated_docs": 2417,
-   "wall_s": 1768.6
+   "wall_s": 1877.4
   },
   "nfcorpus": {
+   "batch": 8,
    "dataset": "nfcorpus",
    "device": "mps",
-   "docs_per_s": 26.8,
+   "docs_per_s": 27.5,
    "documents": 3633,
    "empty_queries": 0,
    "idf_entries": 30517,
@@ -58,14 +62,17 @@
     "p95": 11.0
    },
    "queries": 323,
+   "shards": 4,
    "threads": 8,
+   "timed_documents": 3633,
    "truncated_docs": 330,
-   "wall_s": 135.7
+   "wall_s": 131.9
   },
   "scifact": {
+   "batch": 8,
    "dataset": "scifact",
    "device": "mps",
-   "docs_per_s": 26.6,
+   "docs_per_s": 27.3,
    "documents": 5183,
    "empty_queries": 0,
    "idf_entries": 30517,
@@ -89,9 +96,11 @@
     "p95": 33.0
    },
    "queries": 300,
+   "shards": 6,
    "threads": 8,
+   "timed_documents": 5183,
    "truncated_docs": 455,
-   "wall_s": 194.8
+   "wall_s": 190.0
   }
  },
  "model_key": "opensearch-neural-sparse-encoding-doc-v2-distill@8921a26c",

@@ -334,7 +334,9 @@ def cache_dir(loaded: Loaded, dataset: str) -> Path:
     return CACHE_DIR / loaded.model_key / dataset
 
 
-def save_shard(path: Path, ids: list[str], enc: Encoded, first: int, last: int) -> None:
+def save_shard(path: Path, ids: list[str], enc: Encoded, first: int, last: int, wall_s: float | None = None) -> None:
+    """One shard: the CSR pieces plus its own metadata (documents, wall time, truncated count),
+    so a resumed run aggregates every shard's cost rather than the current run's (review 1 #1)."""
     import numpy as np
 
     rows = enc.indices[first:last]
@@ -347,8 +349,16 @@ def save_shard(path: Path, ids: list[str], enc: Encoded, first: int, last: int) 
         indptr=indptr,
         indices=np.concatenate(rows) if rows else np.zeros(0, dtype=np.int32),
         data=np.concatenate(enc.data[first:last]) if rows else np.zeros(0, dtype=np.float32),
+        meta=np.array([json.dumps({"documents": last - first, "wall_s": wall_s, "truncated": enc.truncated})], dtype=object),
     )
     part.replace(path)
+
+
+def shard_meta(z) -> dict:
+    """A shard's metadata; shards written before review 1 #1 have none and are re-encoded."""
+    if "meta" in z.files:
+        return json.loads(str(z["meta"][0]))
+    return {}
 
 
 def cmd_encode(args: argparse.Namespace) -> int:
@@ -361,36 +371,43 @@ def cmd_encode(args: argparse.Namespace) -> int:
     out = cache_dir(loaded, d)
     out.mkdir(parents=True, exist_ok=True)
     ids, texts = load_corpus(d)
-    nnz, truncated, wall = [], 0, 0.0
+    nnz, metas = [], []
     shards = range(0, len(ids), SHARD)
     for n, start in enumerate(shards):
         path = out / f"docs-{n:05d}.npz"
         end = min(start + SHARD, len(ids))
         if path.exists():
             z = np.load(path, allow_pickle=True)
-            nnz.extend(np.diff(z["indptr"]).tolist())
-            print(f"encode: {path.name} cached")
-            continue
+            meta = shard_meta(z)
+            if meta.get("wall_s") is not None:
+                nnz.extend(np.diff(z["indptr"]).tolist())
+                metas.append(meta)
+                print(f"encode: {path.name} cached")
+                continue
+            print(f"encode: {path.name} has no metadata (pre-review shard) — re-encoding")
         t0 = time.perf_counter()
         enc = encode_documents(loaded, texts[start:end], batch=args.batch)
         dt = time.perf_counter() - t0
-        wall += dt
-        truncated += enc.truncated
-        save_shard(path, ids[start:end], enc, 0, end - start)
+        save_shard(path, ids[start:end], enc, 0, end - start, wall_s=dt)
         nnz.extend(len(r) for r in enc.indices)
+        metas.append({"documents": end - start, "wall_s": dt, "truncated": enc.truncated})
         print(f"encode: {path.name} {end - start} docs in {dt:.1f} s ({(end - start) / dt:.1f} docs/s, {loaded.device}, {loaded.torch.get_num_threads()} threads)")
+    wall = sum(m["wall_s"] for m in metas)
+    timed_docs = sum(m["documents"] for m in metas)
+    truncated = sum(m["truncated"] for m in metas)
     qids, qtexts = load_queries(d)
     qenc = encode_queries(loaded, qtexts)
     save_shard(out / "queries.npz", qids, qenc, 0, len(qids))
     qnnz = [len(r) for r in qenc.indices]
     record_path = RUNS_DIR / d / f"costs-{loaded.model_key}.json"
     record_path.parent.mkdir(parents=True, exist_ok=True)
-    record = json.loads(record_path.read_text()) if record_path.exists() else {}
-    if wall > 0:  # only a run that encoded something measures throughput
-        record.update({
-            "documents": len(ids), "wall_s": round(wall, 1), "docs_per_s": round(len(ids) / wall, 1),
-            "device": loaded.device, "threads": loaded.torch.get_num_threads(), "truncated_docs": truncated,
-        })
+    # Aggregated over every shard's own metadata — a resumed run reports the whole corpus.
+    record = {
+        "documents": len(ids), "timed_documents": timed_docs, "wall_s": round(wall, 1),
+        "docs_per_s": round(timed_docs / wall, 1) if wall > 0 else None, "batch": args.batch,
+        "device": loaded.device, "threads": loaded.torch.get_num_threads(), "truncated_docs": truncated,
+        "shards": len(metas),
+    }
     record.update({
         "model_key": loaded.model_key, "dataset": d,
         "nnz_doc": {"mean": float(np.mean(nnz)), "p95": float(np.percentile(nnz, 95)), "max": int(np.max(nnz))},
@@ -610,13 +627,23 @@ class Variants:
         return r
 
 
+def effective_scale(variant: str, default: int) -> int | None:
+    """The quantisation scale a variant actually used: `dot-qS` carries its own; `dot` none;
+    the BM25-field variants use `--scale` (review 1 #2)."""
+    if variant.startswith("dot-q"):
+        return int(variant[5:])
+    if variant == "dot" or variant.startswith("rrf-") and variant.endswith("+dot"):
+        return None
+    return default
+
+
 def cmd_score(args: argparse.Namespace) -> int:
     loaded = load_model(Path(args.manifest), args.device)
     v = Variants(loaded, args.dataset, args.scale)
     names = VARIANTS if args.variant in (None, "all") else [args.variant]
     for name in names:
         run = v.run(name)
-        report_run(args.dataset, f"{name}@{loaded.model_key}", run, {"model_key": loaded.model_key, "variant": name, "scale": args.scale, "rrf_k": RRF_K, "bm25": {"k1": BM25_K1, "b": BM25_B}})
+        report_run(args.dataset, f"{name}@{loaded.model_key}", run, {"model_key": loaded.model_key, "variant": name, "scale": effective_scale(name, args.scale), "rrf_k": RRF_K, "bm25": {"k1": BM25_K1, "b": BM25_B}})
     if v.text_overlap is not None:
         report_run(args.dataset, "text-bm25@spike", v._runs["text-bm25"], {"variant": "text-bm25", "note": "the spike's own text BM25 (standard_en approximation)", "top10_jaccard_vs_engine_lexical": v.text_overlap})
         print(f"{args.dataset:9s} spike text-BM25 vs engine-lexical: mean top-10 Jaccard {v.text_overlap:.3f}")
@@ -717,11 +744,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--out", required=True)
     s.set_defaults(func=cmd_pin)
 
+    needs = {"encode": ("manifest", "dataset"), "export": ("dataset",), "score": ("manifest", "dataset", "variant"), "all": ("manifest", "dataset"), "summary": ()}
     for name, func in (("encode", cmd_encode), ("export", cmd_export), ("score", cmd_score), ("all", cmd_all), ("summary", cmd_summary)):
         s = sub.add_parser(name)
-        s.add_argument("--manifest")
-        s.add_argument("--dataset", choices=DATASETS)
-        s.add_argument("--variant")
+        s.add_argument("--manifest", required="manifest" in needs[name])
+        s.add_argument("--dataset", choices=DATASETS, required="dataset" in needs[name])
+        s.add_argument("--variant", required="variant" in needs[name], help="a research-D5 variant name, or `all`")
         s.add_argument("--device", choices=["mps", "cpu"])
         s.add_argument("--batch", type=int, default=8)  # the MLM logits are batch × tokens × vocab: 8 × 512 × 30,522 × 4 B ≈ 500 MB
         s.add_argument("--scale", type=int, default=100)
