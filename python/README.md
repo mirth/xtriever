@@ -88,7 +88,54 @@ in call order; a time budget counts from the moment the call takes the handle.
 
 ## Building an index
 
-*PR B of Feature 011 — filled in with the builder exports.*
+The same handle builds. A schema names the fields (text fields carry an analyzer id the
+engine knows — `"standard"`, `"standard_en"`), the dense fields are the text fields joined
+into the passage the embedder sees, and the depths default to the engine's (100 candidates,
+RRF k 60, re-rank depth 20):
+
+```python
+import xtriever
+from xtriever import Document, FieldDef, FieldKind, FieldValue, IndexConfig
+
+config = IndexConfig(
+    fields=[
+        FieldDef(name="title", kind=FieldKind.TEXT(analyzer="standard_en"), boost=2.0),
+        FieldDef(name="text", kind=FieldKind.TEXT(analyzer="standard_en")),
+        FieldDef(name="source", kind=FieldKind.KEYWORD()),
+    ],
+    dense_fields=["title", "text"],
+)
+index = xtriever.IndexHandle.create("path/to/new-index", config, embedder_dir, reranker_dir, xtriever.LoadPath.MMAP)
+
+index.add([
+    Document(external_id="doc-1", fields={
+        "title": FieldValue.TEXT("Why the sky is blue"),
+        "text": FieldValue.TEXT("Rayleigh scattering …"),
+        "source": FieldValue.KEYWORD("notes"),
+    }),
+    Document(external_id="doc-1#1", fields={"title": FieldValue.TEXT("Why the sky is blue"), "text": FieldValue.TEXT("…"), "source": FieldValue.KEYWORD("notes")},
+             chunk=xtriever.ChunkInfo(parent="doc-1", ordinal=1, byte_start=120, byte_end=480)),
+])
+index.commit()                                   # staged changes become searchable only here
+index.search("blue sky", xtriever.SearchOptions(k=3))
+```
+
+- **Replace**: `add` a document under a known id; the old version is searched until `commit`.
+- **Delete**: `index.delete(["doc-1"])`, then `commit`; unknown ids are ignored. `contains(id)`
+  reports the committed view.
+- **Pre-computed vectors**: `index.add_embedded(docs, vectors)` with one vector per document,
+  the embedder's width (384 for the pinned model) — `DimensionMismatch` otherwise, `Schema`
+  when the counts differ.
+- **Reopen and extend**: `IndexHandle.open(...)` on an existing index is writable when the
+  directory can be locked; a directory the process cannot write opens read-only and every
+  write raises `XtrieverError.Io` ("read-only index").
+- **Ship**: `index.merge()` commits and folds the lexical stage into one segment.
+- **Refusals** are the engine's: a non-empty directory at `create` is `Corrupt`; a dense
+  field missing from the schema, a non-text dense field, an unknown analyzer or an empty
+  external id is `Schema`.
+
+An index built here is the engine's index: the test suite builds the 40-document fixture
+from Python and checks every golden query against it, score bits included.
 
 ## Tests
 

@@ -84,7 +84,11 @@ fn document(d: &support::FixtureDoc) -> Document {
     }
 }
 
-fn create(dir: &std::path::Path, h: &support::Hybrid, reranker: bool) -> std::sync::Arc<IndexHandle> {
+fn create(
+    dir: &std::path::Path,
+    h: &support::Hybrid,
+    reranker: bool,
+) -> std::sync::Arc<IndexHandle> {
     IndexHandle::create(
         s(dir),
         config(h),
@@ -200,7 +204,11 @@ fn staged_changes_are_invisible_until_commit() {
     };
 
     // A replace: the old text is searched until commit.
-    let d001 = h.documents.iter().find(|d| d.external_id == "d001").unwrap();
+    let d001 = h
+        .documents
+        .iter()
+        .find(|d| d.external_id == "d001")
+        .unwrap();
     let mut replaced = document(d001);
     replaced.fields.insert(
         "text".into(),
