@@ -21,7 +21,7 @@ XTRIEVER_IDS_JSON=$PWD/target/xt-wiki/index/ids.json cargo test -p xtriever-pipe
 Expected at the red commit: the synthetic 100k test fails on the bound (~207 B/passage held
 against ≤ ~64); the transient test fails (peak ≈ file + 2.7× the bound); the sharing test,
 added last, does not compile (`Arc::ptr_eq` on plain fields); the full-index run prints **held ≈ 88.5 MB, peak ≈
-117.9 MB, 207 B/passage** — the "before" line of the report — and fails the same bounds.
+138.6 MB, 207 B/passage** — the "before" line of the report — and fails the same bounds.
 
 ## Step 2 — Green (after the implementation)
 

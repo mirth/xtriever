@@ -189,13 +189,18 @@ impl IdMap {
         Ok(idx)
     }
 
+    /// Record (or clear) a slot's provenance. The chunk vector never grows past the slot
+    /// count: a slot with no id is refused, so a corrupt key cannot drive an allocation
+    /// (review round 1 #1).
     fn set_chunk(&mut self, slot: u32, chunk: Option<&ChunkInfo>) -> Result<()> {
+        if slot as usize >= self.spans.len() {
+            return Err(corrupt(format!("chunk key {slot} has no slot in {FILE}")));
+        }
         match chunk {
             Some(c) => {
                 let parent = self.intern_parent(&c.parent)?;
-                let needed = (slot as usize + 1).max(self.spans.len());
-                if self.chunks.len() < needed {
-                    self.chunks.resize(needed, NO_CHUNK);
+                if self.chunks.len() < self.spans.len() {
+                    self.chunks.resize(self.spans.len(), NO_CHUNK);
                 }
                 if let Some(s) = self.chunks.get_mut(slot as usize) {
                     *s = ChunkSlot {
@@ -210,6 +215,20 @@ impl IdMap {
                     *s = NO_CHUNK;
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Place an already-interned slot (the reader's chunks-before-`external` case).
+    fn place_chunk(&mut self, slot: u32, chunk: ChunkSlot) -> Result<()> {
+        if slot as usize >= self.spans.len() {
+            return Err(corrupt(format!("chunk key {slot} has no slot in {FILE}")));
+        }
+        if self.chunks.len() < self.spans.len() {
+            self.chunks.resize(self.spans.len(), NO_CHUNK);
+        }
+        if let Some(s) = self.chunks.get_mut(slot as usize) {
+            *s = chunk;
         }
         Ok(())
     }
@@ -350,18 +369,7 @@ impl IdMap {
             // `slot < spans.len() <= u32::MAX + 1`; the push already bounded it.
             self.index_slot(slot as u32);
         }
-        if self.chunks.len() > self.spans.len() {
-            if let Some((key, _)) = self
-                .chunks
-                .iter()
-                .enumerate()
-                .skip(self.spans.len())
-                .find(|(_, s)| s.parent != NONE)
-            {
-                return Err(corrupt(format!("chunk key {key} has no slot in {FILE}")));
-            }
-            self.chunks.truncate(self.spans.len());
-        } else if !self.chunks.is_empty() {
+        if !self.chunks.is_empty() {
             self.chunks.resize(self.spans.len(), NO_CHUNK);
         }
         self.id_bytes.shrink_to_fit();
@@ -410,6 +418,9 @@ impl<'de> Visitor<'de> for FileSeed<'_> {
     fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> std::result::Result<u32, A::Error> {
         let mut version = None;
         let (mut seen_external, mut seen_chunks) = (false, false);
+        // Chunks met before `external` cannot be placed yet (no slot count to validate
+        // against): they wait here, parents already interned, and are applied at the end.
+        let mut pending: Vec<(u32, ChunkSlot)> = Vec::new();
         while let Some(key) = access.next_key::<Field>()? {
             match key {
                 Field::FormatVersion => {
@@ -430,7 +441,10 @@ impl<'de> Visitor<'de> for FileSeed<'_> {
                         return Err(de::Error::duplicate_field("chunks"));
                     }
                     seen_chunks = true;
-                    access.next_value_seed(ChunkMap { map: self.map })?;
+                    access.next_value_seed(ChunkMap {
+                        map: self.map,
+                        pending: (!seen_external).then_some(&mut pending),
+                    })?;
                 }
                 Field::Other => {
                     access.next_value::<IgnoredAny>()?;
@@ -439,6 +453,9 @@ impl<'de> Visitor<'de> for FileSeed<'_> {
         }
         if !seen_external {
             return Err(de::Error::missing_field("external"));
+        }
+        for (key, slot) in pending {
+            self.map.place_chunk(key, slot).map_err(de::Error::custom)?;
         }
         version.ok_or_else(|| de::Error::missing_field("format_version"))
     }
@@ -516,12 +533,15 @@ impl<'de> Visitor<'de> for PushId<'_> {
     }
 }
 
-/// `"chunks": { "<id>": ChunkInfo, … }` — parsed into the slot vector, parents interned.
-struct ChunkMap<'m> {
+/// `"chunks": { "<id>": ChunkInfo, … }` — parsed into the slot vector, parents interned. With
+/// `external` already read (the order `write` produces) every key is validated against the
+/// slot count as it arrives; before it, entries are kept sparse in `pending`.
+struct ChunkMap<'m, 'p> {
     map: &'m mut IdMap,
+    pending: Option<&'p mut Vec<(u32, ChunkSlot)>>,
 }
 
-impl<'de> DeserializeSeed<'de> for ChunkMap<'_> {
+impl<'de> DeserializeSeed<'de> for ChunkMap<'_, '_> {
     type Value = ();
 
     fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<(), D::Error> {
@@ -529,7 +549,7 @@ impl<'de> DeserializeSeed<'de> for ChunkMap<'_> {
     }
 }
 
-impl<'de> Visitor<'de> for ChunkMap<'_> {
+impl<'de> Visitor<'de> for ChunkMap<'_, '_> {
     type Value = ();
 
     fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -537,16 +557,32 @@ impl<'de> Visitor<'de> for ChunkMap<'_> {
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> std::result::Result<(), A::Error> {
-        // With `external` already read (the order `write` produces), the vector is sized
-        // once; otherwise it grows and `finish_read` reconciles it.
-        if self.map.chunks.is_empty() && !self.map.spans.is_empty() {
+        if self.pending.is_none() && self.map.chunks.is_empty() {
             self.map.chunks.reserve_exact(self.map.spans.len());
         }
+        let mut pending = self.pending;
         while let Some(key) = access.next_key_seed(ChunkKey)? {
             let chunk: ChunkInfo = access.next_value()?;
-            self.map
-                .set_chunk(key, Some(&chunk))
-                .map_err(de::Error::custom)?;
+            match pending.as_deref_mut() {
+                Some(list) => {
+                    let parent = self
+                        .map
+                        .intern_parent(&chunk.parent)
+                        .map_err(de::Error::custom)?;
+                    list.push((
+                        key,
+                        ChunkSlot {
+                            byte_range: chunk.byte_range,
+                            parent,
+                            ordinal: chunk.ordinal,
+                        },
+                    ));
+                }
+                None => self
+                    .map
+                    .set_chunk(key, Some(&chunk))
+                    .map_err(de::Error::custom)?,
+            }
         }
         Ok(())
     }
@@ -847,6 +883,22 @@ mod tests {
             r#"{"format_version":2,"external":["a","b","c"],"chunks":{"7":{"parent":"p","ordinal":0,"byte_range":null}}}"#,
         ));
         assert!(msg.contains("chunk key 7 has no slot in ids.json"), "{msg}");
+        // Review round 1 #1: the largest key must be refused, not allocated for.
+        let msg = corrupt_message(read_text(
+            r#"{"format_version":2,"external":["a"],"chunks":{"4294967295":{"parent":"p","ordinal":0,"byte_range":null}}}"#,
+        ));
+        assert!(
+            msg.contains("chunk key 4294967295 has no slot in ids.json"),
+            "{msg}"
+        );
+        // The same with `chunks` before `external`: validated once the slot count is known.
+        let msg = corrupt_message(read_text(
+            r#"{"chunks":{"4294967295":{"parent":"p","ordinal":0,"byte_range":null},"0":{"parent":"p","ordinal":1,"byte_range":null}},"external":["a"],"format_version":2}"#,
+        ));
+        assert!(
+            msg.contains("chunk key 4294967295 has no slot in ids.json"),
+            "{msg}"
+        );
     }
 
     #[test]

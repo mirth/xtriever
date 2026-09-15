@@ -67,6 +67,13 @@ PASS over 427,947 passages; the 008 `ids.json` reproduces from read → write (s
 - SC-001's "app within 10 MB of the harness" clause is **not met as written** — the app saved
   216 MB, the harness 176 MB; the peaks agree within 4 MB (report F-004).
 
+## Review round 1
+
+Copilot, four comments, all taken (report table): a corrupt chunk key can no longer drive an
+allocation — validated against the slot count before any resize, sparse until `external` is
+known; a no-op `delete` no longer splits the shared map; two stale "117.9 MB" figures in the
+quickstart and tasks corrected to the final method's 138.6 MB.
+
 ## Gate
 
 fmt · clippy `-D warnings` (host + Windows target) · nextest **263 / 263** · deny · iOS / iOS-sim

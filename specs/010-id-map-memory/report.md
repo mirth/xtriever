@@ -169,6 +169,20 @@ crates/xtriever-ffi swift/ apps/ .github/` **empty** (Rule 2; FR-010). BEIR × 3
 (above). The regenerated Swift fixture `expected.json` differed only in its `generated_by`
 commit line and was restored, as in 008.
 
+## Review round 1
+
+GitHub Copilot, four comments: all taken.
+
+| # | Comment | Action |
+|---|---|---|
+| 1 | The reader resized the chunk vector to `key + 1` before knowing the slot count — a corrupt key `4294967295` would attempt a ~128 GB allocation (and overflow `+ 1` on 32-bit) instead of returning `Corrupt` | Taken: `set_chunk` refuses a slot ≥ the slot count before touching the vector and never grows it past that count; with `chunks` before `external` the entries wait in a sparse pending list (parents interned as they arrive) and are placed once the count is known. Tests: the review's key in both member orders → `Corrupt` "chunk key 4294967295 has no slot in ids.json" |
+| 2 | `delete` of an unknown id called `Arc::make_mut` before `remove` discovered the miss — a no-op that cloned the map and, with `dirty` still false, left the pair split past the next `commit` | Taken: `internal(ext)` is checked first; the sharing test now deletes a missing id on a shared pair and asserts it stays shared through a no-op commit |
+| 3 | The quickstart's red-checkpoint line quoted the scratch peak (117.9 MB), not the final method's (138.6 MB) | Taken: both places say 138.6 MB (report F-002 explains the two numbers) |
+| 4 | T010 in `tasks.md` recorded the same stale peak | Taken, same fix |
+
+After the round: 76 / 76 in the crate; the full-file accounting unchanged (28,181,860 B held,
+61,198,263 B peak, 65.9 B/passage; read 123 ms this run), write-back sha256 unchanged.
+
 ## Deliberately not done
 
 - **A new on-disk id map** (spec option C): a format bump, an ADR, a rebuild of every shipped

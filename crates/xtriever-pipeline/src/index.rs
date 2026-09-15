@@ -407,6 +407,10 @@ impl HybridIndex {
     /// Stage errors.
     pub fn delete(&mut self, external_ids: &[&str]) -> Result<()> {
         for ext in external_ids {
+            // An unknown id is a no-op and must not split the shared map (review round 1 #2).
+            if self.pending_ids.internal(ext).is_none() {
+                continue;
+            }
             if let Some(id) = Arc::make_mut(&mut self.pending_ids).remove(ext) {
                 self.lexical.delete(&[id])?;
                 self.dense.delete(&[id])?;
@@ -580,6 +584,13 @@ mod tests {
         assert!(index.contains("c"));
         assert_eq!(index.committed_ids.len(), 3);
 
+        index.delete(&["missing"]).unwrap();
+        assert!(
+            shared(&index),
+            "an unknown-id delete is a no-op and keeps the pair shared"
+        );
+        index.commit().unwrap();
+        assert!(shared(&index));
         index.delete(&["a"]).unwrap();
         assert!(!shared(&index));
         assert!(index.contains("a"), "the removal is staged, not committed");
