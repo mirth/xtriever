@@ -479,3 +479,112 @@ impl HybridIndex {
         })
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use xtriever_core::{
+        AnalyzerId, Embedder, FieldDef, FieldKind, FieldName, Metric, Result, Schema, TextKind,
+        Value, Vector,
+    };
+
+    use super::*;
+
+    /// Two dimensions, one vector, a fixed identity: enough to create, add and reopen.
+    struct Stub;
+
+    impl Embedder for Stub {
+        fn dim(&self) -> usize {
+            2
+        }
+        fn metric(&self) -> Metric {
+            Metric::Cosine
+        }
+        fn fingerprint(&self) -> &str {
+            "stub"
+        }
+        fn max_input_tokens(&self) -> Option<usize> {
+            None
+        }
+        fn embed(&self, texts: &[&str], _: TextKind) -> Result<Vec<Vector>> {
+            Ok(texts.iter().map(|_| vec![1.0, 0.0]).collect())
+        }
+    }
+
+    fn config() -> HybridConfig {
+        let schema = Schema {
+            fields: vec![FieldDef {
+                name: FieldName::from("text"),
+                kind: FieldKind::Text(AnalyzerId("standard".into())),
+                indexed: true,
+                stored: false,
+                boost: 1.0,
+            }],
+        };
+        HybridConfig::new(schema, vec![FieldName::from("text")])
+    }
+
+    fn doc(id: &str) -> (SourceDocument, Vec<f32>) {
+        let mut fields = BTreeMap::new();
+        fields.insert(
+            FieldName::from("text"),
+            Value::Text(format!("text of {id}")),
+        );
+        (
+            SourceDocument {
+                external_id: id.to_owned(),
+                fields,
+                chunk: None,
+            },
+            vec![1.0, 0.0],
+        )
+    }
+
+    fn shared(index: &HybridIndex) -> bool {
+        Arc::ptr_eq(&index.committed_ids, &index.pending_ids)
+    }
+
+    /// Feature 010 FR-001 (research D5): one id map after open or commit; a private pending
+    /// copy only while a change is staged; searches see the committed one throughout.
+    #[test]
+    fn committed_and_pending_share_until_a_change_is_staged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut index = HybridIndex::create(tmp.path(), config(), Box::new(Stub)).unwrap();
+        assert!(shared(&index), "fresh index");
+        index.add_embedded(&[doc("a"), doc("b")]).unwrap();
+        assert!(!shared(&index), "staged additions split the pair");
+        index.commit().unwrap();
+        assert!(shared(&index), "commit joins the pair");
+        drop(index);
+
+        let mut index = HybridIndex::open(tmp.path(), Box::new(Stub)).unwrap();
+        assert!(shared(&index), "after open");
+        assert_eq!(index.committed_ids.len(), 2);
+
+        index.add_embedded(&[doc("c")]).unwrap();
+        assert!(!shared(&index));
+        assert!(
+            !index.contains("c"),
+            "a search-side view sees the committed map only"
+        );
+        assert_eq!(index.committed_ids.len(), 2);
+        assert_eq!(index.pending_ids.len(), 3);
+
+        index.commit().unwrap();
+        assert!(shared(&index));
+        assert!(index.contains("c"));
+        assert_eq!(index.committed_ids.len(), 3);
+
+        index.delete(&["a"]).unwrap();
+        assert!(!shared(&index));
+        assert!(index.contains("a"), "the removal is staged, not committed");
+        index.commit().unwrap();
+        assert!(shared(&index));
+        assert!(!index.contains("a"));
+        assert_eq!(index.len(), 2);
+        assert_eq!(index.committed_ids.len(), 3, "the slot stays reserved");
+    }
+}

@@ -77,3 +77,15 @@ pub use types::{
 
 /// On-disk format version of the pipeline descriptor and id map this build reads and writes.
 pub const FORMAT_VERSION: u32 = 2;
+
+/// The counting allocator of the unit-test binary (Feature 010, research D7): the id-map
+/// accounting tests read what the process actually holds. Integration tests link the library
+/// without `cfg(test)` and are unaffected.
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOC: peak_alloc::PeakAlloc = peak_alloc::PeakAlloc;
+
+#[cfg(test)]
+pub(crate) fn test_alloc() -> &'static peak_alloc::PeakAlloc {
+    &TEST_ALLOC
+}

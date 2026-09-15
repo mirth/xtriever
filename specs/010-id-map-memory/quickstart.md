@@ -15,7 +15,7 @@ installed on 2026-09-15 and blocks every link until then).
 ```bash
 cargo nextest run -p xtriever-pipeline --lib                     # id_map_cost, the no-slot refusal: red (run before the Arc sharing test is added — that one breaks the build, the recorded red state)
 cargo nextest run -p xtriever-pipeline --test ids_golden          # byte identity from the pre-change golden: green today (it was written by this code)
-XTRIEVER_IDS_JSON=target/xt-wiki/index/ids.json cargo test -p xtriever-pipeline --release --lib id_map_cost -- --nocapture
+XTRIEVER_IDS_JSON=$PWD/target/xt-wiki/index/ids.json cargo test -p xtriever-pipeline --release --lib id_map_cost -- --nocapture
 ```
 
 Expected at the red commit: the synthetic 100k test fails on the bound (~207 B/passage held
@@ -27,8 +27,8 @@ added last, does not compile (`Arc::ptr_eq` on plain fields); the full-index run
 
 ```bash
 cargo nextest run -p xtriever-pipeline                            # everything, including the unchanged 005–008 suites
-XTRIEVER_IDS_JSON=target/xt-wiki/index/ids.json cargo test -p xtriever-pipeline --release --lib id_map_cost -- --nocapture
-XTRIEVER_IDS_JSON=target/xt-wiki/index/ids.json cargo test -p xtriever-pipeline --release --lib ids_golden_full -- --nocapture   # write-back sha256 == 20028054…
+XTRIEVER_IDS_JSON=$PWD/target/xt-wiki/index/ids.json cargo test -p xtriever-pipeline --release --lib id_map_cost -- --nocapture
+XTRIEVER_IDS_JSON=$PWD/target/xt-wiki/index/ids.json cargo test -p xtriever-pipeline --release --lib ids_golden_full -- --nocapture   # write-back sha256 == 20028054…
 ```
 
 Expected: held ≈ 27 MB (≈ 63 B/passage) and peak ≈ 67 MB for the full file, both under their
