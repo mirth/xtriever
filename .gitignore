@@ -11,6 +11,8 @@ __pycache__/
 reference/models/*
 !reference/models/manifest.json
 !reference/models/manifest-rerank.json
+!reference/models/manifest-sparse-doc-v2.json
+!reference/models/manifest-sparse-doc-v3.json
 *.safetensors
 
 # uniffi bindgen output (quickstart Step 3)
