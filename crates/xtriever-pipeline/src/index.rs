@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use xtriever_core::{
     DocId, Document, Embedder, Error, FieldKind, FieldName, LexicalIndex, Reranker, Result,
@@ -41,10 +42,12 @@ pub struct HybridIndex {
     pub(crate) dir: PathBuf,
     pub(crate) config: HybridConfig,
     pub(crate) descriptor: Descriptor,
-    /// The id map as of the last full commit — what `contains` and `search` see.
-    pub(crate) committed_ids: IdMap,
-    /// The id map with staged changes — what the next commit writes.
-    pub(crate) pending_ids: IdMap,
+    /// The id map as of the last full commit — what `contains` and `search` see. Shared with
+    /// `pending_ids` until a change is staged (Feature 010 FR-001, research D5).
+    pub(crate) committed_ids: Arc<IdMap>,
+    /// The id map with staged changes — what the next commit writes; a private copy
+    /// (`Arc::make_mut`) from the first staged change until the commit rejoins the pair.
+    pub(crate) pending_ids: Arc<IdMap>,
     pub(crate) dirty: bool,
     pub(crate) lexical: TantivyIndex,
     pub(crate) dense: FlatIndex,
@@ -120,7 +123,7 @@ impl HybridIndex {
             embedder.fingerprint(),
         )?;
         let passages = PassageStore::create(dir)?;
-        let ids = IdMap::default();
+        let ids = Arc::new(IdMap::default());
         ids.write(dir)?;
         let descriptor = Descriptor {
             format_version: FORMAT_VERSION,
@@ -138,7 +141,7 @@ impl HybridIndex {
             dir: dir.to_path_buf(),
             config,
             descriptor,
-            committed_ids: ids.clone(),
+            committed_ids: Arc::clone(&ids),
             pending_ids: ids,
             dirty: false,
             lexical,
@@ -210,7 +213,7 @@ impl HybridIndex {
             TantivyIndex::open(&dir.join(LEXICAL_DIR))?
         };
         descriptor.check_identity(lexical.schema(), embedder.fingerprint())?;
-        let ids = IdMap::read(dir)?;
+        let ids = Arc::new(IdMap::read(dir)?);
         // The store's slot count must equal the id map's length (the fifth count, ADR-0008).
         let passages = PassageStore::open(dir, ids.len())?;
         let dense_dir = dir.join(DENSE_DIR);
@@ -253,7 +256,7 @@ impl HybridIndex {
             dir: dir.to_path_buf(),
             config,
             descriptor,
-            committed_ids: ids.clone(),
+            committed_ids: Arc::clone(&ids),
             pending_ids: ids,
             dirty: false,
             lexical,
@@ -344,9 +347,8 @@ impl HybridIndex {
                 actual: vector.len(),
             });
         }
-        let id = self
-            .pending_ids
-            .assign(&doc.external_id, doc.chunk.clone())?;
+        let id =
+            Arc::make_mut(&mut self.pending_ids).assign(&doc.external_id, doc.chunk.clone())?;
         self.lexical.add(&[Document {
             id,
             fields: doc.fields.clone(),
@@ -405,7 +407,11 @@ impl HybridIndex {
     /// Stage errors.
     pub fn delete(&mut self, external_ids: &[&str]) -> Result<()> {
         for ext in external_ids {
-            if let Some(id) = self.pending_ids.remove(ext) {
+            // An unknown id is a no-op and must not split the shared map (review round 1 #2).
+            if self.pending_ids.internal(ext).is_none() {
+                continue;
+            }
+            if let Some(id) = Arc::make_mut(&mut self.pending_ids).remove(ext) {
                 self.lexical.delete(&[id])?;
                 self.dense.delete(&[id])?;
                 self.passages.stage(id.0, None);
@@ -466,7 +472,7 @@ impl HybridIndex {
         // 7. Only now is the generation complete.
         std::fs::remove_file(&marker)?;
         self.descriptor = descriptor;
-        self.committed_ids = self.pending_ids.clone();
+        self.committed_ids = Arc::clone(&self.pending_ids);
         self.dirty = false;
         Ok(())
     }
@@ -477,5 +483,121 @@ impl HybridIndex {
                 "stage returned internal id {id} unknown to the id map"
             ))
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use xtriever_core::{
+        AnalyzerId, Embedder, FieldDef, FieldKind, FieldName, Metric, Result, Schema, TextKind,
+        Value, Vector,
+    };
+
+    use super::*;
+
+    /// Two dimensions, one vector, a fixed identity: enough to create, add and reopen.
+    struct Stub;
+
+    impl Embedder for Stub {
+        fn dim(&self) -> usize {
+            2
+        }
+        fn metric(&self) -> Metric {
+            Metric::Cosine
+        }
+        fn fingerprint(&self) -> &str {
+            "stub"
+        }
+        fn max_input_tokens(&self) -> Option<usize> {
+            None
+        }
+        fn embed(&self, texts: &[&str], _: TextKind) -> Result<Vec<Vector>> {
+            Ok(texts.iter().map(|_| vec![1.0, 0.0]).collect())
+        }
+    }
+
+    fn config() -> HybridConfig {
+        let schema = Schema {
+            fields: vec![FieldDef {
+                name: FieldName::from("text"),
+                kind: FieldKind::Text(AnalyzerId("standard".into())),
+                indexed: true,
+                stored: false,
+                boost: 1.0,
+            }],
+        };
+        HybridConfig::new(schema, vec![FieldName::from("text")])
+    }
+
+    fn doc(id: &str) -> (SourceDocument, Vec<f32>) {
+        let mut fields = BTreeMap::new();
+        fields.insert(
+            FieldName::from("text"),
+            Value::Text(format!("text of {id}")),
+        );
+        (
+            SourceDocument {
+                external_id: id.to_owned(),
+                fields,
+                chunk: None,
+            },
+            vec![1.0, 0.0],
+        )
+    }
+
+    fn shared(index: &HybridIndex) -> bool {
+        Arc::ptr_eq(&index.committed_ids, &index.pending_ids)
+    }
+
+    /// Feature 010 FR-001 (research D5): one id map after open or commit; a private pending
+    /// copy only while a change is staged; searches see the committed one throughout.
+    #[test]
+    fn committed_and_pending_share_until_a_change_is_staged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut index = HybridIndex::create(tmp.path(), config(), Box::new(Stub)).unwrap();
+        assert!(shared(&index), "fresh index");
+        index.add_embedded(&[doc("a"), doc("b")]).unwrap();
+        assert!(!shared(&index), "staged additions split the pair");
+        index.commit().unwrap();
+        assert!(shared(&index), "commit joins the pair");
+        drop(index);
+
+        let mut index = HybridIndex::open(tmp.path(), Box::new(Stub)).unwrap();
+        assert!(shared(&index), "after open");
+        assert_eq!(index.committed_ids.len(), 2);
+
+        index.add_embedded(&[doc("c")]).unwrap();
+        assert!(!shared(&index));
+        assert!(
+            !index.contains("c"),
+            "a search-side view sees the committed map only"
+        );
+        assert_eq!(index.committed_ids.len(), 2);
+        assert_eq!(index.pending_ids.len(), 3);
+
+        index.commit().unwrap();
+        assert!(shared(&index));
+        assert!(index.contains("c"));
+        assert_eq!(index.committed_ids.len(), 3);
+
+        index.delete(&["missing"]).unwrap();
+        assert!(
+            shared(&index),
+            "an unknown-id delete is a no-op and keeps the pair shared"
+        );
+        index.commit().unwrap();
+        assert!(shared(&index));
+        index.delete(&["a"]).unwrap();
+        assert!(!shared(&index));
+        assert!(index.contains("a"), "the removal is staged, not committed");
+        index.commit().unwrap();
+        assert!(shared(&index));
+        assert!(!index.contains("a"));
+        assert_eq!(index.len(), 2);
+        assert_eq!(index.committed_ids.len(), 3, "the slot stays reserved");
     }
 }

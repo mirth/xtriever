@@ -1343,6 +1343,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
+name = "peak_alloc"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccc90935a8dd139fdf341762773687a1e361d3f54b396a55d9dd1f7001e484bb"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2794,6 +2800,8 @@ dependencies = [
 name = "xtriever-pipeline"
 version = "0.1.0"
 dependencies = [
+ "hashbrown 0.17.1",
+ "peak_alloc",
  "proptest",
  "serde",
  "serde_json",

@@ -56,6 +56,15 @@
 //!   re-ranker.
 //! - **Explanation**: [`HitExplain`] gains `rerank_score` and `rerank_rank` (1-based position
 //!   among the re-ranked hits) under the core's `rerank.score` and this crate's [`RERANK_RANK`].
+//!
+//! # Feature 010
+//!
+//! - **The id map's shape**: one map, shared between the committed and the pending view
+//!   (`Arc`, copied on the first staged change, rejoined at commit), held as arenas — every id's
+//!   bytes once, a span per slot, a hash table over the arena, fixed-width chunk slots with
+//!   interned parents — about 52 bytes per slot plus the ids' own bytes, read straight from the
+//!   file through a streaming visitor. `ids.json` itself is unchanged and byte-identical
+//!   (`specs/010-id-map-memory/contracts/id-map.md`).
 
 mod descriptor;
 mod error;
@@ -77,3 +86,15 @@ pub use types::{
 
 /// On-disk format version of the pipeline descriptor and id map this build reads and writes.
 pub const FORMAT_VERSION: u32 = 2;
+
+/// The counting allocator of the unit-test binary (Feature 010, research D7): the id-map
+/// accounting tests read what the process actually holds. Integration tests link the library
+/// without `cfg(test)` and are unaffected.
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOC: peak_alloc::PeakAlloc = peak_alloc::PeakAlloc;
+
+#[cfg(test)]
+pub(crate) fn test_alloc() -> &'static peak_alloc::PeakAlloc {
+    &TEST_ALLOC
+}
