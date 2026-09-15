@@ -209,7 +209,7 @@ impl HybridIndex {
                 score: c.score,
                 rerank_score,
                 text,
-                chunk: self.committed_ids.chunk(c.id).cloned(),
+                chunk: self.committed_ids.chunk(c.id),
                 explain,
             });
         }

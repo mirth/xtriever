@@ -1,0 +1,265 @@
+{
+ "description": "Feature 010 golden script: replayed through IdMap (unit) and HybridIndex (integration); the resulting ids.json must equal ids-golden.json byte for byte",
+ "operations": [
+  {
+   "op": "assign",
+   "external": "d001",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "d002",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "d003",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "d004",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "d005",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "d006",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "d007",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "d008",
+   "chunk": null
+  },
+  {
+   "op": "assign",
+   "external": "p1#0",
+   "chunk": {
+    "parent": "p1",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     880
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p1#1",
+   "chunk": {
+    "parent": "p1",
+    "ordinal": 1,
+    "byte_range": [
+     900,
+     1780
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p1#2",
+   "chunk": {
+    "parent": "p1",
+    "ordinal": 2,
+    "byte_range": [
+     1800,
+     2680
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p2#0",
+   "chunk": {
+    "parent": "p2",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     500
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p2#1",
+   "chunk": {
+    "parent": "p2",
+    "ordinal": 1,
+    "byte_range": null
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p3#0",
+   "chunk": {
+    "parent": "p3",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     300
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p3#1",
+   "chunk": {
+    "parent": "p3",
+    "ordinal": 1,
+    "byte_range": [
+     300,
+     610
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p3#2",
+   "chunk": {
+    "parent": "p3",
+    "ordinal": 2,
+    "byte_range": [
+     610,
+     900
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p3#3",
+   "chunk": {
+    "parent": "p3",
+    "ordinal": 3,
+    "byte_range": null
+   }
+  },
+  {
+   "op": "assign",
+   "external": "art/one#0",
+   "chunk": {
+    "parent": "art/one",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     42
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "two words#0",
+   "chunk": {
+    "parent": "two words",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     7
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "café#0",
+   "chunk": {
+    "parent": "café",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     12
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "quo\"ted#0",
+   "chunk": {
+    "parent": "quo\"ted",
+    "ordinal": 0,
+    "byte_range": [
+     5,
+     9
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL#0",
+   "chunk": {
+    "parent": "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p4#0",
+   "chunk": {
+    "parent": "p4",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     10
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p5#0",
+   "chunk": {
+    "parent": "p5",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     64
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p1#0",
+   "chunk": {
+    "parent": "p1",
+    "ordinal": 0,
+    "byte_range": [
+     0,
+     899
+    ]
+   }
+  },
+  {
+   "op": "assign",
+   "external": "p2#0",
+   "chunk": null
+  },
+  {
+   "op": "remove",
+   "external": "p3#1"
+  },
+  {
+   "op": "remove",
+   "external": "d004"
+  },
+  {
+   "op": "remove",
+   "external": "nope"
+  },
+  {
+   "op": "assign",
+   "external": "d009",
+   "chunk": null
+  }
+ ]
+}
