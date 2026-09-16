@@ -78,8 +78,8 @@ set.
 
 ## D6 — Where the code lives
 
-The study script `reference/rerank_study.py` (Python 3.12, `reference/.venv-003`, which holds
-`numpy 2.5.3` and `pytrec_eval 0.5`; no new environment) with `reference/tests_014/` (pytest,
+The study script `reference/rerank_study.py` (Python 3.12, `reference/.venv-012` — 012's environment, which holds
+`numpy 2.5.3`, `pytrec_eval 0.5` and `pytest`; `.venv-003` lacks pytest; no new environment) with `reference/tests_014/` (pytest,
 the 012 pattern): the derivation rules of D4 on hand-built cases including the 006
 `ORDER_CASES`, the tie and constant-column edge cases, and a JSONL round trip. Committed
 first, failing (spec FR-010). The Rust change is confined to `examples/beir.rs` (the flag,

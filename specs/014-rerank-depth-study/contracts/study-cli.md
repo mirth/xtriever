@@ -17,7 +17,7 @@ beir run --dataset D --config hybrid-rerank-v2 --rerank-depth N --cache-dir targ
 - The explain line gains `"fused_scores"`, an array of the fused scores parallel to `"fused"`.
   Existing keys and their order are unchanged.
 
-## `reference/rerank_study.py` (Python, `reference/.venv-003`)
+## `reference/rerank_study.py` (Python, `reference/.venv-012`)
 
 ```text
 rerank_study.py derive --dataset D --explain E [--out-dir target/xt-rerank-study/D]     # every variant × depth → JSONL runs

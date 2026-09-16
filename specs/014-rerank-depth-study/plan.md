@@ -17,7 +17,7 @@ the derivation and the table in `reference/rerank_study.py` with its tests.
 
 ## Technical Context
 
-**Language/Version**: Rust 1.91.1 (edition 2024, `rust-toolchain.toml`) for the example flag; Python 3.12 (`reference/.venv-003`: `numpy 2.5.3`, `pytrec_eval 0.5`) for the derivation and scoring
+**Language/Version**: Rust 1.91.1 (edition 2024, `rust-toolchain.toml`) for the example flag; Python 3.12 (`reference/.venv-012` (012's environment: `numpy 2.5.3`, `pytrec_eval 0.5`, `pytest`; `.venv-003` lacks pytest)) for the derivation and scoring
 
 **Primary Dependencies**: the pinned re-ranker (`ms-marco-MiniLM-L-6-v2`, 006 manifest), the 004 vector cache, the 013 `hybrid-baseline-v2` / `hybrid-rerank-v2` baselines and the exported depth-20 runs; `reference/gen_003_fixtures.py` (scorer) and `reference/gen_006_fixtures.py` (`order_reranked`) imported
 
