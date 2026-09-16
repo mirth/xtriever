@@ -13,5 +13,9 @@
 | CI smoke | `--config lexical-baseline-v2 --baseline specs/013-lexical-quality/baselines/lexical-baseline-v2.scifact.json` |
 
 Invariants: v1 configurations and baselines byte-identical; `TitleAndText` for a document
-equals the dense passage `dense_baseline_v1` builds for it (title-then-text, one space, empty
-title omitted).
+equals the dense passage `dense_baseline_v1` builds for it for every document — both
+builders call one `join_title_text` (title, separator, text; an empty side contributes
+neither itself nor the separator). Review round 1 made this literal: `build_passages` used
+to keep a trailing separator after a title with an empty text; no document in the three
+corpora has that shape (0 / 0 / 0 title-only documents), so no passage, cache entry or
+baseline changes.

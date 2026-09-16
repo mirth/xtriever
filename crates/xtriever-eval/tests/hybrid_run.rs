@@ -104,16 +104,21 @@ fn title_and_text_joins_with_one_space_and_omits_empty_sides() {
     let kept = build_external(&ds, &keep_empty).unwrap();
     assert_eq!(kept[5].1.get(&contents), Some(&Value::Text(String::new())));
 
-    // The joined field is the dense passage wherever the text is non-empty (the passage
-    // builder keeps its separator after a title with an empty text; BM25 never sees the
-    // difference — whitespace is not a token).
+    // The joined field is the dense passage of `dense-baseline-v1` for every document —
+    // both present, empty title, empty text, both empty (data-model invariant; one join).
     let (passages, _) = build_passages(&ds, &DenseConfig::dense_baseline_v1()).unwrap();
+    assert_eq!(passages.len(), kept.len());
     for (i, passage) in passages.iter().enumerate() {
-        if ds.corpus.texts[i].is_empty() {
-            continue;
-        }
-        assert_eq!(field(i), Some(Value::Text(passage.clone())), "document {i}");
+        assert_eq!(
+            kept[i].1.get(&contents),
+            Some(&Value::Text(passage.clone())),
+            "document {i}"
+        );
     }
+    assert_eq!(
+        passages[4], "Only a title",
+        "no trailing separator in the passage either"
+    );
 }
 
 #[test]

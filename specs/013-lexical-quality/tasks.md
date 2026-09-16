@@ -80,7 +80,7 @@ dense-field derivation; the v2 lexical baselines with their deltas.
 
 ## Phase 6: Polish
 
-- [X] T013 Gate (quickstart Step 4): fmt; clippy host + `x86_64-pc-windows-msvc`; `cargo nextest run --workspace`; deny; iOS / iOS-sim / Android checks; no-stubs; `git diff --stat main -- crates/ | grep -v xtriever-eval` empty; `git diff --stat main -- specs/003-eval-harness specs/004-dense-stage specs/005-hybrid-pipeline specs/006-rerank-stage` empty (SC-004); v1 reproduction (quickstart Step 3); no identifiers in the tree
+- [X] T013 Gate (quickstart Step 4): fmt; clippy host + `x86_64-pc-windows-msvc`; `cargo nextest run --workspace`; deny; iOS / iOS-sim / Android checks; no-stubs; `git diff --stat main -- crates/ ':!crates/xtriever-eval' ':!crates/xtriever-cli/src/wiki/chunking.rs'` empty and the `chunking.rs` diff `///` lines only (SC-006 as amended: the FR-008 doc comment is the one permitted non-eval diff); `git diff --stat main -- specs/003-eval-harness specs/004-dense-stage specs/005-hybrid-pipeline specs/006-rerank-stage` empty (SC-004); v1 reproduction (quickstart Step 3); no identifiers in the tree
 - [X] T014 Write `specs/013-lexical-quality/pr-description.md` (for the reviewer: the one change, the attribution in three lines, the baselines table with deltas, what stays v1, the CI smoke move, the attribution lines). **⛔ Commit C3**; the owner pushes (the smoke runs on v2) and merges
 
 ---

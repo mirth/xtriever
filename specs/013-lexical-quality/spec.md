@@ -155,7 +155,9 @@ with numbers; the READMEs carry the recommendation.
 - **SC-004**: The v1 baselines are byte-identical to before; the v1 configurations still run
   and reproduce them.
 - **SC-005**: The smoke gate passes on CI against the v2 lexical baseline.
-- **SC-006**: No file under `crates/` other than `crates/xtriever-eval/` changes.
+- **SC-006**: No executable change under `crates/` outside `crates/xtriever-eval/`; the one
+  permitted exception is the documentation comment in `crates/xtriever-cli/src/wiki/chunking.rs`
+  that FR-008 requires (its diff consists of `///` lines only).
 
 ## Assumptions
 

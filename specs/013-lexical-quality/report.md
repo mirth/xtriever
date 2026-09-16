@@ -110,7 +110,7 @@ best known SciFact configuration is now `hybrid-baseline-v2` (0.7144), not a re-
 | SC-003 every v2 baseline verifies to 1e-6 | **PASS** — nine `--verify-run` PASS |
 | SC-004 v1 baselines byte-identical, v1 reproduces | **PASS** — `git diff main -- specs/00{3,4,5,6}-*` empty; `lexical-baseline-v1` SciFact 0.627044 / 0.887556 before and after; `dense-baseline-v1` SciFact 0.645082 / 0.925000 after the `dense_fields` change |
 | SC-005 CI smoke passes on v2 | local `beir smoke --config lexical-baseline-v2` → `eval-smoke: PASS`; CI on push |
-| SC-006 no file under `crates/` outside `xtriever-eval` changes | code: **PASS**; the one other diff is an 8-line `///` comment in `crates/xtriever-cli/src/wiki/chunking.rs` that FR-008 ("the CLI documentation MUST recommend one joined text field") asks for — no statement changes |
+| SC-006 no executable change under `crates/` outside `xtriever-eval`; the FR-008 doc comment in `chunking.rs` permitted | **PASS** — `git diff --stat main -- crates/ ':!crates/xtriever-eval' ':!crates/xtriever-cli/src/wiki/chunking.rs'` empty; the `chunking.rs` diff is 8 `///` lines, no statement. (The criterion originally read "no file under `crates/` other than `xtriever-eval`", which FR-008's CLI guidance made unachievable; narrowed in review, not to pass a number.) |
 
 ## Findings
 
@@ -127,6 +127,21 @@ best known SciFact configuration is now `hybrid-baseline-v2` (0.7144), not a re-
 - **F-004 — NFCorpus Recall@100 slips 0.0005** (0.247820 → 0.247331) while nDCG@10 gains 1.1
   points: one relevant document leaves one query's top-100 tail. Stated, not acted on.
 
+## Review round 1 (Copilot, six comments, all taken)
+
+1. The `TitleAndText` = dense-passage invariant was tested only where the text is non-empty
+   because `build_passages` kept a trailing separator for a title with an empty text. Now one
+   `join_title_text` serves both builders and the test asserts every document (both present,
+   empty title, empty text, both empty). No corpus document is title-only (0 / 0 / 0), so no
+   passage, cache entry or baseline changes; the 004 tests still pass unchanged.
+2. Plan Principle III was **N/A** although `xtriever-eval` is a named pure crate and changes:
+   now **PASS**, citing no added dependency and the passing target checks.
+3. – 6. SC-006 ("no file under `crates/` other than `xtriever-eval`") contradicted FR-008 (the
+   CLI guidance lives in `chunking.rs`'s doc comment) and the gate command would never have
+   been empty: SC-006 is narrowed to executable changes with that one comment explicitly
+   permitted, and the gate (quickstart, T013, plan rule 2) excludes exactly that path and
+   checks its diff is `///` lines only — both re-run, both empty.
+
 ## Deliberately not done
 
 - BM25 parameters (k1 0.9 / b 0.4: −0.4 / −0.0 / −1.3 points), a stop-word list (−0.4 / −0.8 /
@@ -140,4 +155,4 @@ best known SciFact configuration is now `hybrid-baseline-v2` (0.7144), not a re-
 
 fmt ✓ · clippy workspace (host, `x86_64-pc-windows-msvc`) ✓ · nextest workspace ✓ · deny ✓ ·
 iOS / iOS-sim / Android checks ✓ · wasm32 best-effort (tracked `getrandom` failure, unchanged) ·
-no-stubs ✓ · smoke v2 ✓ · no device / team identifiers in the tree ✓.
+no-stubs ✓ · SC-006 gate (paths excluded: `xtriever-eval`, the `chunking.rs` comment) empty, comment diff `///`-only ✓ · smoke v2 ✓ · no device / team identifiers in the tree ✓.

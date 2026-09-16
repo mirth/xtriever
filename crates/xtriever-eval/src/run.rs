@@ -243,9 +243,12 @@ pub fn execute(
 pub struct PassageSpec {
     /// Prepend the title when it is non-empty (BEIR's own dense baselines feed `title + text`).
     pub title_then_text: bool,
-    /// Placed between title and text.
+    /// Placed between title and text — only when both are non-empty (since Feature 013 the
+    /// passage and the lexical `contents` field come from one join, [`join_title_text`]).
     pub separator: String,
-    /// An empty title contributes nothing — no separator either.
+    /// An empty title contributes nothing — no separator either. Kept for the recorded
+    /// configuration shape; the join never emits a separator beside an empty part, so the
+    /// flag no longer changes the passage.
     pub omit_empty_title: bool,
 }
 
@@ -303,15 +306,8 @@ pub fn build_passages(dataset: &Dataset, cfg: &DenseConfig) -> Result<(Vec<Strin
         .map_err(|_| Error::Run("corpus exceeds u32 document ids".into()))?;
     let mut passages = Vec::with_capacity(corpus.ids.len());
     for (title, text) in corpus.titles.iter().zip(&corpus.texts) {
-        let use_title =
-            cfg.passage.title_then_text && !(cfg.passage.omit_empty_title && title.is_empty());
-        if use_title {
-            let mut p =
-                String::with_capacity(title.len() + cfg.passage.separator.len() + text.len());
-            p.push_str(title);
-            p.push_str(&cfg.passage.separator);
-            p.push_str(text);
-            passages.push(p);
+        if cfg.passage.title_then_text {
+            passages.push(join_title_text(title, &cfg.passage.separator, text));
         } else {
             passages.push(text.clone());
         }
@@ -485,7 +481,7 @@ fn document_fields(corpus: &Corpus, i: usize, cfg: &EvalConfig) -> BTreeMap<Fiel
         let value = match f.from {
             Source::Title => corpus.titles[i].clone(),
             Source::Text => corpus.texts[i].clone(),
-            Source::TitleAndText => title_and_text(&corpus.titles[i], &corpus.texts[i]),
+            Source::TitleAndText => join_title_text(&corpus.titles[i], " ", &corpus.texts[i]),
         };
         if cfg.omit_empty_fields && value.is_empty() {
             continue;
@@ -495,15 +491,17 @@ fn document_fields(corpus: &Corpus, i: usize, cfg: &EvalConfig) -> BTreeMap<Fiel
     fields
 }
 
-/// `title + " " + text`, an empty side contributing neither itself nor the separator.
-fn title_and_text(title: &str, text: &str) -> String {
+/// `title + separator + text`, an empty side contributing neither itself nor the separator.
+/// The one join behind the dense passage ([`build_passages`]) and the lexical
+/// [`Source::TitleAndText`] field, so the two are equal for every document (Feature 013).
+pub fn join_title_text(title: &str, separator: &str, text: &str) -> String {
     match (title.is_empty(), text.is_empty()) {
         (true, _) => text.to_owned(),
         (_, true) => title.to_owned(),
         (false, false) => {
-            let mut joined = String::with_capacity(title.len() + 1 + text.len());
+            let mut joined = String::with_capacity(title.len() + separator.len() + text.len());
             joined.push_str(title);
-            joined.push(' ');
+            joined.push_str(separator);
             joined.push_str(text);
             joined
         }

@@ -45,5 +45,6 @@ git diff --stat main -- specs/003-eval-harness specs/004-dense-stage specs/005-h
 ## Step 4 — Gate
 
 fmt · clippy (host, Windows target) · nextest workspace · deny · cross-target checks ·
-no-stubs · `git diff --stat main -- crates/ | grep -v xtriever-eval` empty · the CI smoke
+no-stubs · `git diff --stat main -- crates/ ':!crates/xtriever-eval' ':!crates/xtriever-cli/src/wiki/chunking.rs'` empty and the `chunking.rs` diff `///` lines only
+(`git diff main -- crates/xtriever-cli/src/wiki/chunking.rs | grep '^[-+]' | grep -v '^[-+]\{3\}' | grep -v '^[-+] *///'` empty) · the CI smoke
 green against the v2 baseline on push.

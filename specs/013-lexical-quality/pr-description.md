@@ -49,10 +49,14 @@ The `eval-smoke` job compares against `specs/013-lexical-quality/baselines/lexic
   `hybrid_baseline_v2`, `hybrid_rerank_v2`; `examples/beir.rs`: the three names, `dense_fields`
   derived from the lexical schema (was hard-coded `["title","text"]`; the dense list is
   unchanged — re-run and equal to the 004 baseline).
+- `join_title_text` (review round 1): one join behind the dense passage and the `contents`
+  field, so the two are equal for every document; no corpus document is title-only, so no
+  passage, cache entry or baseline changes.
 - Tests first (committed red): `tests/run.rs` (three), `tests/hybrid_run.rs` (one: join, empty
   title, empty text, both empty, equality with the dense passage).
 - Docs: `python/README.md` schema recommendation, `xtriever-cli` `chunking.rs` comment (the
-  only non-eval diff under `crates/`, doc comment only), `xtriever-eval` crate docs, 012 report
+  only non-eval diff under `crates/`, `///` lines only — SC-006 narrowed in review to permit
+  exactly it), `xtriever-eval` crate docs, 012 report
   F-002 resolved.
 
 Gate: fmt · clippy (host + Windows target) · nextest workspace · deny · iOS / iOS-sim / Android
