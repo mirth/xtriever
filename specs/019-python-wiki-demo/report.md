@@ -146,6 +146,13 @@ tolerance — and the 007 goldens through the same comparison → PASS, all bits
 The demo suite after the round: **54 passed, 0 skipped** (41 model-free). The record and
 the Rust gate are unaffected (no engine value changed; the goldens tests still pass on bits).
 
+## Red checkpoint B (2026-09-17)
+
+`pytest tests/test_chunking.py tests/test_rules.py tests/test_build.py` at commit B1:
+`test_chunking` and `test_rules` fail on import (`wikidemo.chunking`, `wikidemo.rules` do
+not exist); `test_build` 2 failed, 4 errors, 1 passed — the pass is `--limit 0` → exit 2,
+which argparse gives for the not-yet-offered subcommand as well.
+
 ## Gate (PR A)
 
 `cargo fmt --check` ok; `cargo clippy --workspace --all-targets` clean; `cargo nextest run
