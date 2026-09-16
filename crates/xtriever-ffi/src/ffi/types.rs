@@ -4,8 +4,23 @@
 // See the crate-root comment and ADR-0003: the uniffi derives emit `unsafe impl`.
 #![allow(unsafe_code)]
 
+/// How the re-ranked head is ordered (Feature 015) — `xtriever_pipeline::RerankMode` on the
+/// wire. The engine's default is `Interpolate { alpha: 0.5 }`; `Replace` reproduces results
+/// from before Feature 015 (ADR-0012).
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Enum)]
+pub enum RerankMode {
+    /// The cross-encoder's order replaces the fused order within the head.
+    Replace,
+    /// `(1 − alpha)·minmax(fused) + alpha·minmax(cross-encoder)` within the head, ties by fused
+    /// rank; `alpha` within `[0, 1]`, refused otherwise (`Schema`).
+    Interpolate {
+        /// Weight of the cross-encoder term.
+        alpha: f64,
+    },
+}
+
 /// Per-search options — the pipeline's `SearchOptions` on the wire, plus `k`.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct SearchOptions {
     /// Hits returned; `0` yields an empty response and runs no stage.
     pub k: u32,
@@ -15,6 +30,9 @@ pub struct SearchOptions {
     /// Fused candidates handed to the re-ranker; `None` = the index's default, `Some(0)` = none.
     #[uniffi(default = None)]
     pub rerank_depth: Option<u32>,
+    /// How the re-ranked head is ordered; `None` = the index's recorded mode.
+    #[uniffi(default = None)]
+    pub rerank_mode: Option<RerankMode>,
     /// Time budget in milliseconds, measured by the FFI layer from the start of the call.
     #[uniffi(default = None)]
     pub max_time_ms: Option<u64>,
@@ -88,6 +106,9 @@ pub struct HitExplain {
     pub rerank_score: Option<f32>,
     /// 1-based position among the re-ranked hits, where scored.
     pub rerank_rank: Option<u32>,
+    /// The combined score the hit was ordered by under `RerankMode::Interpolate`, in `[0, 1]`;
+    /// `None` under `Replace` or where the stage did not score the hit (Feature 015).
+    pub rerank_combined: Option<f64>,
 }
 
 /// What the stages did for one search.
@@ -143,7 +164,7 @@ pub enum DegradeReason {
 }
 
 /// Identity and configuration of an open index.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct IndexInfo {
     /// Committed live documents.
     pub documents: u64,
@@ -157,6 +178,8 @@ pub struct IndexInfo {
     pub candidate_depth: u32,
     /// Re-rank depth by default.
     pub rerank_depth: u32,
+    /// How the re-ranked head is ordered by default — the index's recorded mode (Feature 015).
+    pub rerank_mode: RerankMode,
     /// Reciprocal rank fusion constant.
     pub rrf_k: u32,
     /// Wall time the embedder took to load, in milliseconds.
@@ -237,6 +260,10 @@ pub struct IndexConfig {
     /// Fused candidates re-scored by an attached re-ranker unless the caller overrides.
     #[uniffi(default = 20)]
     pub rerank_depth: u32,
+    /// How the re-ranked head is ordered unless the caller overrides; `None` = the engine's
+    /// default (`Interpolate { alpha: 0.5 }`), recorded in the index (Feature 015).
+    #[uniffi(default = None)]
+    pub rerank_mode: Option<RerankMode>,
 }
 
 /// A field's value — `xtriever_core::Value` on the wire. The kind must match the field's.

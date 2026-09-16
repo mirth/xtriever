@@ -16,6 +16,7 @@ SEARCH_NAMES = [
     "IndexHandle",
     "IndexInfo",
     "LoadPath",
+    "RerankMode",  # Feature 015
     "RerankReport",
     "SearchOptions",
     "SearchResponse",
@@ -64,6 +65,7 @@ def test_search_options_defaults():
     o = xtriever.SearchOptions(k=10)
     assert o.k == 10
     assert o.depth is None and o.rerank_depth is None
+    assert o.rerank_mode is None, "None = the index's recorded mode (Feature 015)"
     assert o.max_time_ms is None and o.max_items is None
     assert o.strict is False and o.explain is False
 
@@ -76,6 +78,7 @@ def test_load_paths():
 def test_builder_defaults():
     cfg = xtriever.IndexConfig(fields=[], dense_fields=["text"])
     assert (cfg.candidate_depth, cfg.rrf_k, cfg.rerank_depth) == (100, 60, 20)
+    assert cfg.rerank_mode is None, "None = the engine's default at build (interpolate, alpha 0.5)"
     f = xtriever.FieldDef(name="text", kind=xtriever.FieldKind.TEXT(analyzer="standard"))
     assert (f.indexed, f.stored, f.boost) == (True, False, 1.0)
     d = xtriever.Document(external_id="x", fields={"text": xtriever.FieldValue.TEXT("t")})
@@ -87,3 +90,15 @@ def test_hit_is_keyword_constructible():
     assert hit.external_id == "x"
     with pytest.raises(TypeError):
         xtriever.Hit("x")  # positional construction is not part of the surface
+
+
+def test_rerank_mode_surface():
+    replace = xtriever.RerankMode.REPLACE()
+    interp = xtriever.RerankMode.INTERPOLATE(alpha=0.5)
+    assert isinstance(replace, xtriever.RerankMode.REPLACE)
+    assert isinstance(interp, xtriever.RerankMode.INTERPOLATE)
+    assert interp.alpha == 0.5
+    assert xtriever.SearchOptions(k=1, rerank_mode=replace).rerank_mode == replace
+    e = xtriever.HitExplain(bm25_score=None, bm25_rank=None, dense_score=None, dense_rank=None,
+                            fused=0.0, rerank_score=None, rerank_rank=None, rerank_combined=None)
+    assert e.rerank_combined is None

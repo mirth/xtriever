@@ -63,3 +63,16 @@ def test_run_round_trip(tmp_path):
     rs.write_run(p, run)
     assert rs.read_run(p) == run
     assert p.read_text().splitlines()[0] == '{"query_id": "q1", "doc_ids": ["a", "c", "b"]}'
+
+
+def test_check_cell_passes_on_equal_and_fails_on_a_difference(tmp_path, capsys):
+    cell = {"ndcg_10": 0.5, "recall_100": 0.75, "per_query": {"q1": {"ndcg_10": 0.5, "recall_100": 0.75}}}
+    report = {"mean_ndcg_10": 0.5, "mean_recall_100": 0.75, "per_query": {"q1": [0.5, 0.75]}}
+    (tmp_path / "cell.json").write_text(json.dumps(cell))
+    (tmp_path / "report.json").write_text(json.dumps(report))
+    argv = ["check-cell", "--dataset", "scifact", "--report", str(tmp_path / "report.json"), "--cell", str(tmp_path / "cell.json")]
+    assert rs.main(argv) == 0
+    report["per_query"]["q1"] = [0.5000021, 0.75]
+    (tmp_path / "report.json").write_text(json.dumps(report))
+    assert rs.main(argv) == 1
+    assert "MISMATCH" in capsys.readouterr().out

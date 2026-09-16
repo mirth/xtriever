@@ -10,7 +10,9 @@ The derivation is exact because the pinned re-ranker scores every (query, passag
 (crates/xtriever-rerank/src/scorer.rs, research D2): a pair's score at depth 50 is its score
 at any depth. `check` verifies that instead of assuming it.
 
-Subcommands (contracts/study-cli.md): derive | score | check | table | decide | all.
+Subcommands (contracts/study-cli.md): derive | score | check | table | decide | all;
+Feature 015 adds check-cell (a harness report against a 014 cell) and golden-diff (the 007
+parity goldens' regeneration summary).
 """
 
 from __future__ import annotations
@@ -183,6 +185,11 @@ def per_query_pair(entry) -> tuple[float, float]:
     return entry[0], entry[1]
 
 
+def mean_of(report: dict, metric: str) -> float:
+    """`mean_ndcg_10` (the harness and the 003 scorer) or `ndcg_10` (a 014 cell)."""
+    return report[f"mean_{metric}"] if f"mean_{metric}" in report else report[metric]
+
+
 def compare_metrics(name: str, got: dict, want: dict, tol: float = 1e-6) -> str | None:
     if set(got["per_query"]) != set(want["per_query"]):
         return f"{name}: scored query sets differ"
@@ -191,9 +198,9 @@ def compare_metrics(name: str, got: dict, want: dict, tol: float = 1e-6) -> str 
         for m, x, y in zip(("ndcg_10", "recall_100"), a, b):
             if abs(x - y) > tol:
                 return f"{name}: query {qid} {m} {x} vs {y}"
-    for m in ("mean_ndcg_10", "mean_recall_100"):
-        if abs(got[m] - want[m]) > tol:
-            return f"{name}: {m} {got[m]} vs {want[m]}"
+    for m in ("ndcg_10", "recall_100"):
+        if abs(mean_of(got, m) - mean_of(want, m)) > tol:
+            return f"{name}: mean {m} {mean_of(got, m)} vs {mean_of(want, m)}"
     return None
 
 
@@ -355,6 +362,47 @@ def cmd_decide(args) -> int:
     return 0
 
 
+def cmd_check_cell(args) -> int:
+    """Feature 015: a harness report (hybrid-rerank-v3) against a 014 cell, per query to 1e-6;
+    the exported run against the derived run, list for list, when both are given."""
+    report = json.loads(Path(args.report).read_text())
+    cell = json.loads(Path(args.cell).read_text())
+    failures = []
+    if err := compare_metrics(f"{args.dataset} report vs cell", report, cell):
+        failures.append(err)
+    lists = False
+    if args.run and args.derived:
+        lists = True
+        if err := compare_runs(f"{args.dataset} run vs derived", read_run(args.run), read_run(args.derived)):
+            failures.append(err)
+    for f in failures:
+        print(f"MISMATCH {f}")
+    print(f"check-cell {args.dataset}: {'PASS' if not failures else 'FAIL'} (per-query metrics{', lists' if lists else ''})")
+    return 0 if not failures else 1
+
+
+def cmd_golden_diff(args) -> int:
+    """Feature 015: summarise the regeneration of the 007 parity goldens."""
+    old = json.loads(Path(args.old).read_text())
+    new = json.loads(Path(args.new).read_text())
+
+    def strip_new_keys(response, template):
+        """The regenerated golden may carry keys the old one lacks (`rerank_combined_bits`);
+        compare on the old shape so an added key never masks an unchanged response."""
+        keep = set(template["hits"][0]) if template["hits"] else set()
+        return {**response, "hits": [{k: v for k, v in h.items() if k in keep} for h in response["hits"]]}
+
+    pairs = list(zip(old["queries"], new["queries"]))
+    same_without = sum(a["without_reranker"] == strip_new_keys(b["without_reranker"], a["without_reranker"]) for a, b in pairs)
+    changed_ids = [b["id"] for a, b in pairs if a["with_reranker"] != strip_new_keys(b["with_reranker"], a["with_reranker"])]
+    changed_with = len(changed_ids)
+    added = sorted(set(new["info"]) - set(old["info"]))
+    ok = same_without == len(old["queries"]) == len(new["queries"])
+    print(f"without_reranker identical ({same_without}/{len(old['queries'])}); "
+          f"with_reranker changed: {changed_with} {changed_ids}; info gains {added}")
+    return 0 if ok else 1
+
+
 def cmd_all(args) -> int:
     for step in (cmd_derive, cmd_score, cmd_check):
         if (rc := step(args)) != 0:
@@ -368,6 +416,7 @@ def main(argv=None) -> int:
     needs = {
         "derive": ("dataset", "explain"), "score": ("dataset",), "check": ("dataset", "baseline_run", "baseline_report"),
         "table": (), "decide": (), "all": ("dataset", "explain", "baseline_run", "baseline_report"),
+        "check-cell": ("dataset", "report", "cell"), "golden-diff": ("old", "new"),
     }
     for name, required in needs.items():
         sp = sub.add_parser(name)
@@ -379,6 +428,12 @@ def main(argv=None) -> int:
         sp.add_argument("--e2e-depth", type=int, default=5)
         sp.add_argument("--runs-dir", type=Path)
         sp.add_argument("--out-dir", type=Path)
+        sp.add_argument("--report", type=Path, required="report" in required)
+        sp.add_argument("--cell", type=Path, required="cell" in required)
+        sp.add_argument("--run", type=Path)
+        sp.add_argument("--derived", type=Path)
+        sp.add_argument("--old", type=Path, required="old" in required)
+        sp.add_argument("--new", type=Path, required="new" in required)
     args = p.parse_args(argv)
     if args.cmd == "all":
         # derive writes to out-dir (the study dir); score reads runs from there and writes cells to RUNS_DIR
@@ -389,7 +444,8 @@ def main(argv=None) -> int:
             return rc
         args.runs_dir, args.out_dir = study_dir, RUNS_DIR
         return cmd_score(args) or cmd_check(args)
-    return {"derive": cmd_derive, "score": cmd_score, "check": cmd_check, "table": cmd_table, "decide": cmd_decide}[args.cmd](args)
+    return {"derive": cmd_derive, "score": cmd_score, "check": cmd_check, "table": cmd_table, "decide": cmd_decide,
+            "check-cell": cmd_check_cell, "golden-diff": cmd_golden_diff}[args.cmd](args)
 
 
 if __name__ == "__main__":

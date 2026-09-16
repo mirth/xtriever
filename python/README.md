@@ -51,17 +51,31 @@ print(index.info())                                    # documents, format versi
 response = index.search("why is the sky blue", xtriever.SearchOptions(k=5, explain=True))
 for hit in response.hits:
     print(hit.external_id, hit.score, hit.rerank_score, hit.text[:80])
-    e = hit.explain                                    # the seven pipeline features; None = not seen by that stage
+    e = hit.explain                                    # the eight pipeline features; None = not seen by that stage
     print("  bm25", e.bm25_score, e.bm25_rank, "dense", e.dense_score, e.dense_rank, "fused", e.fused,
-          "rerank", e.rerank_score, e.rerank_rank)
+          "rerank", e.rerank_score, e.rerank_rank, e.rerank_combined)
 print(response.stages)                                 # lexical/dense candidates, degradation, re-rank report
 print(response.elapsed_ms, "ms")
 ```
 
-`SearchOptions(k)` is enough; `depth`, `rerank_depth`, `max_time_ms`, `max_items` default to
-the index's configuration, `strict` and `explain` to `False`. Under a time budget a stage that
-runs out degrades to the previous stage's result and the report says so; with `strict=True`
-it raises instead.
+`SearchOptions(k)` is enough; `depth`, `rerank_depth`, `rerank_mode`, `max_time_ms`,
+`max_items` default to the index's configuration, `strict` and `explain` to `False`. Under a
+time budget a stage that runs out degrades to the previous stage's result and the report
+says so; with `strict=True` it raises instead.
+
+**Re-ranking order.** By default the re-ranked head is ordered by
+`0.5 · minmax(fused score) + 0.5 · minmax(cross-encoder score)` — the cross-encoder informs
+the fused order rather than replacing it (`RerankMode.INTERPOLATE(alpha=0.5)`, recorded in the
+index; `info().rerank_mode`). Measured on the BEIR sets this scores +1.45 mean nDCG@10 points
+over the earlier replace-order rule at the same cost, and never below it on any set. The
+earlier order is one option away, per search or per index:
+
+```python
+index.search("why is the sky blue", xtriever.SearchOptions(k=5, rerank_mode=xtriever.RerankMode.REPLACE()))
+xtriever.IndexConfig(fields=[...], dense_fields=[...], rerank_mode=xtriever.RerankMode.REPLACE())   # recorded at build
+```
+
+`hit.explain.rerank_combined` is the score the head was ordered by (`None` under `REPLACE`).
 
 ## Errors
 

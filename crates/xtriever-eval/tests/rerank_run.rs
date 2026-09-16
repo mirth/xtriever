@@ -10,7 +10,7 @@ use xtriever_eval::dataset::Counts;
 use xtriever_eval::report::{
     EvalReport, LEXICAL_COMMIT, Observations, Rounded, StageInfo, compare,
 };
-use xtriever_eval::run::{HybridConfig, RerankConfig};
+use xtriever_eval::run::{HybridConfig, RerankConfig, RerankMode};
 
 fn report_with(config: &str, dataset: &str, ndcg: f64, recall: f64) -> EvalReport {
     EvalReport {
@@ -204,4 +204,28 @@ fn the_006_baselines_round_trip_byte_for_byte_and_carry_the_stage() {
         }
     }
     assert_eq!(seen, 3);
+}
+
+// ── Feature 015: hybrid-rerank-v3, the interpolating mode ────────────────────────────────────
+
+#[test]
+fn hybrid_rerank_v3_is_v2_hybrid_at_depth_20_interpolated() {
+    let v3 = RerankConfig::hybrid_rerank_v3();
+    assert_eq!(v3.name, "hybrid-rerank-v3");
+    assert_eq!(v3.hybrid, HybridConfig::hybrid_baseline_v2());
+    assert_eq!(v3.rerank_depth, 20);
+    assert_eq!(v3.mode, RerankMode::Interpolate { alpha: 0.5 });
+    v3.validate().unwrap();
+    assert_eq!(RerankConfig::hybrid_rerank_v1().mode, RerankMode::Replace);
+    assert_eq!(RerankConfig::hybrid_rerank_v2().mode, RerankMode::Replace);
+    // The configuration serialises its mode, so a report says which rule produced it.
+    let json = serde_json::to_string(&v3).unwrap();
+    assert!(
+        json.contains("\"mode\":{\"interpolate\":{\"alpha\":0.5}}"),
+        "{json}"
+    );
+    let v2 = serde_json::to_string(&RerankConfig::hybrid_rerank_v2()).unwrap();
+    assert!(v2.contains("\"mode\":\"replace\""), "{v2}");
+    let back: RerankConfig = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, v3);
 }

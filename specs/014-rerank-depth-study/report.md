@@ -89,6 +89,10 @@ is within the bound so it qualifies on the mean.
 Cost: unchanged from today's default. What it saves: nothing on the phone; what it buys:
 +1.45 mean points, and the re-ranker stops hurting SciFact.
 
+**Landed in 015** (`specs/015-rerank-interpolation/`, ADR-0012): the interpolating rule at
+α 0.5, depth 20 is the pipeline default; `hybrid-rerank-v3` reproduces the `lin-0.5-d20` cells
+list for list.
+
 **Follow-up (a feature of its own, not this study)**: the pipeline's re-rank stage gains a
 score-combination mode — `(1 − α)·minmax(fused) + α·minmax(cross-encoder)` within the head,
 α = 0.5, ties by fused rank — as the default in `crates/xtriever-pipeline` (descriptor field

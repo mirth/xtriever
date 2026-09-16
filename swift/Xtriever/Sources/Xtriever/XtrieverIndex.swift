@@ -98,6 +98,7 @@ public extension HitExplain {
             ("fused.score", Float(fused)),
             ("rerank.score", rerankScore ?? .nan),
             ("rerank.rank", rerankRank.map(Float.init) ?? .nan),
+            ("rerank.combined", rerankCombined.map(Float.init) ?? .nan),
         ]
     }
 }

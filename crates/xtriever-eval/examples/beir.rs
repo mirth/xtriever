@@ -13,6 +13,7 @@
 //! beir run    --dataset D --config hybrid-rerank-v1 [--rerank-model-dir R] (+ the hybrid flags; --load-path applies to both models)
 //! beir run    --dataset D --config lexical-baseline-v2 | hybrid-baseline-v2 | hybrid-rerank-v2   (Feature 013: one joined `contents` field for BM25; same flags as the v1)
 //! beir run    --dataset D --config hybrid-rerank-v2 --rerank-depth N (+ the re-rank flags)   (Feature 014: depth override; report config `hybrid-rerank-v2@dN`; explain lines carry `fused_scores`)
+//! beir run    --dataset D --config hybrid-rerank-v3 (+ the re-rank flags)                    (Feature 015: the interpolating re-rank rule, α 0.5, depth 20; v1/v2 stay replace-order)
 //! beir compare a.json b.json                        (cross-configuration table, no ADR line)
 //! beir delta  before.json... -- after.json...      (or two single files; same configuration only)
 //! beir smoke  --dataset scifact --baseline F [--cache DIR]
@@ -138,9 +139,10 @@ fn named_config(a: &Args) -> anyhow::Result<Config> {
         "lexical-baseline-v2" => Ok(Config::Lexical(EvalConfig::lexical_baseline_v2())),
         "hybrid-baseline-v2" => Ok(Config::Hybrid(HybridConfig::hybrid_baseline_v2())),
         "hybrid-rerank-v2" => Ok(Config::Rerank(RerankConfig::hybrid_rerank_v2())),
+        "hybrid-rerank-v3" => Ok(Config::Rerank(RerankConfig::hybrid_rerank_v3())),
         other => {
             bail!(
-                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1, hybrid-rerank-v1, lexical-baseline-v2, hybrid-baseline-v2, hybrid-rerank-v2"
+                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1, hybrid-rerank-v1, lexical-baseline-v2, hybrid-baseline-v2, hybrid-rerank-v2, hybrid-rerank-v3"
             )
         }
     }
@@ -576,9 +578,17 @@ fn evaluate_hybrid(
     let mut lex_ms = 0.0f64;
     let mut queries = 0usize;
     let started = Instant::now();
+    // Feature 015: the configuration's order rule is passed as a per-search override, so the
+    // index directory's recorded mode never decides which rule a report measures.
     let opts = SearchOptions {
         explain: true,
         rerank_depth: Some(rerank_depth.unwrap_or(0)),
+        rerank_mode: rerank.map(|r| match r.mode {
+            xtriever_eval::run::RerankMode::Replace => xtriever_pipeline::RerankMode::Replace,
+            xtriever_eval::run::RerankMode::Interpolate { alpha } => {
+                xtriever_pipeline::RerankMode::Interpolate { alpha }
+            }
+        }),
         ..SearchOptions::default()
     };
     let mut retrieve = |query_id: &str, text: &str| -> xtriever_core::Result<Vec<String>> {

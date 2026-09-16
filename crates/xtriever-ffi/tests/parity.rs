@@ -12,6 +12,7 @@ fn opts() -> SearchOptions {
         k: 10,
         depth: None,
         rerank_depth: Some(5),
+        rerank_mode: None,
         max_time_ms: None,
         max_items: None,
         strict: false,
@@ -53,6 +54,10 @@ fn info_reports_the_index_identity() {
     assert_eq!(
         (info.candidate_depth, info.rerank_depth, info.rrf_k),
         (100, 20, 60)
+    );
+    assert_eq!(
+        info.rerank_mode,
+        xtriever_ffi::RerankMode::Interpolate { alpha: 0.5 }
     );
     assert!(info.embedder_load_ms > 0);
     assert!(info.reranker_load_ms.is_some_and(|ms| ms > 0));
@@ -122,6 +127,10 @@ fn assert_parity(with_reranker: bool) {
                 we.rerank_score.map(support::bits32)
             );
             assert_eq!(ge.rerank_rank, we.rerank_rank);
+            assert_eq!(
+                ge.rerank_combined.map(support::bits),
+                we.rerank_combined.map(support::bits)
+            );
         }
         assert_eq!(
             got.stages.lexical_candidates as usize,

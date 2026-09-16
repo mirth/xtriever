@@ -48,6 +48,9 @@ fn options(k: u32, rerank_depth: u32) -> SearchOptions {
         k,
         depth: None,
         rerank_depth: Some(rerank_depth),
+        // The index's recorded mode — for the 008 index (no key) the Feature 015 default, so the
+        // goldens follow the engine's current rule; regenerate them before a device run.
+        rerank_mode: None,
         max_time_ms: None,
         max_items: None,
         strict: false,
@@ -64,6 +67,7 @@ fn info_json(index: &IndexHandle) -> serde_json::Value {
         "reranker_model_id": i.reranker_model_id,
         "candidate_depth": i.candidate_depth,
         "rerank_depth": i.rerank_depth,
+        "rerank_mode": format!("{:?}", i.rerank_mode),
         "rrf_k": i.rrf_k,
     })
 }

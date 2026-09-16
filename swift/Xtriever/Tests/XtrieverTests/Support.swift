@@ -54,6 +54,7 @@ enum Support {
             let rerankerModelId: String?
             let candidateDepth: UInt32
             let rerankDepth: UInt32
+            let rerankMode: GoldenRerankMode
             let rrfK: UInt32
             enum CodingKeys: String, CodingKey {
                 case documents
@@ -62,7 +63,28 @@ enum Support {
                 case rerankerModelId = "reranker_model_id"
                 case candidateDepth = "candidate_depth"
                 case rerankDepth = "rerank_depth"
+                case rerankMode = "rerank_mode"
                 case rrfK = "rrf_k"
+            }
+        }
+        /// `"replace"` or `{"interpolate": {"alpha": 0.5}}` — the descriptor's own JSON shape.
+        enum GoldenRerankMode: Decodable, Equatable {
+            case replace
+            case interpolate(alpha: Double)
+            init(from decoder: Decoder) throws {
+                if let s = try? decoder.singleValueContainer().decode(String.self), s == "replace" {
+                    self = .replace
+                    return
+                }
+                struct Interp: Decodable { let alpha: Double }
+                struct Wrapper: Decodable { let interpolate: Interp }
+                self = .interpolate(alpha: try Wrapper(from: decoder).interpolate.alpha)
+            }
+            var asRerankMode: RerankMode {
+                switch self {
+                case .replace: return .replace
+                case .interpolate(let alpha): return .interpolate(alpha: alpha)
+                }
             }
         }
         struct GoldenHit: Decodable {
@@ -70,6 +92,7 @@ enum Support {
             let scoreBits: String
             let rerankScoreBits: String?
             let rerankRank: UInt32?
+            let rerankCombinedBits: String?
             let bm25ScoreBits: String?
             let denseScoreBits: String?
             enum CodingKeys: String, CodingKey {
@@ -77,6 +100,7 @@ enum Support {
                 case scoreBits = "score_bits"
                 case rerankScoreBits = "rerank_score_bits"
                 case rerankRank = "rerank_rank"
+                case rerankCombinedBits = "rerank_combined_bits"
                 case bm25ScoreBits = "bm25_score_bits"
                 case denseScoreBits = "dense_score_bits"
             }
@@ -131,6 +155,7 @@ enum Support {
             XCTAssertEqual(String(format: "%016llx", g.score.bitPattern), w.scoreBits, "\(label) \(w.externalId): score bits", file: file, line: line)
             XCTAssertEqual(g.rerankScore.map { String(format: "%08x", $0.bitPattern) }, w.rerankScoreBits, "\(label) \(w.externalId): rerank bits", file: file, line: line)
             XCTAssertEqual(g.explain?.rerankRank, w.rerankRank, "\(label) \(w.externalId): rerank rank", file: file, line: line)
+            XCTAssertEqual(g.explain?.rerankCombined.map { String(format: "%016llx", $0.bitPattern) }, w.rerankCombinedBits, "\(label) \(w.externalId): combined bits", file: file, line: line)
             XCTAssertEqual(g.explain?.bm25Score.map { String(format: "%08x", $0.bitPattern) }, w.bm25ScoreBits, "\(label) \(w.externalId): bm25 bits", file: file, line: line)
             XCTAssertEqual(g.explain?.denseScore.map { String(format: "%08x", $0.bitPattern) }, w.denseScoreBits, "\(label) \(w.externalId): dense bits", file: file, line: line)
         }

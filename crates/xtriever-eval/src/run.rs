@@ -568,7 +568,23 @@ pub fn execute_external(
 
 // ── Feature 006: the re-ranked configuration ───────────────────────────────────────────────
 
-/// The re-ranked recipe: `hybrid-baseline-v1` plus a re-rank depth (data-model 006).
+/// How the re-ranked head is ordered (Feature 015) — the harness's own mirror of the
+/// pipeline's mode (this crate names only core types), serialised in the same shape so a
+/// report says which rule produced it.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RerankMode {
+    /// The cross-encoder's order replaces the fused order within the head (Feature 006).
+    Replace,
+    /// `(1 − alpha)·minmax(fused) + alpha·minmax(cross-encoder)` within the head, ties by
+    /// fused rank (Feature 014's rule, the engine's default since 015).
+    Interpolate {
+        /// Weight of the cross-encoder term, within `[0, 1]`.
+        alpha: f64,
+    },
+}
+
+/// The re-ranked recipe: a hybrid recipe plus a re-rank depth and mode (data-model 006, 015).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RerankConfig {
     /// Cited by reports.
@@ -577,6 +593,8 @@ pub struct RerankConfig {
     pub hybrid: HybridConfig,
     /// Fused candidates re-scored per query.
     pub rerank_depth: usize,
+    /// How the re-scored head is ordered.
+    pub mode: RerankMode,
 }
 
 impl RerankConfig {
@@ -604,6 +622,7 @@ impl RerankConfig {
             name: "hybrid-rerank-v1".into(),
             hybrid: HybridConfig::hybrid_baseline_v1(),
             rerank_depth: 20,
+            mode: RerankMode::Replace,
         }
     }
 
@@ -613,6 +632,18 @@ impl RerankConfig {
             name: "hybrid-rerank-v2".into(),
             hybrid: HybridConfig::hybrid_baseline_v2(),
             ..Self::hybrid_rerank_v1()
+        }
+    }
+
+    /// `hybrid-rerank-v3` (Feature 015): `hybrid-baseline-v2` re-ranked at depth 20 under the
+    /// interpolating rule, α 0.5 — Feature 014's `lin-0.5-d20` cells (0.7207 / 0.3622 / 0.3910
+    /// nDCG@10 on SciFact / NFCorpus / FiQA, against v2's 0.6954 / 0.3609 / 0.3742), which this
+    /// configuration must reproduce per query.
+    pub fn hybrid_rerank_v3() -> Self {
+        Self {
+            name: "hybrid-rerank-v3".into(),
+            mode: RerankMode::Interpolate { alpha: 0.5 },
+            ..Self::hybrid_rerank_v2()
         }
     }
 }

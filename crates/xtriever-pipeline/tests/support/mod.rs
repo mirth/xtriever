@@ -346,12 +346,22 @@ impl Reranker for NanReranker {
     }
 }
 
-/// Options that re-rank the first `d` fused candidates, with explanation.
+/// Options that re-rank the first `d` fused candidates, with explanation, under the index's
+/// recorded mode (the Feature 015 default, `Interpolate { alpha: 0.5 }`).
 pub fn rerank_options(d: usize) -> SearchOptions<'static> {
     SearchOptions {
         rerank_depth: Some(d),
         explain: true,
         ..SearchOptions::default()
+    }
+}
+
+/// `rerank_options` under the Feature 006 rule (`RerankMode::Replace`), which the 006 tests
+/// specify — selected explicitly since Feature 015 made interpolation the default.
+pub fn replace_options(d: usize) -> SearchOptions<'static> {
+    SearchOptions {
+        rerank_mode: Some(xtriever_pipeline::RerankMode::Replace),
+        ..rerank_options(d)
     }
 }
 
@@ -385,9 +395,24 @@ pub struct OrderCase {
     pub expected: Vec<(u32, Option<f32>)>,
 }
 
+/// Feature 015: an interpolating-rule case (`interpolate_cases`).
+#[derive(Deserialize)]
+pub struct InterpolateCase {
+    pub name: String,
+    pub fused: Vec<u32>,
+    pub fused_scores: Vec<f64>,
+    pub scores: Vec<Option<f32>>,
+    pub d: usize,
+    pub k: usize,
+    pub alpha: f64,
+    pub expected: Vec<(u32, Option<f64>)>,
+}
+
 #[derive(Deserialize)]
 pub struct OrderGoldens {
     pub cases: Vec<OrderCase>,
+    #[serde(default)]
+    pub interpolate_cases: Vec<InterpolateCase>,
 }
 
 pub fn order_goldens() -> OrderGoldens {
