@@ -39,7 +39,7 @@ def test_about_fields_equal_info_and_sidecar(artefact):
     assert f"candidate depth: {info.candidate_depth}" in text and f"rrf k: {info.rrf_k}" in text
     i = lines.index(f"re-rank depth (engine default): {info.rerank_depth}")
     assert lines[i + 1] == f"re-rank depth (demo default): {DEFAULT_DEPTH}"
-    assert "re-rank mode: interpolate α 0.5" in text
+    assert "re-rank mode (recorded): interpolate α 0.5" in text
     assert f"open: {opened.open_ms} ms" in text and f"embedder load: {info.embedder_load_ms} ms" in text
     if sidecar is None:
         assert "corpus identity: (no corpus sidecar)" in text

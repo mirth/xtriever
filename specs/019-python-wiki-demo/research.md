@@ -20,8 +20,12 @@ API).
 ## D2 — Fused first, then re-ranked: two engine calls
 
 **Decision**: `search` runs `SearchOptions(k, rerank_depth=0, explain=True)` and prints the
-fused list, then `SearchOptions(k, rerank_depth=depth, …)` and prints the re-ranked list
-with marks. With `--depth 0` the second call is skipped.
+fused list *before* starting the second call (`run_search` is a generator; the fused block
+is flushed first), then `SearchOptions(k, rerank_depth=depth, rerank_mode=…)` and prints
+the re-ranked list with marks. With `--depth 0` the second call is skipped. The mode is
+explicit either way — `INTERPOLATE(alpha=0.5)` or `REPLACE()` — so `--mode interpolate`
+means the engine's rule even on an index that recorded `replace`; About shows the recorded
+mode separately.
 
 **Rationale**: identical to the iOS demo (`Settings.fusedOptions` / `rerankedOptions`,
 `apps/ios-wiki-demo/App/Model/Settings.swift`), so the two demos' records compare: the
@@ -200,8 +204,10 @@ record beside the 009/018 keys so the tables line up.
 target/xt-wiki-slice-rs` and `wikidemo build --limit N --out target/xt-wiki-slice-py`; then
 `wikidemo measure --artefact target/xt-wiki-slice-py --against target/xt-wiki-slice-rs`:
 with `--against`, `measure` opens the second artefact instead of reading the host goldens
-and compares live responses by the same rule as D13, plus the identity and the counts from
-the two `corpus.json`s, writing a slice-parity record. (A separate subcommand for a
+and compares live responses by the same rule as D13 — with the order of ids checked at
+every depth, since two builds on one host have no drift to tolerate (FR-014) — plus the
+identity and the counts from the two `corpus.json`s and the document counts, all of which
+must be equal for the run to pass, writing a slice-parity record. (A separate subcommand for a
 one-time check would be clutter; the comparison code is the same.)
 N = 2,000 (≈ 3–6 k passages; 3–9 min at 93 ms/passage; the Rust side is seconds when the
 cache hits, minutes otherwise).

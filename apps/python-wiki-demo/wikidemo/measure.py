@@ -119,11 +119,16 @@ class Comparison:
         }
 
 
-def compare(truth: dict[str, dict[int, list[TruthHit]]], responses: dict[str, dict[int, list]], depths) -> Comparison:
+def compare(truth: dict[str, dict[int, list[TruthHit]]], responses: dict[str, dict[int, list]], depths, order_at_every_depth: bool = False) -> Comparison:
     """The device test's rule (`DeviceMeasurementTests`, research D13): every golden query,
     depth and hit must have a counterpart; lexical bits exact; fused order identical at
     depth 0; dense and re-rank scores within 1e-3 per document matched by id; a score present
-    on one side only is a mismatch, not a skip."""
+    on one side only is a mismatch, not a skip.
+
+    The device rule checks order only at depth 0 because a drift within tolerance may swap
+    re-ranked neighbours. Two builds on one host have no drift to tolerate, so the slice
+    check (`--against`, spec FR-014) sets `order_at_every_depth`: the ids must then be in the
+    same order at every depth, counted in `fused_order_identical` per query."""
     c = Comparison()
     measured = set(depths)
     for qid, by_depth in truth.items():
@@ -143,7 +148,7 @@ def compare(truth: dict[str, dict[int, list[TruthHit]]], responses: dict[str, di
                 continue
             if len(got) != len(want):
                 c.incomplete.append(f"{qid}@{depth}: {len(got)} hits, host has {len(want)}")
-            if depth == 0:
+            if depth == 0 or order_at_every_depth:
                 fused_identical = fused_identical and [h.external_id for h in got] == [w.external_id for w in want]
             want_by_id = {}
             for w in want:
@@ -278,7 +283,7 @@ def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_
             "peakBytes": peak_bytes,
             "peakMethod": "ru_maxrss",
             "ceilingBytes": CEILING_BYTES,
-            "underCeiling": peak_bytes < CEILING_BYTES,
+            "underCeiling": peak_bytes <= CEILING_BYTES,
         },
         "parity": comparison.as_record(),
         "notes": list(notes),
@@ -370,7 +375,10 @@ def run_measure(args, paths: Paths) -> int:
         }
         corpus = "wikipedia-slice"
 
-    comparison = compare(truth, responses, DEPTHS)
+    comparison = compare(truth, responses, DEPTHS, order_at_every_depth=against is not None)
+    if against is not None:
+        # A slice is the same slice only if the builds agree on what they built, too.
+        against["verdict"] = "PASS" if against["identityEqual"] and against["countsEqual"] and against["documentsEqual"] else "FAIL"
     record = make_record(
         corpus=corpus,
         index_meta=index_meta(opened, sidecar),
@@ -389,6 +397,7 @@ def run_measure(args, paths: Paths) -> int:
     write_json(out, record)
     print_summary(record)
     if against is not None:
-        print(f"against: identity equal {against['identityEqual']} · counts equal {against['countsEqual']} · documents equal {against['documentsEqual']}")
+        print(f"against: {against['verdict']} (identity equal {against['identityEqual']} · counts equal {against['countsEqual']} · documents equal {against['documentsEqual']}; order checked at every depth)")
     print(f"wrote {out}")
-    return 0 if comparison.verdict == "PASS" else 1
+    ok = comparison.verdict == "PASS" and (against is None or against["verdict"] == "PASS")
+    return 0 if ok else 1

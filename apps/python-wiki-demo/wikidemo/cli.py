@@ -1,5 +1,5 @@
-"""The ``wikidemo`` command line (contracts/cli.md): ``search``, ``about``, ``build``,
-``measure``. Exit 0 on success (an empty result is success), 1 on a missing input, an engine
+"""The ``wikidemo`` command line (contracts/cli.md): ``search``, ``about``, ``measure``
+(``build`` lands with PR B). Exit 0 on success (an empty result is success), 1 on a missing input, an engine
 error, a refused build or a parity FAIL, 2 on a usage error.
 """
 
@@ -14,7 +14,7 @@ from . import DEFAULT_DEPTH, DEFAULT_K, DEPTHS
 from .hits import displayed, marks
 from .inputs import MissingInput, require, resolve
 from .render import WARMUP_LINE, dropped_line, empty_line, error_line, list_block, open_line, stage_line, wall_line
-from .search import mode_label, open_artefact, run_search
+from .search import open_artefact, requested_mode_label, run_search
 
 DEPTH_HELP = (
     f"re-rank depth (default {DEFAULT_DEPTH}; the engine's own default is 20). Feature 014 measured depth 10 at "
@@ -35,6 +35,13 @@ def _positive(text: str) -> int:
     return value
 
 
+def _non_negative(text: str) -> int:
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError("must not be negative")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="wikidemo", description="Xtriever's Python Wikipedia demo: search, about, build, measure.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -43,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     _common(s)
     s.add_argument("-k", type=_positive, default=DEFAULT_K, help=f"hits to return (default {DEFAULT_K})")
     s.add_argument("--depth", type=int, choices=DEPTHS, default=DEFAULT_DEPTH, help=DEPTH_HELP)
-    s.add_argument("--budget-ms", type=int, default=None, help="time budget in ms; a stage that runs out degrades (or errors under --strict)")
+    s.add_argument("--budget-ms", type=_non_negative, default=None, help="time budget in ms; a stage that runs out degrades (or errors under --strict)")
     s.add_argument("--strict", action="store_true", help="raise the engine's error instead of degrading")
     s.add_argument("--mode", choices=("interpolate", "replace"), default="interpolate", help="re-rank order: the engine's interpolating default (α 0.5) or the previous replace order")
     s.add_argument("--explain", action="store_true", help="print the eight pipeline features under each hit")
@@ -53,12 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("about", help="the corpus, the models, the index and the attribution")
     _common(a)
 
-    b = sub.add_parser("build", help="build an index from the raw snapshot with the Feature 008 recipe")
-    _common(b)
-    b.add_argument("--out", required=True, help="output directory (must not exist)")
-    b.add_argument("--limit", type=_positive, default=None, help="the first N articles only")
-    b.add_argument("--snapshot", help="the snapshot JSONL; default reference/datasets/wiki/simple.jsonl")
-    b.add_argument("--manifest", help="the snapshot manifest; default reference/datasets/wiki-manifest.json")
+    # `build` (the raw snapshot to an index with the 008 recipe) lands with PR B.
 
     m = sub.add_parser("measure", help="run the 20 measurement queries at depths 0/5/10/20, check parity, write a record")
     _common(m)
@@ -72,8 +74,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def needs_for(args) -> list[str]:
     """The inputs a command must find before anything loads (contracts/cli.md)."""
-    if args.command == "build":
-        return ["embedder", "reranker", "snapshot", "manifest"]
     if args.command == "measure":
         needs = ["artefact", "embedder", "reranker", "queries"]
         return needs if args.against else needs + ["expected"]
@@ -84,8 +84,10 @@ def cmd_search(args, paths) -> int:
     opened = open_artefact(paths)
     print(open_line(opened))
     print(WARMUP_LINE)
-    runs = run_search(opened, args.query, k=args.k, depth=args.depth, budget_ms=args.budget_ms, strict=args.strict, mode=args.mode)
-    fused = runs[0]
+    # `run_search` yields the fused stage before it starts the re-ranked call, so the fused
+    # block is on screen while the cross-encoder works (spec FR-005, as the iOS demo).
+    stages = run_search(opened, args.query, k=args.k, depth=args.depth, budget_ms=args.budget_ms, strict=args.strict, mode=args.mode)
+    fused = next(stages)
     if not fused.response.hits:
         print()
         print(empty_line(args.query))
@@ -93,16 +95,15 @@ def cmd_search(args, paths) -> int:
         print(wall_line(fused.wall_ms, None, fused.peak_bytes))
         return 0
     print()
-    print("\n".join(list_block("fused (lexical + dense)", displayed(fused.response.hits), fused.wall_ms, args.snippet, args.explain)))
+    print("\n".join(list_block("fused (lexical + dense)", displayed(fused.response.hits), fused.wall_ms, args.snippet, args.explain)), flush=True)
     reranked_ms = None
     last = fused
-    if len(runs) == 2:
-        reranked = runs[1]
+    for reranked in stages:
         last = reranked
         reranked_ms = reranked.wall_ms
         m, dropped = marks([h.external_id for h in fused.response.hits], [h.external_id for h in reranked.response.hits])
         print()
-        label = f"re-ranked ({mode_label(opened.info, args.mode)}, depth {args.depth})"
+        label = f"re-ranked ({requested_mode_label(args.mode)}, depth {args.depth})"
         print("\n".join(list_block(label, displayed(reranked.response.hits, m), reranked.wall_ms, args.snippet, args.explain)))
         line = dropped_line(dropped)
         if line:
@@ -119,19 +120,13 @@ def cmd_about(args, paths) -> int:
     return run_about(args, paths)
 
 
-def cmd_build(args, paths) -> int:
-    from .build import run_build
-
-    return run_build(args, paths)
-
-
 def cmd_measure(args, paths) -> int:
     from .measure import run_measure
 
     return run_measure(args, paths)
 
 
-COMMANDS = {"search": cmd_search, "about": cmd_about, "build": cmd_build, "measure": cmd_measure}
+COMMANDS = {"search": cmd_search, "about": cmd_about, "measure": cmd_measure}
 
 
 def main(argv=None) -> int:

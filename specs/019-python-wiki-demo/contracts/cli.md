@@ -33,9 +33,9 @@ wikidemo search [-k N] [--depth {0,5,10,20}] [--budget-ms MS] [--strict]
 |---|---|---|
 | `-k` | 10 | `SearchOptions.k` |
 | `--depth` | **10** (the demo's default; the engine's is 20 — help text states the 018 trade-off) | `SearchOptions.rerank_depth` of the second call |
-| `--budget-ms` | none | `SearchOptions.max_time_ms` |
+| `--budget-ms` | none | `SearchOptions.max_time_ms`; a negative value is a usage error (exit 2) |
 | `--strict` | off | `SearchOptions.strict` |
-| `--mode` | interpolate (the engine's default, α 0.5) | `SearchOptions.rerank_mode` (`RerankMode.REPLACE()` / `None`) |
+| `--mode` | interpolate (the engine's default rule, α 0.5) | `SearchOptions.rerank_mode`, explicit either way: `RerankMode.INTERPOLATE(alpha=0.5)` / `RerankMode.REPLACE()` — never `None`, which would mean "whatever the index recorded" (review round 1) |
 | `--explain` | off | prints the eight features per hit (both calls run with `explain=True` regardless — the marks and the parity need the ids only, but the explanation is free) |
 | `--snippet CHARS` | none (whole passages) | passages longer than CHARS are cut with "…" and the list header says "passages cut to N characters" |
 
@@ -61,10 +61,10 @@ wikidemo about
 Prints, labelled, one per line: corpus (edition, snapshot date), articles / selected /
 passages (and `partial: first N articles` when set), corpus identity, embedder fingerprint,
 re-ranker id, format version, candidate depth, rrf k, `re-rank depth (engine default): 20`,
-`re-rank depth (demo default): 10`, re-rank mode, this session's open / embedder load /
+`re-rank depth (demo default): 10`, `re-rank mode (recorded): …` (the index's), this session's open / embedder load /
 re-ranker load ms, then a blank line and `ATTRIBUTION.txt` verbatim, then the licence URL.
 
-## `build`
+## `build` — lands with PR B; not offered by PR A's parser (`invalid choice`, exit 2)
 
 ```
 wikidemo build --out DIR [--limit N] [--snapshot FILE] [--manifest FILE]
@@ -106,5 +106,9 @@ wikidemo measure [--expected FILE | --against DIR] [--queries FILE] [--out FILE]
   depths 0 / 5 / 10 / 20 with `k=10, explain=True`; prints per-depth medians and maxima,
   the footprint and the parity verdict; writes the record (contracts/records.md); exit 1
   on `FAIL` after writing.
+- With `--against`, the order of ids is checked at **every** depth (two builds on one host
+  have no drift to tolerate — spec FR-014), and the two `corpus.json`s' identity and counts
+  and the two indexes' document counts must be equal: any inequality is a `FAIL` of the
+  `against` block and exit 1, whatever the score parity says.
 - On a `partial` artefact without `--against`: refused —
   `the host goldens describe the full corpus; compare a slice with --against`.

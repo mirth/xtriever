@@ -48,21 +48,32 @@ def timed_search(handle, label: str, query: str, options: xtriever.SearchOptions
     return StageRun(label=label, options=options, response=response, wall_ms=wall_ms, peak_bytes=peak_resident_bytes())
 
 
-def rerank_mode_option(mode: str):
-    """The engine option for `--mode`: None keeps the index's recorded mode (interpolate)."""
-    return xtriever.RerankMode.REPLACE() if mode == "replace" else None
+INTERPOLATE_ALPHA = 0.5
 
 
-def run_search(opened: Opened, query: str, k: int, depth: int, budget_ms: int | None = None, strict: bool = False, mode: str = "interpolate") -> list[StageRun]:
-    """The fused call (depth 0), then — unless `depth` is 0 — the re-ranked call."""
+def rerank_mode_option(mode: str) -> xtriever.RerankMode:
+    """The engine option for `--mode`, explicit either way — `interpolate` is the engine's
+    default rule at α 0.5 whatever the index recorded (ADR-0012), `replace` the previous order."""
+    return xtriever.RerankMode.REPLACE() if mode == "replace" else xtriever.RerankMode.INTERPOLATE(alpha=INTERPOLATE_ALPHA)
+
+
+def requested_mode_label(mode: str) -> str:
+    """The label of the `--mode` a search asked for."""
+    return "replace" if mode == "replace" else f"interpolate α {INTERPOLATE_ALPHA:g}"
+
+
+def run_search(opened: Opened, query: str, k: int, depth: int, budget_ms: int | None = None, strict: bool = False, mode: str = "interpolate"):
+    """A generator: the fused call (depth 0) is yielded before the re-ranked call starts, so
+    a caller can show it first; then — unless `depth` is 0 — the re-ranked call."""
     fused = timed_search(
         opened.handle,
         "fused",
         query,
         xtriever.SearchOptions(k=k, rerank_depth=0, max_time_ms=budget_ms, strict=strict, explain=True),
     )
+    yield fused
     if depth == 0:
-        return [fused]
+        return
     reranked = timed_search(
         opened.handle,
         "re-ranked",
@@ -76,13 +87,11 @@ def run_search(opened: Opened, query: str, k: int, depth: int, budget_ms: int | 
             explain=True,
         ),
     )
-    return [fused, reranked]
+    yield reranked
 
 
-def mode_label(info: xtriever.IndexInfo, mode: str) -> str:
-    """`interpolate α 0.5` from the index's recorded mode, or `replace`."""
-    if mode == "replace":
-        return "replace"
+def recorded_mode_label(info: xtriever.IndexInfo) -> str:
+    """The re-rank mode the index recorded (`info().rerank_mode`), for About."""
     recorded = info.rerank_mode
     if recorded.is_INTERPOLATE():
         return f"interpolate α {recorded.alpha:g}"

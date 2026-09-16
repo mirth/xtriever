@@ -9,7 +9,7 @@ import json
 from . import DEFAULT_DEPTH
 from .inputs import Paths
 from .render import open_line
-from .search import Opened, mode_label, open_artefact
+from .search import Opened, open_artefact, recorded_mode_label
 
 NO_SIDECAR = "(no corpus sidecar)"
 LICENCE_URL = "https://creativecommons.org/licenses/by-sa/4.0/"
@@ -64,7 +64,7 @@ def about_lines(opened: Opened, sidecar: dict | None, attribution: str | None, l
         f"rrf k: {info.rrf_k}",
         f"re-rank depth (engine default): {info.rerank_depth}",
         f"re-rank depth (demo default): {DEFAULT_DEPTH}",
-        f"re-rank mode: {mode_label(info, 'interpolate')}",
+        f"re-rank mode (recorded): {recorded_mode_label(info)}",
         f"open: {opened.open_ms} ms",
         f"embedder load: {info.embedder_load_ms} ms",
         f"re-ranker load: {info.reranker_load_ms} ms",

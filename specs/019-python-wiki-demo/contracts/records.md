@@ -68,8 +68,12 @@ The same shape with `"corpus": "wikipedia-slice"`, `index.partial` set, and
 
 ```json
   "against": {"artefact": "target/xt-wiki-slice-rs", "corpusIdentity": "…", "identityEqual": true,
-              "counts": {"…": 0}, "countsEqual": true, "builtBy": "xtriever wiki build --limit N"}
+              "counts": {"…": 0}, "countsEqual": true, "documents": 0, "documentsEqual": true,
+              "verdict": "PASS"}
 ```
 
 The truth side is minted live from the `--against` artefact's responses in the goldens'
-shape (bits of every score), so `parity` means the same thing as in the host record.
+shape (bits of every score), so `parity` means the same thing as in the host record — except
+that `fusedOrderIdentical` counts queries whose ids are in the same order at **every** depth
+(the slice rule, FR-014), and the exit code is 1 unless both `parity.verdict` and
+`against.verdict` are `PASS`.

@@ -148,6 +148,16 @@ def test_fused_order_only_at_depth_zero():
     assert c.verdict == "FAIL" and c.fused_order_identical == 1
 
 
+def test_slice_mode_requires_order_at_every_depth():
+    truth, responses = _world()
+    responses["q01"][10].reverse()
+    assert compare(truth, responses, DEPTHS).verdict == "PASS"  # the device rule
+    c = compare(truth, responses, DEPTHS, order_at_every_depth=True)  # the slice rule (FR-014)
+    assert c.verdict == "FAIL" and c.fused_order_identical == 1
+    truth, responses = _world()
+    assert compare(truth, responses, DEPTHS, order_at_every_depth=True).verdict == "PASS"
+
+
 def test_tolerance_is_1e_3():
     truth, responses = _world()
     responses["q01"][5][0].explain.dense_score += 9e-4
@@ -228,6 +238,10 @@ def test_record_shape_and_no_hostname():
         "rerankMaxAbsDiff": 0.0, "allBitsIdentical": 16, "hitsCompared": 16, "toleranceAbs": 0.001, "verdict": "PASS",
     }
     assert rec["footprint"] == {"peakBytes": 5, "peakMethod": "ru_maxrss", "ceilingBytes": 600_000_000, "underCeiling": True}
+    at_ceiling = make_record(corpus="wikipedia", index_meta={}, open_ms=0, embedder_load_ms=0, reranker_load_ms=0, warmup_ms=0, runs=runs, depths=DEPTHS, comparison=c, peak_bytes=600_000_000)
+    assert at_ceiling["footprint"]["underCeiling"] is True  # inclusive, as the device tests
+    over = make_record(corpus="wikipedia", index_meta={}, open_ms=0, embedder_load_ms=0, reranker_load_ms=0, warmup_ms=0, runs=runs, depths=DEPTHS, comparison=c, peak_bytes=600_000_001)
+    assert over["footprint"]["underCeiling"] is False
     assert rec["queries"][0] == {"id": "q01", "depth": 0, "elapsedMs": 10, "engineMs": 9, "hits": 2, "peakBytesAfter": 5}
     assert rec["build"]["loadPath"] == "mmap" and rec["build"]["effectiveThreads"] >= 1
     assert rec["xtrieverVersion"] == xtriever.__version__

@@ -54,7 +54,7 @@ wikidemo search --mode replace "who painted the Mona Lisa"                    # 
 | `--depth {0,5,10,20}` | **10** | how many fused candidates the cross-encoder re-ranks. The engine's own default is 20; Feature 014 measured depth 10 at −0.3 mean nDCG@10 on the BEIR sets (0.4881 vs 0.4913) for half the cross-encoder calls, and Feature 017 measured the reference phone at 1.41 s instead of 2.31 s per re-ranked search — so both demos default to 10 (Feature 018). `0` prints the fused list only. |
 | `--budget-ms MS` | none | a time budget; a stage that runs out degrades to the previous stage's result and the report says so |
 | `--strict` | off | the budget raises the engine's error instead |
-| `--mode {interpolate,replace}` | interpolate | the re-ranked order: `0.5·minmax(fused) + 0.5·minmax(cross-encoder)` (the engine's default since Feature 015, ADR-0012) or the previous replace order |
+| `--mode {interpolate,replace}` | interpolate | the re-ranked order: `0.5·minmax(fused) + 0.5·minmax(cross-encoder)` (the engine's default since Feature 015, ADR-0012) or the previous replace order — asked for explicitly either way, whatever the index recorded |
 | `--explain` | off | the eight pipeline features under each hit (`bm25.score`, `bm25.rank`, `dense.score`, `dense.rank`, `fused.score`, `rerank.score`, `rerank.rank`, `rerank.combined`); "not seen by this stage" where a stage did not retrieve the hit |
 | `--snippet N` | whole passages | cut passages to N characters |
 
@@ -73,7 +73,7 @@ wikidemo about
 
 The corpus (edition, snapshot date, counts, identity — from the index's `corpus.json`),
 the engine's index information (`info()`: documents, format version, model fingerprints,
-depths, the recorded re-rank mode), the engine's re-rank depth beside the demo's default,
+depths, the re-rank mode the index recorded), the engine's re-rank depth beside the demo's default,
 this session's open and load times, and `ATTRIBUTION.txt` verbatim with the licence link.
 
 ## Measure
@@ -101,7 +101,8 @@ ceiling is a phone rule, recorded for comparison only.
 *Lands with Feature 019's second PR:* `wikidemo build --limit N --out DIR` — the raw
 snapshot to a searchable index with the Feature 008 recipe through the package alone, and
 `wikidemo measure --artefact DIR --against DIR2` to check a demo-built slice against the
-Rust build of the same slice.
+Rust build of the same slice (ids in the same order at every depth, identity and counts
+equal). Until then `build` is not offered.
 
 ## Threads
 

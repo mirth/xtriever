@@ -31,8 +31,7 @@ a drop. Nothing in the rule moved.
 
 `test_search.py`: the fused call equals the 007 goldens' `without_reranker` lists and the
 re-ranked call their `with_reranker` lists on ids, fused f64 bits, bm25 / dense / re-rank
-f32 bits, re-rank rank and combined bits for all eight queries (8 passed, 1 skipped — see
-below). The shipped index, first command of a process:
+f32 bits, re-rank rank and combined bits for all eight queries. The shipped index, first command of a process:
 
 ```
 opened …/target/xt-wiki (427,947 passages, format 2) · embedder 89 ms · re-ranker 86 ms · open 308 ms · mmap
@@ -59,8 +58,8 @@ on the phone); warm, the fused stage is ~250 ms (the record below).
 **The "no passages found" path is unreachable on a non-empty index**: the dense stage
 always returns candidates (an empty query gives `lexical 0 · dense 100` and ten hits). The
 line and the exit-0 path exist for an empty index or a degraded dense stage with no lexical
-hit; `test_no_hits_exits_0` looks for a query with no hits on the fixture and skips when
-there is none, rather than asserting something the engine does not do.
+hit; it is exercised by a model-free test that stubs an empty fused response (review
+round 1 — the earlier test searched the fixture for such a query and skipped).
 
 A missing input is named with its producer before any model loads
 (`wikidemo: missing the Wikipedia artefact: /nonexistent/index/xtriever-pipeline.json` /
@@ -122,11 +121,35 @@ tolerance — and the 007 goldens through the same comparison → PASS, all bits
 | SC-006 | first search's fused list within 5 s: open 0.3 s + cold fused 1.6 s ≈ 2 s — **met**; missing input reported in < 1 s (tested) — **met** |
 | SC-007 | `git diff --stat main -- crates/ swift/ python/src specs/*/baselines` empty — **met** |
 
+## Review round 1 (Copilot, 8 comments — all taken)
+
+1. `build` reached an uncaught `ModuleNotFoundError` — the subcommand is not offered until
+   PR B (`invalid choice`, exit 2; tested).
+2. `--against` checked order only at depth 0 (the device rule) while FR-014 wants the same
+   order at every depth — `compare(..., order_at_every_depth=True)` for the slice mode;
+   the device rule for the host goldens is unchanged (both tested).
+3. `--against` exited 0 on unequal identity / counts / documents — the `against` block now
+   carries its own verdict and the exit is 1 unless both verdicts pass.
+4. The empty-result test could skip (and did) — replaced by a model-free test that stubs an
+   empty fused response through `cmd_search`: the message, the stage line, exit 0, and no
+   re-ranked call.
+5. `--budget-ms -1` failed inside the FFI conversion — validated as non-negative (exit 2).
+6. The fused block was printed only after both calls — `run_search` is a generator that
+   yields the fused stage before starting the re-ranked call, and the CLI flushes the fused
+   block first (the two headers are ~1 s apart on the shipped index; tested at the
+   generator level).
+7. `underCeiling` was strict; the device tests are inclusive — `<=` (tested at the boundary).
+8. `--mode interpolate` passed `None` (the index's recorded mode) — now explicit
+   `INTERPOLATE(alpha=0.5)`; the search label is the requested mode, About's line reads
+   `re-rank mode (recorded): …`.
+
+The demo suite after the round: **54 passed, 0 skipped** (41 model-free). The record and
+the Rust gate are unaffected (no engine value changed; the goldens tests still pass on bits).
+
 ## Gate (PR A)
 
 `cargo fmt --check` ok; `cargo clippy --workspace --all-targets` clean; `cargo nextest run
---workspace` 279 passed, 60 skipped; `cargo deny check` ok; the demo suite **48 passed,
-1 skipped** (37 model-free); the package suite `python/tests` **33 passed** (untouched); no
+--workspace` 279 passed, 60 skipped; `cargo deny check` ok; the demo suite **54 passed** (41 model-free; after review round 1); the package suite `python/tests` **33 passed** (untouched); no
 eval deltas — nothing ranking-affecting changed.
 
 ## Deliberately not done (PR A)

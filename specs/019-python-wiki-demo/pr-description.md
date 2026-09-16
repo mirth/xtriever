@@ -31,15 +31,21 @@ depth 10 **1,005 ms**, total 1,251 ms; depth 20 1,683 ms (the iPhone 16e at dept
 341.5 / 1,369 / 1,704.5 ms). Peak resident 1,029 MB — includes the memory-mapped 1 GB index;
 the phone's 600 MB ceiling is recorded for comparison only.
 
-**Tests** (Rule 4: committed red first, 7 collection errors at A1): the demo suite **48
-passed, 1 skipped** — 37 model-free (rendering line for line, the eleven URL cases, the iOS
+**Tests** (Rule 4: committed red first, 7 collection errors at A1): the demo suite **54
+passed** — 41 model-free (rendering line for line, the eleven URL cases, the iOS
 mark rule, the identity hash of the shipped corpus, inputs and producers, the comparison
 rule on synthetic truths) and 12 model-backed against the 007 fixture and its goldens (ids
-and every score bit). The skip is the "no passages found" path, unreachable while the dense
-stage always returns candidates. Package suite `python/tests` 33 passed, untouched.
+and every score bit). The "no passages found" path — unreachable while the dense stage always
+returns candidates — is exercised through a stubbed empty response. Package suite `python/tests` 33 passed, untouched.
 
 **Gate**: fmt, clippy, `nextest` (279 passed), deny — unchanged; no eval deltas because
 nothing ranking-affecting changed.
+
+**Review round 1** (8 comments, all taken): `build` not offered until PR B; `--against`
+checks order at every depth and fails on unequal identity / counts; the empty-result path
+tested through a stub; `--budget-ms` non-negative; the fused block printed before the
+re-ranked call starts; the ceiling inclusive; `--mode` explicit with the recorded mode
+labelled separately in About.
 
 **Not in this PR**: `build` (PR B), a CI job (research D18), persisted settings, `--json`.
 

@@ -10,7 +10,7 @@ import xtriever
 from conftest import EMBEDDER, RERANKER, f32_bits, f64_bits, run_cli
 from wikidemo.hits import marks
 from wikidemo.inputs import resolve
-from wikidemo.search import mode_label, open_artefact, run_search
+from wikidemo.search import open_artefact, recorded_mode_label, requested_mode_label, rerank_mode_option, run_search
 
 pytestmark = pytest.mark.models
 
@@ -47,8 +47,16 @@ def test_open_reports_timings(opened):
     assert opened.info.documents == 40
     assert opened.open_ms >= 0
     assert opened.info.embedder_load_ms >= 0 and opened.info.reranker_load_ms is not None
-    assert mode_label(opened.info, "interpolate") == "interpolate α 0.5"
-    assert mode_label(opened.info, "replace") == "replace"
+    assert recorded_mode_label(opened.info) == "interpolate α 0.5"
+    assert requested_mode_label("interpolate") == "interpolate α 0.5"
+    assert requested_mode_label("replace") == "replace"
+
+
+def test_mode_option_is_explicit_either_way():
+    # `--mode interpolate` asks for the engine's rule at α 0.5 whatever the index recorded;
+    # None would mean "the index's recorded mode" (review round 1).
+    assert rerank_mode_option("interpolate").is_INTERPOLATE() and rerank_mode_option("interpolate").alpha == 0.5
+    assert rerank_mode_option("replace").is_REPLACE()
 
 
 def test_fused_list_equals_the_goldens_depth_zero(opened, fixture_goldens):
@@ -79,7 +87,7 @@ def test_marks_are_computed_between_the_two_calls(opened, fixture_goldens):
 
 
 def test_depth_zero_is_one_call(opened):
-    runs = run_search(opened, "zephyr", k=3, depth=0)
+    runs = list(run_search(opened, "zephyr", k=3, depth=0))
     assert len(runs) == 1 and runs[0].response.stages.rerank is None
 
 
@@ -125,15 +133,9 @@ def test_strict_budget_error_exits_1(fixture_artefact, opened):
     assert err.startswith(f"wikidemo: {kind}: ")
 
 
-def test_no_hits_exits_0(fixture_artefact, opened):
-    query = None
-    for candidate in ("the of and", "qzxv", "of the a an"):
-        [fused] = run_search(opened, candidate, k=10, depth=0)
-        if not fused.response.hits:
-            query = candidate
-            break
-    if query is None:
-        pytest.skip("every candidate query has hits on the fixture")
-    env = {"XTRIEVER_MODEL_DIR": str(EMBEDDER), "XTRIEVER_RERANK_MODEL_DIR": str(RERANKER)}
-    code, out, err = run_cli(["search", "--artefact", str(fixture_artefact), query], env)
-    assert code == 0 and f'no passages found for "{query}"' in out
+def test_fused_is_yielded_before_the_reranked_call(opened):
+    stages = run_search(opened, "zephyr", k=3, depth=5)
+    fused = next(stages)
+    assert fused.label == "fused" and fused.response.stages.rerank is None
+    reranked = next(stages)
+    assert reranked.label == "re-ranked"
