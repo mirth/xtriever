@@ -87,7 +87,7 @@ public final class XtrieverIndex: @unchecked Sendable {
 }
 
 public extension HitExplain {
-    /// The explanation under the pipeline's seven feature names, `.nan` where a stage did not
+    /// The explanation under the pipeline's eight feature names, `.nan` where a stage did not
     /// see the hit — the same names and order as `xtriever_pipeline::HitExplain::features()`.
     func features() -> [(name: String, value: Float)] {
         [
@@ -98,6 +98,7 @@ public extension HitExplain {
             ("fused.score", Float(fused)),
             ("rerank.score", rerankScore ?? .nan),
             ("rerank.rank", rerankRank.map(Float.init) ?? .nan),
+            ("rerank.combined", rerankCombined.map(Float.init) ?? .nan),
         ]
     }
 }

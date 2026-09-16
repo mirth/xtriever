@@ -1,6 +1,9 @@
 # ADR-0011: `hybrid-rerank-v2` lands with its SciFact drop on record
 
-- **Status**: Accepted — 2026-09-16
+- **Status**: Accepted — 2026-09-16; **outcome**: superseded in effect by
+  [ADR-0012](0012-interpolated-rerank-default.md) — Feature 014 found the loss was replace-order
+  re-ranking, not depth, and Feature 015 made the interpolating rule the default
+  (`hybrid-rerank-v3` SciFact 0.7207, above depth 0). `hybrid-rerank-v2` and its baselines stay.
 - **Date**: 2026-09-16
 - **Deciders**: mirth (repository owner), 2026-09-16 (option A of three)
 - **Spec**: [013-lexical-quality](../../specs/013-lexical-quality/spec.md) — SC-002, report

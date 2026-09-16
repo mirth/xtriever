@@ -11,6 +11,7 @@ Two oracles (Principle II), written by the same script:
   generator refuses any query whose adjacent score gap is below ``MIN_GAP`` (10x the tolerance),
   so "exact order" is a fair test.
 * **Ordering rule** -- ``pipeline_order.json``: research D8 (scored first by ``(-score, id)``,
+  plus, since Feature 015, ``interpolate_cases`` for the interpolating rule;
   then the unscored in fused order, cut at ``k``) computed independently in Python.
 
 Run via the 004 virtualenv (same torch/transformers/tokenizers pins -- the oracle is the same
@@ -332,12 +333,73 @@ ORDER_CASES: list[dict] = [
 ]
 
 
+# Feature 015: the interpolating rule (014 research D4 / 015 research D1), independently of the
+# engine. The head is ordered by (1 - alpha) * minmax(fused) + alpha * minmax(cross-encoder),
+# ties by fused position; the rest follows in fused order.
+
+
+def minmax(values: list[float]) -> list[float]:
+    """Per-column min-max to [0, 1]; a constant column (or a single value) is all zeros."""
+    if not values:
+        return []
+    lo, hi = min(values), max(values)
+    if hi == lo:
+        return [0.0 for _ in values]
+    return [(v - lo) / (hi - lo) for v in values]
+
+
+def order_interpolated(fused: list[int], fused_scores: list[float], scores: list[float | None],
+                       d: int, k: int, alpha: float) -> list[list]:
+    """Scored head (i < d and scores[i] is not None) by (-combined, fused position) with
+    combined = (1 - alpha) * minmax(fused score) + alpha * minmax(score) over the head; then the
+    rest in fused order; cut at k. Returns [[id, combined-or-None], ...]."""
+    head = [(i, fused[i], fused_scores[i], scores[i])
+            for i in range(min(d, len(fused))) if scores[i] is not None]
+    f = minmax([h[2] for h in head])
+    c = minmax([h[3] for h in head])
+    combined = [(1.0 - alpha) * f[j] + alpha * c[j] for j in range(len(head))]
+    order = sorted(range(len(head)), key=lambda j: (-combined[j], head[j][0]))
+    scored_ids = {h[1] for h in head}
+    ordered = [[head[j][1], combined[j]] for j in order]
+    rest = [[i, None] for i in fused if i not in scored_ids]
+    return (ordered + rest)[:k]
+
+
+INTERPOLATE_CASES: list[dict] = [
+    dict(name="both-present", fused=[7, 3, 9, 1, 4], fused_scores=[0.032, 0.031, 0.030, 0.020, 0.019],
+         scores=[0.5, 1.5, 2.0, -1.0, 0.0], d=5, k=5, alpha=0.5),
+    dict(name="single", fused=[5, 2], fused_scores=[0.03, 0.02], scores=[0.25], d=1, k=2, alpha=0.5),
+    dict(name="constant-ce", fused=[9, 7, 3, 1], fused_scores=[0.04, 0.03, 0.02, 0.01],
+         scores=[2.0, 2.0, 2.0, 2.0], d=4, k=4, alpha=0.75),
+    dict(name="constant-fused", fused=[9, 7, 3, 1], fused_scores=[0.02, 0.02, 0.02, 0.02],
+         scores=[1.0, 3.0, 2.0, 3.0], d=4, k=4, alpha=0.5),
+    dict(name="ties-by-fused-rank", fused=[8, 6, 4, 2], fused_scores=[0.03, 0.02, 0.02, 0.03],
+         scores=[1.0, 2.0, 2.0, 1.0], d=4, k=4, alpha=0.5),
+    dict(name="head-shorter-than-d", fused=[7, 3, 9], fused_scores=[0.03, 0.02, 0.01],
+         scores=[1.0, 2.0, 3.0], d=10, k=10, alpha=0.5),
+    dict(name="k-below-head", fused=[7, 3, 9, 1], fused_scores=[0.04, 0.03, 0.02, 0.01],
+         scores=[1.0, 3.0, 2.0, 4.0], d=4, k=2, alpha=0.5),
+    dict(name="alpha-zero-is-fused", fused=[7, 3, 9, 1], fused_scores=[0.04, 0.03, 0.02, 0.01],
+         scores=[-1.0, 3.0, 1.0, 2.0], d=4, k=4, alpha=0.0),
+    dict(name="alpha-one-is-ce", fused=[7, 3, 9, 1], fused_scores=[0.04, 0.03, 0.02, 0.01],
+         scores=[-1.0, 3.0, 1.0, 2.0], d=4, k=4, alpha=1.0),
+    dict(name="partial-scores", fused=[7, 3, 9, 1, 4], fused_scores=[0.05, 0.04, 0.03, 0.02, 0.01],
+         scores=[0.5, None, 2.0, None], d=4, k=5, alpha=0.5),
+    dict(name="hand-computed-half", fused=[10, 20, 30, 40], fused_scores=[0.03, 0.02, 0.01, 0.005],
+         scores=[-1.0, 3.0, 1.0], d=3, k=4, alpha=0.5),  # f=[1,.5,0] c=[0,1,.5] s=[.5,.75,.25] → 20,10,30,40
+]
+
+
 def gen_pipeline_order() -> dict:
     cases = []
     for c in ORDER_CASES:
         expected = order_reranked(c["fused"], c["scores"], c["d"], c["k"])
         cases.append({**c, "expected": expected})
-    return {"cases": cases}
+    interpolate_cases = []
+    for c in INTERPOLATE_CASES:
+        expected = order_interpolated(c["fused"], c["fused_scores"], c["scores"], c["d"], c["k"], c["alpha"])
+        interpolate_cases.append({**c, "expected": expected})
+    return {"cases": cases, "interpolate_cases": interpolate_cases}
 
 
 # --------------------------------------------------------------------------------------------
@@ -417,6 +479,8 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=REPO_ROOT / "reference/fixtures/006")
     ap.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     ap.add_argument("--refresh-manifest", action="store_true", help="only rewrite manifest.json")
+    ap.add_argument("--order-only", action="store_true",
+                    help="rewrite pipeline_order.json (both rules) and manifest.json; no model needed (Feature 015)")
     ap.add_argument("--verify-rerank", type=Path, metavar="EXPLAIN_JSONL",
                     help="check the ordering rule on an exported explain file")
     ap.add_argument("--verify-scores", type=Path, metavar="SAMPLE_JSONL",
@@ -425,6 +489,11 @@ def main() -> int:
 
     pins = load_pins()
     if args.refresh_manifest:
+        write_manifest(args.out)
+        return 0
+    if args.order_only:
+        print("pipeline_order.json")
+        write_json(args.out / "pipeline_order.json", gen_pipeline_order())
         write_manifest(args.out)
         return 0
     if args.verify_rerank:

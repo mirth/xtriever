@@ -19,8 +19,8 @@ use xtriever_rerank::MiniLmCrossEncoder;
 use crate::ffi::error::{XtrieverError, poisoned};
 use crate::ffi::types::{
     ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
-    HitExplain, IndexConfig, IndexInfo, LoadPath, RerankReport, SearchOptions, SearchResponse,
-    StageReport,
+    HitExplain, IndexConfig, IndexInfo, LoadPath, RerankMode, RerankReport, SearchOptions,
+    SearchResponse, StageReport,
 };
 
 /// The open index and what it cost to load.
@@ -214,6 +214,25 @@ impl From<IndexConfig> for HybridConfig {
             candidate_depth: to_usize(c.candidate_depth),
             rrf_k: c.rrf_k,
             rerank_depth: to_usize(c.rerank_depth),
+            rerank_mode: c.rerank_mode.map_or_else(Default::default, Into::into),
+        }
+    }
+}
+
+impl From<RerankMode> for xtriever_pipeline::RerankMode {
+    fn from(m: RerankMode) -> Self {
+        match m {
+            RerankMode::Replace => Self::Replace,
+            RerankMode::Interpolate { alpha } => Self::Interpolate { alpha },
+        }
+    }
+}
+
+impl From<xtriever_pipeline::RerankMode> for RerankMode {
+    fn from(m: xtriever_pipeline::RerankMode) -> Self {
+        match m {
+            xtriever_pipeline::RerankMode::Replace => Self::Replace,
+            xtriever_pipeline::RerankMode::Interpolate { alpha } => Self::Interpolate { alpha },
         }
     }
 }
@@ -333,6 +352,7 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
         reranker_model_id: guard.reranker().map(|r| r.model_id().to_owned()),
         candidate_depth: count(config.candidate_depth),
         rerank_depth: count(config.rerank_depth),
+        rerank_mode: config.rerank_mode.into(),
         rrf_k: config.rrf_k,
         embedder_load_ms: ms(inner.embedder_load),
         reranker_load_ms: inner.reranker_load.map(ms),
@@ -372,6 +392,7 @@ pub fn to_pipeline_options<'a>(
     xtriever_pipeline::SearchOptions {
         depth: options.depth.map(to_usize),
         rerank_depth: options.rerank_depth.map(to_usize),
+        rerank_mode: options.rerank_mode.map(Into::into),
         strict: options.strict,
         budget: xtriever_core::Budget {
             max_time: options.max_time_ms.map(Duration::from_millis),
@@ -423,6 +444,7 @@ pub fn from_response(response: Response, elapsed_ms: u64) -> SearchResponse {
                 fused: e.fused,
                 rerank_score: e.rerank_score,
                 rerank_rank: e.rerank_rank,
+                rerank_combined: e.rerank_combined,
             }),
         })
         .collect();

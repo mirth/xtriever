@@ -57,6 +57,23 @@
 //! - **Explanation**: [`HitExplain`] gains `rerank_score` and `rerank_rank` (1-based position
 //!   among the re-ranked hits) under the core's `rerank.score` and this crate's [`RERANK_RANK`].
 //!
+//! # Feature 015
+//!
+//! - **The re-ranked head is ordered by interpolation by default** ([`RerankMode::Interpolate`]
+//!   with α 0.5; ADR-0012): `(1 − α)·minmax(fused score) + α·minmax(cross-encoder score)` over
+//!   the scored head, ties by fused position, then the rest in fused order
+//!   ([`order_interpolated`] is the exact rule). Feature 014 measured it at 0.7207 / 0.3622 /
+//!   0.3910 nDCG@10 on SciFact / NFCorpus / FiQA against replace-order's 0.6954 / 0.3609 /
+//!   0.3742, at the same cross-encoder calls. [`RerankMode::Replace`] keeps the Feature 006
+//!   rule bit for bit.
+//! - **Recorded and overridable**: [`HybridConfig::rerank_mode`] is written to the descriptor
+//!   (`rerank_mode`; an index written before this feature has no key and reads as the default —
+//!   the format version is unchanged); [`SearchOptions::rerank_mode`] overrides it per call.
+//!   An α outside `[0, 1]` is `Error::Schema` at `create` and at `search`.
+//! - **Explanation**: [`HitExplain::rerank_combined`] is the score the head was ordered by
+//!   (`None` under `Replace`), under this crate's [`RERANK_COMBINED`]; `features()` has eight
+//!   entries.
+//!
 //! # Feature 010
 //!
 //! - **The id map's shape**: one map, shared between the committed and the pending view
@@ -78,10 +95,10 @@ mod types;
 
 pub use fusion::rrf;
 pub use index::HybridIndex;
-pub use rerank::order_reranked;
+pub use rerank::{RerankMode, order_interpolated, order_reranked};
 pub use types::{
-    Degradation, DegradeReason, HitExplain, HybridConfig, HybridHit, OpenOptions, RERANK_RANK,
-    RerankReport, Response, SearchOptions, SourceDocument, StageReport,
+    Degradation, DegradeReason, HitExplain, HybridConfig, HybridHit, OpenOptions, RERANK_COMBINED,
+    RERANK_RANK, RerankReport, Response, SearchOptions, SourceDocument, StageReport,
 };
 
 /// On-disk format version of the pipeline descriptor and id map this build reads and writes.

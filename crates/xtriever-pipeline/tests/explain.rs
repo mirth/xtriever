@@ -20,6 +20,7 @@ fn explanations_reproduce_the_stage_lists_and_feature_names() {
         "fused.score",
         "rerank.score",
         "rerank.rank",
+        "rerank.combined",
     ];
     let mut both = 0;
     let mut one_only = 0;
@@ -89,7 +90,10 @@ fn explanations_reproduce_the_stage_lists_and_feature_names() {
                 (Some(_), Some(_)) => {
                     both += 1;
                     assert!(f[..5].iter().all(|(_, v)| !v.is_nan()));
-                    assert!(f[5].1.is_nan() && f[6].1.is_nan(), "no re-ranker attached");
+                    assert!(
+                        f[5].1.is_nan() && f[6].1.is_nan() && f[7].1.is_nan(),
+                        "no re-ranker attached"
+                    );
                 }
                 (Some(_), None) => {
                     one_only += 1;
@@ -218,4 +222,50 @@ fn a_skipped_reranker_explains_with_absent_rerank_fields() {
         assert!(e.rerank_score.is_none() && e.rerank_rank.is_none());
         assert!(hit.rerank_score.is_none());
     }
+}
+
+// ── Feature 015: the combined score is explained; features() has eight entries ──────────────
+
+#[test]
+fn rerank_combined_is_reported_and_features_has_eight() {
+    use xtriever_pipeline::{RERANK_COMBINED, RerankMode};
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    let q = &h.queries[0];
+    index.set_reranker(Some(Box::new(
+        support::TableReranker::from_fn(&h, |id| id as f32 * 0.5).with_limit(3),
+    )));
+    let r = index
+        .search(&q.text, None, 10, &support::rerank_options(6))
+        .unwrap();
+    assert_eq!(RERANK_COMBINED, "rerank.combined");
+    for (i, hit) in r.hits.iter().enumerate() {
+        let e = hit.explain.as_ref().unwrap();
+        let f = e.features();
+        assert_eq!(f.len(), 8);
+        assert_eq!(f[7].0.0.as_ref(), "rerank.combined");
+        if i < 3 {
+            let c = e.rerank_combined.expect("combined for the head");
+            assert!((0.0..=1.0).contains(&c));
+            assert_eq!(f[7].1, c as f32);
+        } else {
+            assert_eq!(e.rerank_combined, None);
+            assert!(f[7].1.is_nan());
+        }
+    }
+    let replaced = index
+        .search(
+            &q.text,
+            None,
+            10,
+            &SearchOptions {
+                rerank_mode: Some(RerankMode::Replace),
+                ..support::rerank_options(6)
+            },
+        )
+        .unwrap();
+    assert!(replaced.hits.iter().all(|x| {
+        let e = x.explain.as_ref().unwrap();
+        e.rerank_combined.is_none() && e.features()[7].1.is_nan()
+    }));
 }

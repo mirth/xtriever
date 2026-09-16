@@ -48,3 +48,24 @@ def test_long_and_non_ascii_queries_are_accepted(handle):
     assert isinstance(r.hits, list)
     r = handle.search("café lanterne 灯笼", xtriever.SearchOptions(k=3))
     assert isinstance(r.hits, list)
+
+
+# The pre-015 re-ranked order of the first golden query ("zephyr", k 10, depth 5) on `main`.
+Q0_REPLACE_ORDER = ["d016", "d011", "d031", "d026", "d001", "d032", "d020", "d008", "d038", "d030"]
+
+
+def test_rerank_mode_override_and_info(handle):
+    info = handle.info()
+    assert info.rerank_mode == xtriever.RerankMode.INTERPOLATE(alpha=0.5), "the default, recorded"
+    replaced = handle.search(
+        "zephyr", xtriever.SearchOptions(k=10, rerank_depth=5, explain=True, rerank_mode=xtriever.RerankMode.REPLACE())
+    )
+    assert [h.external_id for h in replaced.hits] == Q0_REPLACE_ORDER
+    assert all(h.explain.rerank_combined is None for h in replaced.hits)
+    interpolated = handle.search("zephyr", xtriever.SearchOptions(k=10, rerank_depth=5, explain=True))
+    assert sum(h.explain.rerank_combined is not None for h in interpolated.hits) == 5
+    assert [h.external_id for h in interpolated.hits[5:]] == Q0_REPLACE_ORDER[5:], "the tail is the fused order"
+    for h in interpolated.hits[:5]:
+        assert 0.0 <= h.explain.rerank_combined <= 1.0
+    with pytest.raises(xtriever.XtrieverError.Schema):
+        handle.search("zephyr", xtriever.SearchOptions(k=5, rerank_mode=xtriever.RerankMode.INTERPOLATE(alpha=2.0)))

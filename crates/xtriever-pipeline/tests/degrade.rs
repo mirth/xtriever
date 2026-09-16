@@ -437,8 +437,9 @@ fn a_degraded_dense_stage_does_not_skip_the_reranker() {
     index.set_reranker(Some(Box::new(support::TableReranker::from_fn(&h, |id| {
         id as f32
     }))));
+    // The Feature 006 rule, selected explicitly: the assertion below is about its order.
     let r = index
-        .search(&h.queries[0].text, None, 10, &support::rerank_options(5))
+        .search(&h.queries[0].text, None, 10, &support::replace_options(5))
         .unwrap();
     assert_eq!(r.stages.degraded.as_ref().unwrap().stage, "dense");
     let rr = r.stages.rerank.as_ref().unwrap();

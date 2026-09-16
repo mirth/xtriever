@@ -11,7 +11,7 @@ use xtriever_core::{
 
 use crate::fusion::fused_terms;
 use crate::index::HybridIndex;
-use crate::rerank::order_reranked;
+use crate::rerank::{RerankMode, order_head};
 use crate::{
     Degradation, DegradeReason, HitExplain, HybridHit, RerankReport, Response, SearchOptions,
     StageReport,
@@ -40,7 +40,11 @@ impl Skip {
 
 /// Step 9's output: the ordered candidates (cut at `k`) with their re-rank scores, and the
 /// stage report (`None` when the stage did not run).
-type Reranked = (Vec<(Candidate, Option<f32>)>, Option<RerankReport>);
+/// Ordered candidates with their re-rank score and, under `Interpolate`, the combined score.
+type Reranked = (
+    Vec<(Candidate, Option<f32>, Option<f64>)>,
+    Option<RerankReport>,
+);
 
 /// A fused candidate before hits are built: its id, fused score, explanation, and its passage
 /// text once the re-rank step has read it (so a hit is never read twice).
@@ -169,6 +173,14 @@ impl HybridIndex {
         } else {
             0
         };
+        // Feature 015: the order rule for the head — the caller's override or the recorded one.
+        let rerank_mode = match opts.rerank_mode {
+            Some(mode) => {
+                mode.validate()?;
+                mode
+            }
+            None => self.config.rerank_mode,
+        };
         let list_len = k.max(rerank_depth);
         let candidates = match &dense {
             Some(dense) => self.fuse(&lexical, dense, list_len, opts.explain),
@@ -176,7 +188,8 @@ impl HybridIndex {
         };
 
         // 9. Re-rank the first `d` candidates under the remaining budget.
-        let (ordered, rerank) = self.rerank(candidates, dense_text, rerank_depth, k, opts)?;
+        let (ordered, rerank) =
+            self.rerank(candidates, dense_text, rerank_depth, rerank_mode, k, opts)?;
 
         let stages = StageReport {
             lexical_candidates: lexical.len(),
@@ -190,12 +203,13 @@ impl HybridIndex {
         };
         let mut hits = Vec::with_capacity(ordered.len());
         let mut rerank_rank = 0u32;
-        for (c, rerank_score) in ordered {
+        for (c, rerank_score, combined) in ordered {
             let explain = c.explain.map(|mut e| {
                 if rerank_score.is_some() {
                     rerank_rank += 1;
                     e.rerank_score = rerank_score;
                     e.rerank_rank = Some(rerank_rank);
+                    e.rerank_combined = combined;
                 }
                 e
             });
@@ -223,11 +237,16 @@ impl HybridIndex {
         mut candidates: Vec<Candidate>,
         query: &str,
         depth: usize,
+        mode: RerankMode,
         k: usize,
         opts: &SearchOptions<'_>,
     ) -> Result<Reranked> {
         let plain = |candidates: Vec<Candidate>, report| {
-            let ordered = candidates.into_iter().take(k).map(|c| (c, None)).collect();
+            let ordered = candidates
+                .into_iter()
+                .take(k)
+                .map(|c| (c, None, None))
+                .collect();
             Ok((ordered, report))
         };
         let (Some(reranker), true) = (self.reranker.as_ref(), depth > 0 && !candidates.is_empty())
@@ -306,12 +325,12 @@ impl HybridIndex {
             skipped: None,
         };
         let fused: Vec<(DocId, f64)> = candidates.iter().map(|c| (c.id, c.score)).collect();
-        let order = order_reranked(&fused, &scores, k);
+        let order = order_head(mode, &fused, &scores, k);
         let mut by_id: HashMap<u32, Candidate> =
             candidates.into_iter().map(|c| (c.id.0, c)).collect();
         let ordered = order
             .into_iter()
-            .filter_map(|(id, _, s)| by_id.remove(&id.0).map(|c| (c, s)))
+            .filter_map(|(id, _, s, combined)| by_id.remove(&id.0).map(|c| (c, s, combined)))
             .collect();
         Ok((ordered, Some(report)))
     }
@@ -371,6 +390,7 @@ impl HybridIndex {
                         fused: score,
                         rerank_score: None,
                         rerank_rank: None,
+                        rerank_combined: None,
                     }
                 });
                 Candidate {
@@ -401,6 +421,7 @@ impl HybridIndex {
                         fused: score,
                         rerank_score: None,
                         rerank_rank: None,
+                        rerank_combined: None,
                     }),
                     text: None,
                 }

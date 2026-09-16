@@ -7,6 +7,7 @@ use xtriever_core::{Error, FieldName, Result, Schema};
 
 use crate::FORMAT_VERSION;
 use crate::error::{corrupt, write_atomically};
+use crate::rerank::RerankMode;
 
 pub(crate) const FILE: &str = "xtriever-pipeline.json";
 
@@ -21,6 +22,11 @@ pub(crate) struct Descriptor {
     pub rrf_k: u32,
     /// Feature 006 (format version 2): the default re-rank depth.
     pub rerank_depth: usize,
+    /// Feature 015: how the re-ranked head is ordered. Absent in indexes written before it,
+    /// which read as the default (`Interpolate { alpha: 0.5 }`, ADR-0012); the format version
+    /// is unchanged.
+    #[serde(default)]
+    pub rerank_mode: RerankMode,
     pub live_docs: u64,
     pub generation: u64,
 }
@@ -86,6 +92,7 @@ mod tests {
             candidate_depth: 100,
             rrf_k: 60,
             rerank_depth: 20,
+            rerank_mode: RerankMode::default(),
             live_docs: 0,
             generation: 0,
         }
