@@ -121,6 +121,12 @@ def test_wall_line_and_footprint():
     assert wall_line(251, None, 100 * 1024 * 1024) == "wall: fused 251 ms · peak resident 100 MB"
 
 
+def test_multiline_passages_are_indented_on_every_line():
+    hits = displayed([_hit("2004#0", "Sky\n\nfirst paragraph\nsecond paragraph", ordinal=0)])
+    lines = list_block("fused", hits, 1)
+    assert lines[3:5] == ["    first paragraph", "    second paragraph"]
+
+
 def test_empty_result_line():
     assert empty_line("the of and") == 'no passages found for "the of and"'
 

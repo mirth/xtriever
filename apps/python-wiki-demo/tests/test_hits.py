@@ -46,7 +46,7 @@ def test_wikipedia_url_matches_the_cli_cases():
 
 
 def test_marks_follow_the_ios_rule():
-    got, dropped = marks(["a", "b", "c", "d"], ["b", "a", "e", "c"])
+    got, dropped = marks(["a", "b", "c", "d"], ["b", "a", "c", "e"])
     assert got == {
         "b": Mark("up", 1),
         "a": Mark("down", 1),
