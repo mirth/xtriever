@@ -19,7 +19,7 @@ cache miss); the full corpus (≈ 11 h) is documented with its cost and, by the 
 decision, not run this iteration.
 
 **Tests** (committed red first: two import errors, build 2 failed / 4 errors): the demo
-suite **69 passed** (49 model-free) — the chunker replays `reference/fixtures/008/`
+suite **70 passed** (50 model-free) — the chunker replays `reference/fixtures/008/`
 byte for byte (48 + 9 cases, no tokenizer needed), the rules (character window, first match
 wins), and a synthetic three-article snapshot built end to end with its sidecar, attribution
 and record, searched, and the four refusals (existing output, hash mismatch, `--limit 0`,
@@ -34,5 +34,9 @@ pointers from `apps/ios-wiki-demo/README.md` and the 009 spec/report.
 specs/*/baselines` empty; no identifiers in any record (a first slice record carried the
 absolute artefact path — caught by the gate's grep, `measure` now records repository-relative
 paths, the run repeated).
+
+**Review round 2** (2 comments, both taken): the README in run order (fetch → install →
+build a slice → search → explain → about → measure); the per-file test counts corrected
+(chunking 5, rules 3; 70 in all).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

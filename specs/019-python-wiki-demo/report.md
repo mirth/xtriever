@@ -191,9 +191,9 @@ the 008-shaped artefact (sidecar with `partial: 3`, the per-rule exclusion count
 four-line attribution, `wiki-build.json`), searchable through `search`, `about` reading the
 sidecar; the refusals (existing output, hash mismatch naming both hashes and
 `scripts/fetch-wiki.sh`, `--limit 0`, a URL that is not the derived one — nothing left on
-disk in each case). `test_chunking.py` (6 passed): the 008 fixtures byte for byte — set A
+disk in each case). `test_chunking.py` (5 passed): the 008 fixtures byte for byte — set A
 48 cases, set B 9 articles through the fixture's `unit_costs` — and the document shaping;
-`test_rules.py` (4 passed): the three manifest rules, the character window, first match wins.
+`test_rules.py` (3 passed): the three manifest rules, the character window, first match wins.
 
 ## Success criteria (PR B)
 
@@ -204,7 +204,8 @@ disk in each case). `test_chunking.py` (6 passed): the 008 fixtures byte for byt
 
 ## Gate (PR B)
 
-The demo suite **69 passed** (49 model-free); `cargo fmt --check`, `clippy`, `deny` ok
+The demo suite **70 passed** (50 model-free; per file: about 2, build 7, chunking 5, cli 3,
+hits 6, inputs 4, measure 15, record 5, render 10, rules 3, search 10); `cargo fmt --check`, `clippy`, `deny` ok
 (`nextest` 279 passed at PR A; no Rust changed since — `git diff --stat main -- crates/`
 empty); no hostname, user name or home directory in `specs/019-python-wiki-demo/` or
 `apps/python-wiki-demo/` (grepped); the slice artefacts stay under `target/` (gitignored).
@@ -217,6 +218,15 @@ empty); no hostname, user name or home directory in `specs/019-python-wiki-demo/
 - The Rust embedding cache is not read (D8): the slice's 14.6 min is the honest cost.
 - The repository has no root `README.md` to point from (spec FR-020 assumed one); the
   pointers live in `apps/ios-wiki-demo/README.md` and the 009 spec/report.
+
+## Review round 2 (Copilot, 2 comments — both taken)
+
+1. The README's sections were not in run order (FR-020) — reordered: Inputs → Install →
+   **In run order** (fetch, install, build a slice, search, explain, about, measure) →
+   Build → Search → About → Measure.
+2. The per-file test counts were wrong (chunking 6 → **5**, rules 4 → **3**); the suite
+   total is **70** (the `repo_relative` test was added after the gate's 69 run) — the per-file
+   list is now in the gate section, from `pytest --collect-only`.
 
 ## Gate (PR A)
 
