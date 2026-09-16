@@ -92,7 +92,14 @@ takes the handle.
 The same handle builds. A schema names the fields (text fields carry an analyzer id the
 engine knows — `"standard"`, `"standard_en"`), the dense fields are the text fields joined
 into the passage the embedder sees, and the depths default to the engine's (100 candidates,
-RRF k 60, re-rank depth 20):
+RRF k 60, re-rank depth 20).
+
+Index **one joined text field for BM25** — the title and the body in a single `contents`
+field, boost 1.0 — rather than a boosted `title` field beside `text`: on the BEIR sets the
+one-field layout scores +5.9 nDCG@10 points on SciFact and +1.1 on NFCorpus over
+`title` × 2.0 + `text` (a boosted short field lets one title term outweigh several body
+matches; Feature 013's report has the numbers). Keep a separate `title` field only if a
+caller needs it on its own, and then unboosted:
 
 ```python
 import xtriever
@@ -100,21 +107,19 @@ from xtriever import Document, FieldDef, FieldKind, FieldValue, IndexConfig
 
 config = IndexConfig(
     fields=[
-        FieldDef(name="title", kind=FieldKind.TEXT(analyzer="standard_en"), boost=2.0),
-        FieldDef(name="text", kind=FieldKind.TEXT(analyzer="standard_en")),
+        FieldDef(name="contents", kind=FieldKind.TEXT(analyzer="standard_en")),
         FieldDef(name="source", kind=FieldKind.KEYWORD()),
     ],
-    dense_fields=["title", "text"],
+    dense_fields=["contents"],
 )
 index = xtriever.IndexHandle.create("path/to/new-index", config, embedder_dir, reranker_dir, xtriever.LoadPath.MMAP)
 
 index.add([
     Document(external_id="doc-1", fields={
-        "title": FieldValue.TEXT("Why the sky is blue"),
-        "text": FieldValue.TEXT("Rayleigh scattering …"),
+        "contents": FieldValue.TEXT("Why the sky is blue Rayleigh scattering …"),
         "source": FieldValue.KEYWORD("notes"),
     }),
-    Document(external_id="doc-1#1", fields={"title": FieldValue.TEXT("Why the sky is blue"), "text": FieldValue.TEXT("…"), "source": FieldValue.KEYWORD("notes")},
+    Document(external_id="doc-1#1", fields={"contents": FieldValue.TEXT("Why the sky is blue …"), "source": FieldValue.KEYWORD("notes")},
              chunk=xtriever.ChunkInfo(parent="doc-1", ordinal=1, byte_start=120, byte_end=480)),
 ])
 index.commit()                                   # staged changes become searchable only here
