@@ -256,6 +256,12 @@ impl HybridIndex {
             rerank_depth: descriptor.rerank_depth,
             rerank_mode: descriptor.rerank_mode,
         };
+        // A persisted mode that could not have been created is corruption, not a schema error
+        // (review round 1 #4): every search would apply an α outside [0, 1].
+        config
+            .rerank_mode
+            .validate()
+            .map_err(|e| corrupt(format!("descriptor: {e}")))?;
         Ok(Self {
             dir: dir.to_path_buf(),
             config,

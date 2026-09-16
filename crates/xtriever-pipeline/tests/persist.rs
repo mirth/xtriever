@@ -395,3 +395,23 @@ fn descriptor_without_rerank_mode_reads_as_interpolate_half() {
         "a pre-015 index reads as the default (ADR-0012)"
     );
 }
+
+#[test]
+fn a_descriptor_with_an_invalid_alpha_is_corrupt_at_open() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, index) = support::build_from_fixture(tmp.path());
+    drop(index);
+    let path = tmp.path().join("xtriever-pipeline.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("\"alpha\": 0.5"), "{text}");
+    std::fs::write(&path, text.replace("\"alpha\": 0.5", "\"alpha\": 2.0")).unwrap();
+    match HybridIndex::open(
+        tmp.path(),
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap_err()
+    {
+        Error::Corrupt(msg) => assert!(msg.contains("alpha") && msg.contains('2'), "{msg}"),
+        other => panic!("{other:?}"),
+    }
+}

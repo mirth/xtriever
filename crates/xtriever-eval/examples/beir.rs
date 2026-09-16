@@ -366,6 +366,7 @@ fn evaluate_dense(dataset: &str, cfg: &DenseConfig, a: &Args) -> anyhow::Result<
         baseline: "absolute".into(),
         reranker_model_id: None,
         rerank_depth: None,
+        rerank_mode: None,
     });
     report_line(dataset, &cfg.name, &report);
     Ok(report)
@@ -710,6 +711,7 @@ fn evaluate_hybrid(
         baseline: "guarded".into(),
         reranker_model_id,
         rerank_depth,
+        rerank_mode: rerank.map(|r| r.mode),
     });
     report_line(dataset, config_name, &report);
     Ok(report)

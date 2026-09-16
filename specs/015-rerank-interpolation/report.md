@@ -72,6 +72,26 @@ re-ranked). The fixture index under `Tests/Fixtures/index/` was rebuilt by the s
   here; the other 16 model-backed FFI tests pass, including `rerank_mode_defaults_and_override`.
   Worth a look in a follow-up: the assertion measures the machine, not the contract.
 
+## Review round 1 (Copilot, six comments, all taken)
+
+1. The wiki demo's golden generator (`xtriever-cli/src/wiki/expected.rs`) omitted
+   `rerank_combined_bits` per hit — added, so the device goldens carry the score that orders
+   the head, as `fixture_index.rs` does.
+2. The same file wrote the mode as a Rust `Debug` string — now the descriptor's JSON shape
+   (`"replace"` / `{"interpolate": {"alpha": …}}`), identical to `fixture_index.rs`.
+3. The harness serialised the mode in `RerankConfig` but the *report* never embedded the
+   configuration, so the committed v3 baselines carried no mode. `StageInfo` gains
+   `rerank_mode` (omitted when absent — the 003–014 baselines stay byte-identical, the
+   round-trip test checks); the three v3 baselines were re-run so they are tool-produced.
+4. A descriptor with `alpha: 2.0` opened (only `create` validated). `open` now validates the
+   reconstructed mode → `Error::Corrupt("descriptor: rerank alpha …")`; test
+   `a_descriptor_with_an_invalid_alpha_is_corrupt_at_open`.
+5. `golden-diff` passed on any `with_reranker` change, so a tail regression would have passed
+   as "heads changed". It now compares each response's tail after `rerank_depth` (ids and
+   bits, on the old shape) and fails on a difference: **tails identical 8/8** — SC-003 is
+   now verified, not asserted.
+6. The Swift `features()` doc said seven names; now eight.
+
 ## Deliberately not done (research D10)
 
 No conditional re-ranking policy; no other cross-encoder; no per-dataset α; no Wikipedia

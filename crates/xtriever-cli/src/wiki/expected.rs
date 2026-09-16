@@ -27,6 +27,7 @@ fn golden_response(r: &SearchResponse) -> serde_json::Value {
                 "score_bits": format!("{:016x}", h.score.to_bits()),
                 "rerank_score_bits": h.rerank_score.map(|s| format!("{:08x}", s.to_bits())),
                 "rerank_rank": e.and_then(|e| e.rerank_rank),
+                "rerank_combined_bits": e.and_then(|e| e.rerank_combined).map(|c| format!("{:016x}", c.to_bits())),
                 "bm25_score_bits": e.and_then(|e| e.bm25_score).map(|s| format!("{:08x}", s.to_bits())),
                 "dense_score_bits": e.and_then(|e| e.dense_score).map(|s| format!("{:08x}", s.to_bits())),
             })
@@ -67,7 +68,11 @@ fn info_json(index: &IndexHandle) -> serde_json::Value {
         "reranker_model_id": i.reranker_model_id,
         "candidate_depth": i.candidate_depth,
         "rerank_depth": i.rerank_depth,
-        "rerank_mode": format!("{:?}", i.rerank_mode),
+        // The descriptor's own JSON shape, as `fixture_index.rs` writes it (review round 1 #2).
+        "rerank_mode": match i.rerank_mode {
+            xtriever_ffi::RerankMode::Replace => serde_json::json!("replace"),
+            xtriever_ffi::RerankMode::Interpolate { alpha } => serde_json::json!({ "interpolate": { "alpha": alpha } }),
+        },
         "rrf_k": i.rrf_k,
     })
 }

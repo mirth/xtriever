@@ -51,6 +51,7 @@ fn stage(kind: &str) -> StageInfo {
         baseline: "guarded".into(),
         reranker_model_id: None,
         rerank_depth: None,
+        rerank_mode: None,
     }
 }
 
@@ -82,6 +83,7 @@ fn the_new_stage_keys_round_trip_and_are_omitted_when_absent() {
         kind: "hybrid-rerank".into(),
         reranker_model_id: Some("cross-encoder/x@rev".into()),
         rerank_depth: Some(20),
+        rerank_mode: None,
         ..stage("hybrid-rerank")
     });
     let json = serde_json::to_string_pretty(&r).unwrap();
@@ -228,4 +230,18 @@ fn hybrid_rerank_v3_is_v2_hybrid_at_depth_20_interpolated() {
     assert!(v2.contains("\"mode\":\"replace\""), "{v2}");
     let back: RerankConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(back, v3);
+    // The report records the mode beside the depth (review round 1 #3); absent → omitted.
+    let mut r = report_with("hybrid-rerank-v3", "scifact", 0.72, 0.955);
+    r.stage = Some(StageInfo {
+        rerank_depth: Some(20),
+        rerank_mode: Some(RerankMode::Interpolate { alpha: 0.5 }),
+        ..stage("hybrid-rerank")
+    });
+    let json = serde_json::to_string_pretty(&r).unwrap();
+    assert!(
+        json.contains("\"rerank_mode\": {\n      \"interpolate\": {\n        \"alpha\": 0.5"),
+        "{json}"
+    );
+    let back: EvalReport = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, r);
 }

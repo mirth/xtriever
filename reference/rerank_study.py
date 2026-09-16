@@ -396,10 +396,19 @@ def cmd_golden_diff(args) -> int:
     same_without = sum(a["without_reranker"] == strip_new_keys(b["without_reranker"], a["without_reranker"]) for a, b in pairs)
     changed_ids = [b["id"] for a, b in pairs if a["with_reranker"] != strip_new_keys(b["with_reranker"], a["with_reranker"])]
     changed_with = len(changed_ids)
+    # Only the re-ranked head may differ: the tail after `rerank_depth` must be the same hits
+    # (ids and bits, on the old shape) in the same order (review round 1 #5).
+    tail_bad = [
+        b["id"] for a, b in pairs
+        if a["with_reranker"]["hits"][a["rerank_depth"]:]
+        != strip_new_keys(b["with_reranker"], a["with_reranker"])["hits"][b["rerank_depth"]:]
+    ]
     added = sorted(set(new["info"]) - set(old["info"]))
-    ok = same_without == len(old["queries"]) == len(new["queries"])
+    ok = same_without == len(old["queries"]) == len(new["queries"]) and not tail_bad
     print(f"without_reranker identical ({same_without}/{len(old['queries'])}); "
-          f"with_reranker changed: {changed_with} {changed_ids}; info gains {added}")
+          f"with_reranker changed: {changed_with} {changed_ids}; "
+          f"tails after rerank_depth identical: {len(pairs) - len(tail_bad)}/{len(pairs)}{' MISMATCH ' + str(tail_bad) if tail_bad else ''}; "
+          f"info gains {added}")
     return 0 if ok else 1
 
 
