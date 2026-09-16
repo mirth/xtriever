@@ -46,3 +46,15 @@ def test_rerank_fused_is_014s_rule_and_keeps_the_tail(explain_line, dot, positio
     assert set(ordered[:3]) == head_ids
     assert ordered[3:] == [i for i, _ in fused if i not in head_ids], "tail in fused order"
     assert sr.reference_share(head) == pytest.approx(sum(h[2] == "reference" for h in head) / len(head))
+
+
+def test_scoring_an_rr_run_without_stats_is_refused(tmp_path, monkeypatch):
+    import argparse
+
+    (tmp_path / "lex2+dense-rr.jsonl").write_text('{"query_id": "q1", "doc_ids": ["d1"]}\n')
+    (tmp_path / "lex2+dense-plain.jsonl").write_text('{"query_id": "q1", "doc_ids": ["d1"]}\n')
+    monkeypatch.setattr(sr.rs, "qrels_for", lambda d: {"q1": {"d1": 1}})
+    monkeypatch.setattr(sr.ref003, "probe", lambda: None)
+    args = argparse.Namespace(dataset="scifact", runs_dir=tmp_path, out_dir=tmp_path / "cells")
+    with pytest.raises(SystemExit):
+        sr.cmd_score(args)

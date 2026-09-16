@@ -1,0 +1,6 @@
+{
+ "date": "2026-09-16",
+ "decision": "keep the sparse stage as an opt-in option (off by default), not as the default pipeline stage",
+ "rationale": "the rule decides the default only; dense+dot reaches 0.4101 on FiQA (+1.9 over hybrid-rerank-v3) — FiQA-shaped corpora (no titles, vocabulary mismatch) are the use case; the cost is paid only by indexes that build the sparse field",
+ "follow_up": "a feature of its own: a sparse field and dot-product scorer, fusion over a selectable set of first-stage lists, a descriptor flag with an ADR, the FFI/Python/Swift switches"
+}

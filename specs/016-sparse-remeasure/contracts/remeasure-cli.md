@@ -9,7 +9,7 @@ sparse_remeasure.py rerank --dataset D [--out-dir …] [--model-dir reference/mo
 sparse_remeasure.py score  --dataset D [--runs-dir …] [--out-dir specs/016-sparse-remeasure/runs]   # 003 scorer → 8 cells
 sparse_remeasure.py check  --dataset D                                                  # lex2+dense-plain = hybrid-baseline-v2 & explain fused; lex2+dense-rr = hybrid-rerank-v3 & xt-rr3-run; Recall@100 plain = rr; exit 1 on mismatch
 sparse_remeasure.py table  [--runs-dir specs/016-sparse-remeasure/runs]                 # table.json + table.md
-sparse_remeasure.py decide [--runs-dir …]                                               # decision.json, printed
+sparse_remeasure.py decide [--runs-dir …] [--owner-decision FILE]                       # decision.json, printed; FILE (hand-written JSON) is embedded as `owner_decision`
 sparse_remeasure.py all    --dataset D [...]                                            # fuse + rerank + score + check
 ```
 
@@ -17,5 +17,5 @@ sparse_remeasure.py all    --dataset D [...]                                    
   (must carry `fused_scores` and 50 `rerank` entries per query), `target/xt-sparse-runs/D/dot@opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3.jsonl`,
   `reference/datasets/beir/D/{corpus.jsonl,queries.jsonl,qrels/test.tsv}`, the 013 and 015 baselines, `target/xt-rr3-run.D.jsonl`.
 - `rerank` prints per dataset: pairs in heads, covered by the engine, scored by the reference (count, share); the agreement figures; refuses to run without the pinned model directory.
-- `decide` applies FR-007 exactly to the `lex2+dense+dot-rr` row and prints the rule, the row's cells, the outcome; the other rows are printed as findings.
+- `decide` applies FR-007 exactly (floor 0.4963 as declared) to the `lex2+dense+dot-rr` row and prints the rule, the row's cells, the outcome; the other rows are printed as findings.
 - Datasets: `scifact | nfcorpus | fiqa`. Exit codes: 0 / 1 (check or decide inputs missing) / 2 (input refused).

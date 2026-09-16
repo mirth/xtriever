@@ -106,6 +106,20 @@ selectable set of first-stage lists, a descriptor flag with an ADR, the surfaces
   informing the head, the first stage's job is recall, and the current two lists already
   supply it.
 
+## Review round 1 (Copilot, five comments, all taken)
+
+1. The floor was derived as `round(0.491307 + 0.005, 6)` = 0.496307, tighter than the declared
+   0.4963; now the literal 0.4963, with a test for a mean in `[0.4963, 0.496307)`. The outcome
+   is unchanged (0.4941).
+2. The reference scorer checked only that the weights file existed; it now runs the 006
+   manifest verification (every file's size and SHA-256) before loading.
+3. `score` emitted re-ranked cells without their reference-pair counts when `rerank-stats.json`
+   was absent; it now refuses.
+4. `all --out-dir` discarded the directory before `score`/`check`; it is carried through.
+5. The owner's decision was hand-edited into a generated artefact; it now lives in
+   `owner-decision.json` and `decide --owner-decision` embeds it, so re-running `decide`
+   reproduces `decision.json`.
+
 ## Deliberately not done (research D8)
 
 No new encoding, no quantised or `bm25x` variants, no Rust, no baseline change, no device

@@ -13,7 +13,7 @@ reference/.venv-012/bin/python -m pytest reference/tests_016 -q      # ModuleNot
 ```bash
 P=reference/.venv-012/bin/python
 for d in scifact nfcorpus fiqa; do $P reference/sparse_remeasure.py all --dataset $d; done
-$P reference/sparse_remeasure.py table && $P reference/sparse_remeasure.py decide
+$P reference/sparse_remeasure.py table && $P reference/sparse_remeasure.py decide --owner-decision specs/016-sparse-remeasure/owner-decision.json
 ```
 
 Expected: `check <d>: PASS` on every dataset — `lex2+dense-plain` equals `hybrid-baseline-v2`

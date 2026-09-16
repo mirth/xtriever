@@ -1,7 +1,7 @@
 {
  "rule": {
   "row": "lex2+dense+dot-rr",
-  "mean_floor": 0.496307,
+  "mean_floor": 0.4963,
   "max_drop": 0.005,
   "anchor": "hybrid-rerank-v3",
   "anchor_mean": 0.491307
@@ -21,7 +21,7 @@
   }
  },
  "qualifies": false,
- "statement": "012's GO withdrawn: lex2+dense+dot-rr mean 0.4941 against the floor 0.496307; per-dataset deltas vs hybrid-rerank-v3 scifact +0.0023, nfcorpus +0.0002, fiqa +0.0058",
+ "statement": "012's GO withdrawn: lex2+dense+dot-rr mean 0.4941 against the floor 0.4963; per-dataset deltas vs hybrid-rerank-v3 scifact +0.0023, nfcorpus +0.0002, fiqa +0.0058",
  "reopen": [
   "a corpus with heavy vocabulary mismatch (FiQA-shaped: no titles, colloquial queries) where a dense-free configuration is wanted",
   "an encoder that is cheaper to run at index time or runnable inside the Rust pipeline (012 F-004: corpus encoding must happen outside Rust today)",
@@ -31,6 +31,7 @@
  "owner_decision": {
   "date": "2026-09-16",
   "decision": "keep the sparse stage as an opt-in option (off by default), not as the default pipeline stage",
-  "rationale": "the rule decides the default only; dense+dot reaches 0.4101 on FiQA (+1.9 over hybrid-rerank-v3) \u2014 FiQA-shaped corpora (no titles, vocabulary mismatch) are the use case; the cost is paid only by indexes that build the sparse field"
+  "rationale": "the rule decides the default only; dense+dot reaches 0.4101 on FiQA (+1.9 over hybrid-rerank-v3) \u2014 FiQA-shaped corpora (no titles, vocabulary mismatch) are the use case; the cost is paid only by indexes that build the sparse field",
+  "follow_up": "a feature of its own: a sparse field and dot-product scorer, fusion over a selectable set of first-stage lists, a descriptor flag with an ADR, the FFI/Python/Swift switches"
  }
 }

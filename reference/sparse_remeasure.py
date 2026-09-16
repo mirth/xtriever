@@ -45,7 +45,7 @@ V3_RUN = REPO / "target" / "xt-rr3-run.{d}.jsonl"
 MODEL_DIR = REPO / "reference" / "models" / "ms-marco-MiniLM-L-6-v2"
 BEIR = REPO / "reference" / "datasets" / "beir"
 V3_MEAN = 0.491307  # hybrid-rerank-v3, three-set mean (015 report)
-MEAN_FLOOR = round(V3_MEAN + 0.005, 6)
+MEAN_FLOOR = 0.4963  # spec FR-007 as declared: "0.4913 + 0.005 = 0.4963" — the rule's own rounding, not re-derived here
 MAX_DROP = 0.005
 DECISION_ROW = "lex2+dense+dot-rr"
 SPIKE_THREE_WAY = {"scifact": 0.7139, "nfcorpus": 0.3508, "fiqa": 0.3881}  # 012 rrf-lex+dense+dot (v1 lexical)
@@ -160,10 +160,11 @@ class ReferenceScorer:
 
     def score(self, query: str, passage: str) -> float:
         if self._ref is None:
-            if not (self.model_dir / "model.safetensors").exists():
-                sys.exit(f"missing the pinned re-ranker at {self.model_dir}")
             import gen_006_fixtures as ref006
 
+            # Every pinned file's size and SHA-256 (the 006 manifest), not just the weights' presence:
+            # the reference scores must come from the same bytes the engine runs (spec FR-004).
+            ref006.verify_model_dir(self.model_dir, ref006.load_pins())
             self._ref = ref006.Reference(self.model_dir)
         self.calls += 1
         return float(self._ref.score(query, passage)["score"])
@@ -315,7 +316,9 @@ def cmd_score(args) -> int:
                 "ndcg_10": rep["mean_ndcg_10"], "recall_100": rep["mean_recall_100"],
                 "beir_rounded": rep["beir_rounded"], "scored_queries": rep["scored_queries"],
             }
-            if reranked and stats:
+            if reranked:
+                if not stats:
+                    sys.exit(f"{src / 'rerank-stats.json'} is missing: re-ranked runs cannot be scored without their reference-pair counts (run `rerank` first)")
                 v = stats["variants"][variant]
                 cell.update({"reference_scored_pairs": v["reference"], "head_pairs": v["head_pairs"], "reference_share": v["reference_share"], "agreement": stats["agreement"]})
             cell["per_query"] = rep["per_query"]
@@ -419,6 +422,10 @@ def cmd_decide(args) -> int:
         print("no lex2+dense+dot-rr cells on all three datasets yet")
         return 1
     d = decide(row, v3)
+    if args.owner_decision:
+        # A recorded decision the rule does not make (what happens *besides* the default), kept
+        # in a hand-written file so `decide` stays reproducible and never loses it.
+        d["owner_decision"] = json.loads(Path(args.owner_decision).read_text())
     (runs_dir / "decision.json").write_text(json.dumps(d, indent=1) + "\n")
     print("rule:", json.dumps(d["rule"]))
     print("cells:", json.dumps(d["cells"]))
@@ -436,12 +443,15 @@ def main(argv=None) -> int:
         sp.add_argument("--runs-dir", type=Path)
         sp.add_argument("--model-dir", type=Path)
         sp.add_argument("--agreement-sample", type=int, default=200)
+        sp.add_argument("--owner-decision", type=Path, help="decide: a JSON file with the owner's decision to embed (see specs/016-sparse-remeasure/owner-decision.json)")
     args = p.parse_args(argv)
     if args.cmd == "all":
         for step in (cmd_fuse, cmd_rerank):
             if (rc := step(args)) != 0:
                 return rc
-        args.runs_dir, args.out_dir = None, None
+        # `--out-dir` named the study directory for fuse/rerank; score and check read it back
+        # as their runs directory and write the cells to the committed runs/ directory.
+        args.runs_dir, args.out_dir = study_dir(args.dataset, args.out_dir), None
         return cmd_score(args) or cmd_check(args)
     return {"fuse": cmd_fuse, "rerank": cmd_rerank, "score": cmd_score, "check": cmd_check, "table": cmd_table, "decide": cmd_decide}[args.cmd](args)
 
