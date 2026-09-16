@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from conftest import REPO
+from helpers_012 import REPO
 
 MANIFEST = REPO / "reference" / "models" / "manifest-sparse-doc-v3.json"
 

@@ -6,7 +6,7 @@ import json
 import pytest
 
 import gen_003_fixtures as ref  # noqa: E402  (sys.path from conftest)
-from conftest import REPO
+from helpers_012 import REPO
 
 TOL = 1e-6
 BASELINES = {

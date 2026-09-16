@@ -77,7 +77,8 @@ fn info_json(index: &IndexHandle) -> serde_json::Value {
     })
 }
 
-/// Write the goldens for `queries` at depths 0 / 5 / 20, `k = 10`, explained.
+/// Write the goldens for `queries` at depths 0 / 5 / 10 / 20, `k = 10`, explained (depth 10
+/// since Feature 017, matching the device harness's `depths`).
 ///
 /// # Errors
 ///
@@ -102,7 +103,7 @@ pub fn write_expected(
     let mut entries = Vec::new();
     for q in &qs {
         let mut per_depth = serde_json::Map::new();
-        for depth in [0u32, 5, 20] {
+        for depth in [0u32, 5, 10, 20] {
             per_depth.insert(
                 depth.to_string(),
                 golden_response(&index.search(q.text.clone(), options(10, depth))?),
@@ -119,7 +120,7 @@ pub fn write_expected(
     std::fs::write(out, serde_json::to_string_pretty(&truth)? + "\n")
         .with_context(|| format!("writing {}", out.display()))?;
     eprintln!(
-        "wiki expected: {} queries × 3 depths at {}",
+        "wiki expected: {} queries × 4 depths at {}",
         qs.len(),
         out.display()
     );

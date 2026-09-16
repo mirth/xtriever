@@ -29,35 +29,107 @@ fn budgeted(ms: u64, strict: bool) -> SearchOptions {
     }
 }
 
+/// No time budget at all — the only "generous" budget that is not a number about the machine.
+fn unbudgeted() -> SearchOptions {
+    SearchOptions {
+        max_time_ms: None,
+        ..budgeted(0, false)
+    }
+}
+
+/// The budget contract, not the machine (Feature 017, spec FR-003). Until 017 this test asserted
+/// `elapsed_ms < 1000` under a fixed 200 ms budget, which measured the laptop: on a slow day the
+/// first query took 3.4 s uncontended and the test failed on `main` (015 report F-003) — and on
+/// that machine a fixed 200 ms never even reaches the re-ranker (every stage report says
+/// `skipped`), while a fast machine finishes everything inside it. So the budget is derived from
+/// each query's own measured cost — bisected between the time to the re-rank check point (a
+/// depth-0 search) and a full search, re-measured at every step. What is then asserted is only the
+/// contract: no error in degrading mode, the time-limit flag not set (the FFI attaches a clock),
+/// the scored hits first, at least one *partial* re-rank across the queries, and — the negative —
+/// with no budget everything is re-ranked and nothing skipped. No assertion mentions wall-clock time.
 #[test]
 #[ignore = "needs both models"]
 fn a_short_time_budget_yields_a_partial_rerank_without_an_error() {
     let tmp = tempfile::tempdir().unwrap();
     drop(support::build_fixture_index(tmp.path()));
     let ffi = open(tmp.path());
+    let queries = support::fixture_docs().queries;
+
+    // Warm the models once (the first call pays the cold-start), then measure per query.
+    let _ = ffi.search(queries[0].text.clone(), unbudgeted()).unwrap();
+    let mut costs = Vec::new();
+    for q in &queries {
+        let pre = ffi
+            .search(
+                q.text.clone(),
+                SearchOptions {
+                    rerank_depth: Some(0),
+                    ..unbudgeted()
+                },
+            )
+            .unwrap()
+            .elapsed_ms;
+        let full = ffi.search(q.text.clone(), unbudgeted()).unwrap();
+        let rr = full.stages.rerank.as_ref().expect("re-rank ran");
+        // The negative half of the contract: without a budget every candidate is re-ranked and
+        // nothing is skipped (a numeric "generous" 60 s budget was exhausted once under 22
+        // parallel model-backed tests on a slow laptop — a number about the machine again).
+        assert!(rr.skipped.is_none(), "{}: {:?}", q.id, rr.skipped);
+        assert_eq!(rr.scored, rr.candidates, "{}: fully re-ranked", q.id);
+        assert!(rr.scored > 0, "{}: the fixture query has candidates", q.id);
+        costs.push((q, pre, full.elapsed_ms.saturating_sub(pre)));
+    }
+
+    // A budget that lands inside the re-rank stage on *this* machine, *now*: bisect per query
+    // between "too small" (the stage skipped, or nothing scored yet) and "too large" (fully
+    // re-ranked), re-measuring at every step — under a loaded machine the cost measured a
+    // moment ago does not predict the next call, so a one-shot budget derived from it misses.
     let mut partial = 0;
-    for q in &support::fixture_docs().queries {
-        let r = ffi.search(q.text.clone(), budgeted(200, false)).unwrap();
-        assert!(r.elapsed_ms < 1000, "{}: {} ms", q.id, r.elapsed_ms);
-        assert!(!r.stages.time_limit_ignored);
-        if let Some(rr) = &r.stages.rerank
-            && rr.skipped.is_none()
-            && rr.scored > 0
-            && rr.scored < rr.candidates
-        {
-            partial += 1;
-            // Scored first, then the rest.
+    let mut tried = Vec::new();
+    'queries: for (q, pre, rerank) in &costs {
+        let (mut lo, mut hi) = (*pre, pre + rerank);
+        for _ in 0..8 {
+            let ms = (lo + hi) / 2;
+            tried.push(ms);
+            let r = ffi
+                .search(q.text.clone(), budgeted(ms.max(1), false))
+                .unwrap();
+            assert!(
+                !r.stages.time_limit_ignored,
+                "{}: a clock is attached, the limit is never ignored",
+                q.id
+            );
             let scored = r
                 .hits
                 .iter()
                 .take_while(|h| h.rerank_score.is_some())
                 .count();
-            assert_eq!(scored as u32, rr.scored);
+            let Some(rr) = &r.stages.rerank else {
+                assert_eq!(scored, 0, "{}: no re-rank report, no scored hits", q.id);
+                lo = ms;
+                continue;
+            };
+            assert_eq!(
+                scored as u32, rr.scored,
+                "{}: scored hits form the prefix",
+                q.id
+            );
+            if rr.skipped.is_some() || rr.scored == 0 {
+                lo = ms; // too small: the stage did not get to score anything
+            } else if rr.scored < rr.candidates {
+                partial += 1;
+                break 'queries;
+            } else {
+                hi = ms; // too large: everything scored
+            }
+            if hi <= lo + 1 {
+                break;
+            }
         }
     }
     assert!(
         partial >= 1,
-        "no query was partially re-ranked under 200 ms"
+        "no query was partially re-ranked under any of the bisected budgets {tried:?} ms"
     );
 }
 

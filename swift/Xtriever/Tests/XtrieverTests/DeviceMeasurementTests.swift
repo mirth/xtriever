@@ -5,7 +5,7 @@ import Xtriever
 /// 007 US5 / 008 US4 — the pipeline's on-device cost, measured (007 FR-013, FR-014; 008 FR-016).
 ///
 /// Opens a bundled index **in place** with both models, runs its 20 measurement queries at
-/// re-rank depths 0 / 5 / 20, samples the process footprint around every call, checks parity
+/// re-rank depths 0 / 5 / 10 / 20, samples the process footprint around every call, checks parity
 /// against the host's goldens (matched by id), and emits one run record (data-model "Device
 /// run record") on the console and as an `XCTAttachment` for committing under the feature's
 /// `runs/`.
@@ -19,7 +19,7 @@ final class DeviceMeasurementTests: XCTestCase {
     /// Constitution v1.4.0 Principle III default (ADR-0010): 600 MB for the full pipeline. The
     /// three 007 runs were judged against the pre-amendment 300 MB and are kept as recorded.
     static let ceilingBytes: UInt64 = 600 * 1_000_000
-    static let depths: [UInt32] = [0, 5, 20]
+    static let depths: [UInt32] = [0, 5, 10, 20]  // 10 since Feature 017 (the 014 F-003 depth, measured on the device)
     static let toleranceAbs: Float = 1e-3
 
     // MARK: the run record

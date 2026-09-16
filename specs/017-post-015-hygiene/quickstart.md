@@ -26,11 +26,13 @@ strip = lambda r: {**r, "hits": [{k: v for k, v in h.items() if k != "rerank_com
 assert all(qa["depths"]["0"] == strip(qb["depths"]["0"]) for qa, qb in zip(a["queries"], b["queries"])), "depth-0 changed"
 print("depth-0 identical for", len(a["queries"]), "queries; depths:", sorted(b["queries"][0]["depths"]), "; info.rerank_mode:", b["info"]["rerank_mode"])
 EOF
-scripts/build-ios-package.sh --with-models --with-wiki
+scripts/build-ios-package.sh --with-models --with-wiki --app
 # Owner, on the phone (identifiers only on the command line):
-cd swift/Xtriever && TEST_RUNNER_XTRIEVER_CORPUS=wikipedia xcodebuild test -scheme Xtriever -destination 'platform=iOS,id=XXXXX' \
-  -configuration Release ARCHS=arm64 DEVELOPMENT_TEAM=XXXXX -allowProvisioningUpdates -only-testing:XtrieverTests/DeviceMeasurementTests 2>&1 | tee /tmp/017-device.log
-cd - && scripts/extract-device-run.py /tmp/017-device.log specs/017-post-015-hygiene/runs/
+# the harness app hosts the tests — a SwiftPM test target cannot be tool-hosted on a device (008 quickstart Step 7)
+TEST_RUNNER_XTRIEVER_CORPUS=wikipedia xcodebuild test -project swift/XtrieverHarnessApp/XtrieverHarnessApp.xcodeproj -scheme XtrieverHarnessApp -configuration Release \
+  -destination 'platform=iOS,id=XXXXX' -skipMacroValidation -allowProvisioningUpdates ARCHS=arm64 DEVELOPMENT_TEAM=XXXXX \
+  -only-testing:XtrieverHarnessAppTests/DeviceMeasurementTests 2>&1 | tee /tmp/017-device.log
+scripts/extract-device-run.py /tmp/017-device.log specs/017-post-015-hygiene/runs/
 ```
 
 Expected: `parity.verdict: "PASS"` with four depths compared, `footprint` verdict PASS under

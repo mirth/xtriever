@@ -3,5 +3,5 @@
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+from helpers_012 import REPO  # noqa: E402
 sys.path.insert(0, str(REPO / "reference"))
