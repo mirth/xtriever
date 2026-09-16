@@ -7,6 +7,15 @@ stage report, and the corpus's identity and licence attribution. Feature 009
 (`specs/009-ios-wiki-demo/`). The app owns no retrieval logic; every number on screen is the
 engine's or a wall clock around an engine call.
 
+**Re-ranking order.** Since Feature 015 (ADR-0012) the engine orders the re-ranked head by
+`0.5 · minmax(fused score) + 0.5 · minmax(cross-encoder score)` — the cross-encoder informs the
+fused order rather than replacing it (+1.45 mean nDCG@10 over the previous replace-order rule on
+the BEIR sets, at the same 20 cross-encoder calls). The shipped Wikipedia index adopts this
+default on upgrade with no rebuild (its descriptor predates the mode and reads as the default).
+The previous order is one option away — `SearchOptions(k: 10, rerankMode: .replace)` — and
+`hit.explain?.rerankCombined` is the score a re-ranked hit was ordered by. Numbers:
+`specs/015-rerank-interpolation/report.md`.
+
 ## Build
 
 ```bash

@@ -5,7 +5,7 @@ import pytest
 import gen_006_fixtures as ref006  # noqa: E402  (sys.path from conftest)
 import rerank_study as rs  # noqa: E402
 
-from conftest import K
+from helpers_014 import K
 
 
 def head_and_rest(fused, scores, d):
