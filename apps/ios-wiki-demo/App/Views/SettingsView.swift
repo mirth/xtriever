@@ -12,6 +12,10 @@ struct SettingsView: View {
                     Picker("Re-rank depth", selection: $settings.rerankDepth) {
                         ForEach(Settings.depths, id: \.self) { Text($0 == 0 ? "off" : "\($0)").tag($0) }
                     }
+                } footer: {
+                    Text(Settings.depthExplanation)
+                }
+                Section {
                     Picker("Time budget", selection: $settings.budgetMs) {
                         ForEach(Settings.budgets, id: \.self) { budget in
                             Text(budget.map { "\($0) ms" } ?? "none").tag(budget)

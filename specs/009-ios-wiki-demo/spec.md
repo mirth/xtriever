@@ -260,7 +260,9 @@ re-rank stage (or the dense stage) cut short and the list still arrives.
 - **Interaction**: search on submit (return key), not as-you-type — 008's latencies make live
   search a queue of stale work; the fused-then-reranked progression is the responsiveness.
   *(Owner decision 2026-09-14, Q1 = A: submit only.)*
-- **Default budget**: 3,000 ms and re-rank depth 20 at the pipeline defaults — the plan sets
+- **Default budget**: 3,000 ms and re-rank depth 20 at the pipeline defaults *(since Feature
+  018 the pipeline's default is still 20, but the demo app overrides it to 10 by default —
+  `specs/018-demo-rerank-depth-10/report.md`)* — the plan sets
   the number from the 008 records so that the default never cuts a stage on the reference
   device. **Thread count**: the process default — as many threads as the inference library
   takes on the device, bounded by common sense (004 F-005: no gain beyond ~2–4 cores; the
