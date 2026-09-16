@@ -115,8 +115,11 @@ best known SciFact configuration is now `hybrid-baseline-v2` (0.7144), not a re-
 ## Findings
 
 - **F-001 — The re-ranker loses on SciFact once the first stage is good** (above; ADR-0011).
-  `hybrid-baseline-v2` 0.7144 → `hybrid-rerank-v2` 0.6954. Follow-up: a depth sweep, a
-  domain-fit check of ms-marco MiniLM-L-6 on scientific claims, or conditional re-ranking.
+  `hybrid-baseline-v2` 0.7144 → `hybrid-rerank-v2` 0.6954. **Studied in 014**
+  (`specs/014-rerank-depth-study/report.md`): the loss is replace-order re-ranking, not depth —
+  every replace depth loses on SciFact; interpolating the fused and cross-encoder scores
+  (α 0.5, depth 20) scores 0.7207 / 0.3622 / 0.3910, mean 0.4913 vs 0.4768, and is the
+  decided follow-up default.
 - **F-002 — Most of the sparse stage's predicted gain on the titled sets was the layout.**
   012's three-way fusion `rrf-lex+dense+dot` predicted 0.714 / 0.351 / 0.388; the v2 hybrid
   alone reaches 0.714 / 0.354 / 0.369. FiQA (+1.9 points) is where the sparse expansions still
