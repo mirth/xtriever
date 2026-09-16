@@ -20,12 +20,22 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(Settings.depths.contains(Settings().rerankDepth))
     }
 
-    func testPersistedChoiceWins() throws {
+    func testPersistedChoiceWins() {
+        // Through the store itself, not a bare Codable round trip: a regression that made
+        // `load()` ignore the stored value must fail here. The store keeps one key in the
+        // standard defaults; whatever was there is put back afterwards.
+        let key = "xtriever.demo.settings"
+        let previous = UserDefaults.standard.data(forKey: key)
+        defer {
+            if let previous { UserDefaults.standard.set(previous, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+        }
         let chosen = Settings(rerankDepth: 20, budgetMs: nil, strict: false)
-        let data = try JSONEncoder().encode(chosen)
-        let back = try JSONDecoder().decode(Settings.self, from: data)
+        SettingsStore.save(chosen)
+        let back = SettingsStore.load()
         XCTAssertEqual(back, chosen, "a stored 20 stays 20; only the fresh default changed")
         XCTAssertEqual(back.rerankedOptions.rerankDepth, 20)
+        UserDefaults.standard.removeObject(forKey: key)
+        XCTAssertEqual(SettingsStore.load(), Settings(), "nothing stored → the fresh default (10)")
     }
 
     func testTheExplanationQuotesTheNumbers() {

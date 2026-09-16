@@ -45,11 +45,11 @@ settings, about). ~760 lines of app Swift, ~480 of tests, one UI walk. Staged an
 | Fused search (app wall clock), median / max | **339 ms** / 361 ms |
 | Re-ranked search, median / max | **2,288 ms** / 2,731 ms |
 | Total per query, median / max | **2,631 ms** / 3,070 ms → SC-001 (median ≤ 3 s; fused ≤ 1 s) met; the max sits just over 3 s, reported, not hidden |
+| Re-rank pairs scored | 20 of 20 on every query — the 4,000 ms budget never cut a stage (research D5) |
+| Threads | `effectiveThreads: 6` — the 16e's active processor count, candle's default when `RAYON_NUM_THREADS` is unset (recorded as such; the engine exposes no readback) |
 
 > Feature 018 moved the app's default re-rank depth to 10; its record beside this one:
 > `specs/018-demo-rerank-depth-10/runs/`.
-| Re-rank pairs scored | 20 of 20 on every query — the 4,000 ms budget never cut a stage (research D5) |
-| Threads | `effectiveThreads: 6` — the 16e's active processor count, candle's default when `RAYON_NUM_THREADS` is unset (recorded as such; the engine exposes no readback) |
 
 vs 008's harness on the same index (run 2, default threads): depth-0 339 vs 339 ms; depth-20
 2,288 vs 2,285 ms; peak 533 vs 536 MB. The app costs nothing measurable beyond the fused pass

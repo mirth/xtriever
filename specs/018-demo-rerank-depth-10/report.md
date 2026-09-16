@@ -64,6 +64,17 @@ the next person rebuilds with `--with-models`.)
 | SC-004 Settings and About explain; README and 009 documents point here | **PASS** |
 | SC-005 `git diff --stat main -- crates/ swift/ specs/*/baselines` empty | **PASS** |
 
+## Review round 1 (Copilot, three comments, all taken)
+
+1. `testPersistedChoiceWins` only round-tripped `Settings` through `JSONEncoder`, so a
+   `SettingsStore.load()` that ignored the stored value would still have passed. It now goes
+   through `SettingsStore.save` / `load` on the real key (the previous value restored in
+   `defer`), and also checks that an empty store yields the fresh default. Green on the simulator.
+2. The Feature 018 note in the 009 report had been inserted inside its latency table, breaking
+   the two rows below it; moved after the table.
+3. The 009 spec's assumption now says explicitly that the pipeline's default is still 20 and
+   only the demo app overrides it to 10.
+
 ## Deliberately not done
 
 The engine's default stays 20 (ADR-0012's configuration; no goldens, baselines or harness
