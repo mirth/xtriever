@@ -16,6 +16,12 @@ The previous order is one option away — `SearchOptions(k: 10, rerankMode: .rep
 `hit.explain?.rerankCombined` is the score a re-ranked hit was ordered by. Numbers:
 `specs/015-rerank-interpolation/report.md`.
 
+**Re-rank depth.** The app re-ranks the first **10** fused candidates by default (Feature 018);
+the engine's own default is 20. Feature 014 measured depth 10 at −0.3 mean nDCG@10 on the BEIR
+sets for half the cross-encoder calls, and Feature 017 measured the reference phone at 1.4 s
+instead of 2.3 s per re-ranked search; the app-level record is under
+`specs/018-demo-rerank-depth-10/runs/`. Settings offers 0 / 5 / 10 / 20; a choice persists.
+
 ## Build
 
 ```bash
