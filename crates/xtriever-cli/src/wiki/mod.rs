@@ -2,6 +2,13 @@
 //! contracts/cli.md). One module per concern: the manifest and its verification, the
 //! exclusion rules, the URL derivation, the embedding cache, document shaping, the build,
 //! the verify pass, the host goldens, and the records.
+//!
+//! Re-ranking (Feature 015, ADR-0012): the engine's default orders the re-ranked head by
+//! `0.5·minmax(fused) + 0.5·minmax(cross-encoder)` at depth 20; an index built before 015 —
+//! the shipped Wikipedia index — adopts it on upgrade without a rebuild, and
+//! `SearchOptions::rerank_mode = Some(Replace)` selects the previous order. `wiki expected`
+//! follows the index's recorded mode, so the host goldens must be regenerated after a default
+//! change (Feature 017 did, adding depth 10 to the measured depths).
 
 use std::path::PathBuf;
 

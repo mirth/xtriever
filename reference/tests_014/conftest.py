@@ -7,10 +7,9 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[2]
+from helpers_014 import K, REPO  # noqa: E402
 sys.path.insert(0, str(REPO / "reference"))
 
-K = 100
 
 # Ten corpus documents; a document's internal id is its corpus position (eval `build`).
 CORPUS_IDS = [f"d{i}" for i in range(10)]
