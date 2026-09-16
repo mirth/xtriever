@@ -22,6 +22,10 @@ pub enum Source {
     Title,
     /// The BEIR `text`.
     Text,
+    /// `title + " " + text`; an empty title contributes nothing and no separator, an empty text
+    /// likewise — the shape BEIR's reference BM25 indexes as `contents` and the dense passage
+    /// already uses (Feature 013, research D1–D2).
+    TitleAndText,
 }
 
 /// One indexed text field of an evaluation configuration.
@@ -98,6 +102,25 @@ impl EvalConfig {
             omit_empty_fields: true,
             query: QueryKind::MatchAll,
             k: 100,
+        }
+    }
+
+    /// `lexical-baseline-v2` (Feature 013, spec FR-001): one field `contents` =
+    /// `title + " " + text` under `standard_en`, boost 1.0; otherwise v1. In the 012 spike's
+    /// BM25 the v1 layout (`title` × 2.0 beside `text`) reproduced the engine (0.6207 /
+    /// 0.3115 / 0.2473 nDCG@10 on SciFact / NFCorpus / FiQA vs the engine's 0.6270 / 0.3115 /
+    /// 0.2502) and the joined field scored 0.6867 / 0.3228 / 0.2473 — a boosted short title
+    /// field lets one title term outweigh several body matches (research D1).
+    pub fn lexical_baseline_v2() -> Self {
+        Self {
+            name: "lexical-baseline-v2".into(),
+            fields: vec![FieldSpec {
+                name: "contents".into(),
+                from: Source::TitleAndText,
+                analyzer: "standard_en".into(),
+                boost: 1.0,
+            }],
+            ..Self::lexical_baseline_v1()
         }
     }
 }
@@ -220,9 +243,12 @@ pub fn execute(
 pub struct PassageSpec {
     /// Prepend the title when it is non-empty (BEIR's own dense baselines feed `title + text`).
     pub title_then_text: bool,
-    /// Placed between title and text.
+    /// Placed between title and text — only when both are non-empty (since Feature 013 the
+    /// passage and the lexical `contents` field come from one join, [`join_title_text`]).
     pub separator: String,
-    /// An empty title contributes nothing — no separator either.
+    /// An empty title contributes nothing — no separator either. Kept for the recorded
+    /// configuration shape; the join never emits a separator beside an empty part, so the
+    /// flag no longer changes the passage.
     pub omit_empty_title: bool,
 }
 
@@ -280,15 +306,8 @@ pub fn build_passages(dataset: &Dataset, cfg: &DenseConfig) -> Result<(Vec<Strin
         .map_err(|_| Error::Run("corpus exceeds u32 document ids".into()))?;
     let mut passages = Vec::with_capacity(corpus.ids.len());
     for (title, text) in corpus.titles.iter().zip(&corpus.texts) {
-        let use_title =
-            cfg.passage.title_then_text && !(cfg.passage.omit_empty_title && title.is_empty());
-        if use_title {
-            let mut p =
-                String::with_capacity(title.len() + cfg.passage.separator.len() + text.len());
-            p.push_str(title);
-            p.push_str(&cfg.passage.separator);
-            p.push_str(text);
-            passages.push(p);
+        if cfg.passage.title_then_text {
+            passages.push(join_title_text(title, &cfg.passage.separator, text));
         } else {
             passages.push(text.clone());
         }
@@ -443,6 +462,16 @@ impl HybridConfig {
             k: 100,
         }
     }
+
+    /// `hybrid-baseline-v2` (Feature 013, spec FR-002): `hybrid-baseline-v1` over
+    /// `lexical-baseline-v2`; the dense recipe, depth, `rrf_k` and `k` are v1's.
+    pub fn hybrid_baseline_v2() -> Self {
+        Self {
+            name: "hybrid-baseline-v2".into(),
+            lexical: EvalConfig::lexical_baseline_v2(),
+            ..Self::hybrid_baseline_v1()
+        }
+    }
 }
 
 /// The lexical fields of document `i` under `cfg` (shared by `build` and `build_external`).
@@ -450,15 +479,33 @@ fn document_fields(corpus: &Corpus, i: usize, cfg: &EvalConfig) -> BTreeMap<Fiel
     let mut fields = BTreeMap::new();
     for f in &cfg.fields {
         let value = match f.from {
-            Source::Title => &corpus.titles[i],
-            Source::Text => &corpus.texts[i],
+            Source::Title => corpus.titles[i].clone(),
+            Source::Text => corpus.texts[i].clone(),
+            Source::TitleAndText => join_title_text(&corpus.titles[i], " ", &corpus.texts[i]),
         };
         if cfg.omit_empty_fields && value.is_empty() {
             continue;
         }
-        fields.insert(FieldName::from(f.name.as_str()), Value::Text(value.clone()));
+        fields.insert(FieldName::from(f.name.as_str()), Value::Text(value));
     }
     fields
+}
+
+/// `title + separator + text`, an empty side contributing neither itself nor the separator.
+/// The one join behind the dense passage ([`build_passages`]) and the lexical
+/// [`Source::TitleAndText`] field, so the two are equal for every document (Feature 013).
+pub fn join_title_text(title: &str, separator: &str, text: &str) -> String {
+    match (title.is_empty(), text.is_empty()) {
+        (true, _) => text.to_owned(),
+        (_, true) => title.to_owned(),
+        (false, false) => {
+            let mut joined = String::with_capacity(title.len() + separator.len() + text.len());
+            joined.push_str(title);
+            joined.push_str(separator);
+            joined.push_str(text);
+            joined
+        }
+    }
 }
 
 /// `(external id, fields)` per corpus document in corpus order, fields built as `build` does.
@@ -557,6 +604,15 @@ impl RerankConfig {
             name: "hybrid-rerank-v1".into(),
             hybrid: HybridConfig::hybrid_baseline_v1(),
             rerank_depth: 20,
+        }
+    }
+
+    /// `hybrid-rerank-v2` (Feature 013, spec FR-002): `hybrid-baseline-v2` re-ranked at depth 20.
+    pub fn hybrid_rerank_v2() -> Self {
+        Self {
+            name: "hybrid-rerank-v2".into(),
+            hybrid: HybridConfig::hybrid_baseline_v2(),
+            ..Self::hybrid_rerank_v1()
         }
     }
 }

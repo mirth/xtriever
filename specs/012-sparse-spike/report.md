@@ -119,6 +119,13 @@ tantivy's `en_stem` (SimpleTokenizer + RemoveLong + LowerCaser + Stemmer). This 
 SPLADE result; it is the lexical-quality lead from the conversation before this spike
 (analyzer and field weighting), now with a number: a separate, cheap feature.
 
+**Resolved by 013** (`specs/013-lexical-quality/report.md`): the gap was the field layout
+alone. A replica of the engine's shape (`title` × 2.0 + `text`) in the spike's BM25 reproduced
+the engine (0.6207 / 0.3115 / 0.2473); the analyzer, BM25 parameters and stop words were
+ruled out with numbers. The engine's `lexical-baseline-v2` (one joined `contents` field)
+measures 0.6856 / 0.3227 / 0.2502 nDCG@10 — +0.0586 / +0.0112 / ±0 over v1, within 0.3
+points of the spike's one-field BM25.
+
 ### F-003 — A resumed encode reported partial costs; now every shard carries its own
 
 The first v3 FiQA record summed only the shards of the run that finished it (49 of 58: 45.7
