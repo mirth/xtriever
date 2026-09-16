@@ -12,6 +12,7 @@
 //! beir run    --dataset D --config hybrid-baseline-v1 [--model-dir M] [--cache-dir C] [--index-dir DIR] [--load-path P] [--out F] [--export-run F] [--export-explain F]
 //! beir run    --dataset D --config hybrid-rerank-v1 [--rerank-model-dir R] (+ the hybrid flags; --load-path applies to both models)
 //! beir run    --dataset D --config lexical-baseline-v2 | hybrid-baseline-v2 | hybrid-rerank-v2   (Feature 013: one joined `contents` field for BM25; same flags as the v1)
+//! beir run    --dataset D --config hybrid-rerank-v2 --rerank-depth N (+ the re-rank flags)   (Feature 014: depth override; report config `hybrid-rerank-v2@dN`; explain lines carry `fused_scores`)
 //! beir compare a.json b.json                        (cross-configuration table, no ADR line)
 //! beir delta  before.json... -- after.json...      (or two single files; same configuration only)
 //! beir smoke  --dataset scifact --baseline F [--cache DIR]
@@ -102,6 +103,28 @@ enum Config {
 }
 
 fn config(a: &Args) -> anyhow::Result<Config> {
+    let cfg = named_config(a)?;
+    // Feature 014: `--rerank-depth N` overrides a re-rank configuration's depth for a study
+    // run; the report's `config` gains `@dN` unless N is the constructor's own depth, so a
+    // sweep report can never be mistaken for the baseline (contracts/study-cli.md).
+    let Some(depth) = a.flags.get("rerank-depth") else {
+        return Ok(cfg);
+    };
+    let depth: usize = depth
+        .parse()
+        .with_context(|| format!("--rerank-depth `{depth}` is not a number"))?;
+    let Config::Rerank(mut cfg) = cfg else {
+        bail!("--rerank-depth applies only to a re-rank configuration");
+    };
+    if depth != cfg.rerank_depth {
+        cfg.name = format!("{}@d{depth}", cfg.name);
+        cfg.rerank_depth = depth;
+    }
+    cfg.validate()?;
+    Ok(Config::Rerank(cfg))
+}
+
+fn named_config(a: &Args) -> anyhow::Result<Config> {
     match a
         .flags
         .get("config")
@@ -633,6 +656,7 @@ fn evaluate_hybrid(
                 "lexical": lexical.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
                 "dense": dense.iter().map(|(rk, id)| serde_json::json!([rk, id])).collect::<Vec<_>>(),
                 "fused": fused.iter().map(|(_, _, id)| *id).collect::<Vec<_>>(),
+                "fused_scores": fused.iter().map(|(s, _, _)| *s).collect::<Vec<_>>(),
                 "rerank": rerank,
                 "hits": r.hits.iter().map(|h| h.external_id.as_str()).collect::<Vec<_>>(),
             });
