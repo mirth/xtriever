@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xtriever-wiki-demo"
+version = "0.1.0"
+description = "Xtriever's second demo: build and search Simple English Wikipedia from a Python command line (Feature 019)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+  # The engine's Python surface (Feature 011), installed from the locally built wheel —
+  # `cd python && .venv/bin/maturin build --release` → target/wheels/xtriever-*.whl.
+  "xtriever>=0.1.0",
+  # Unit pricing for the build's chunker: the same version crates/xtriever-dense/Cargo.toml
+  # pins for the engine, so the word-piece counts are the counts the build sees (research D5).
+  "tokenizers==0.23.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+wikidemo = "wikidemo.cli:main"
+
+[tool.setuptools]
+packages = ["wikidemo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["models: needs the pinned models and the 007 fixture index on disk (skipped otherwise)"]
