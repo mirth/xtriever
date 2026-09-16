@@ -12,6 +12,8 @@ final class InfoTests: XCTestCase {
         XCTAssertEqual(i.rerankerModelId, expected.info.rerankerModelId)
         XCTAssertEqual(i.candidateDepth, expected.info.candidateDepth)
         XCTAssertEqual(i.rerankDepth, expected.info.rerankDepth)
+        XCTAssertEqual(i.rerankMode, expected.info.rerankMode.asRerankMode)
+        XCTAssertEqual(i.rerankMode, .interpolate(alpha: 0.5), "Feature 015: the default, recorded")
         XCTAssertEqual(i.rrfK, expected.info.rrfK)
         XCTAssertGreaterThan(i.embedderLoadMs, 0)
         XCTAssertNotNil(i.rerankerLoadMs)

@@ -64,6 +64,7 @@ fn config(h: &support::Hybrid) -> IndexConfig {
         candidate_depth: 100,
         rrf_k: 60,
         rerank_depth: 20,
+        rerank_mode: None,
     }
 }
 
@@ -134,6 +135,7 @@ fn assert_goldens(with: &IndexHandle, without: &IndexHandle) {
             k: q["k"].as_u64().unwrap() as u32,
             depth: None,
             rerank_depth: Some(q["rerank_depth"].as_u64().unwrap() as u32),
+            rerank_mode: None,
             max_time_ms: None,
             max_items: None,
             strict: false,
@@ -197,6 +199,7 @@ fn staged_changes_are_invisible_until_commit() {
         k: 5,
         depth: None,
         rerank_depth: Some(0),
+        rerank_mode: None,
         max_time_ms: None,
         max_items: None,
         strict: false,

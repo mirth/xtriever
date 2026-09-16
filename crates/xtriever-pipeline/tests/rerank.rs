@@ -30,7 +30,7 @@ fn the_first_d_fused_candidates_are_reordered_by_the_reranker_then_the_rest_foll
     let (h, index) = support::build_from_fixture(tmp.path());
     let q = &h.queries[0];
     let plain = index
-        .search(&q.text, None, 10, &support::rerank_options(0))
+        .search(&q.text, None, 10, &support::replace_options(0))
         .unwrap();
     assert!(
         plain.hits.len() >= 8,
@@ -49,7 +49,7 @@ fn the_first_d_fused_candidates_are_reordered_by_the_reranker_then_the_rest_foll
     index.set_reranker(Some(Box::new(reranker)));
 
     let r = index
-        .search(&q.text, None, 10, &support::rerank_options(5))
+        .search(&q.text, None, 10, &support::replace_options(5))
         .unwrap();
     let mut expected: Vec<DocId> = fused[..5].to_vec();
     expected.reverse();
@@ -82,7 +82,7 @@ fn a_partial_result_puts_the_scored_first_then_every_unscored_in_fused_order() {
     let (h, index) = support::build_from_fixture(tmp.path());
     let q = &h.queries[0];
     let fused = ids(&index
-        .search(&q.text, None, 10, &support::rerank_options(0))
+        .search(&q.text, None, 10, &support::replace_options(0))
         .unwrap());
     drop(index);
     let (_, mut index) = support::build_from_fixture(tmp.path().join("b").as_path());
@@ -92,7 +92,7 @@ fn a_partial_result_puts_the_scored_first_then_every_unscored_in_fused_order() {
         support::TableReranker::from_fn(&h, |id| if id == first { 1.0 } else { 2.0 }).with_limit(2);
     index.set_reranker(Some(Box::new(reranker)));
     let r = index
-        .search(&q.text, None, 10, &support::rerank_options(5))
+        .search(&q.text, None, 10, &support::replace_options(5))
         .unwrap();
     let mut expected = vec![fused[1], fused[0]];
     expected.extend_from_slice(&fused[2..10]);
@@ -115,7 +115,7 @@ fn a_depth_beyond_k_can_promote_a_candidate_from_below_k() {
     let (h, index) = support::build_from_fixture(tmp.path());
     let q = &h.queries[0];
     let fused = ids(&index
-        .search(&q.text, None, 10, &support::rerank_options(0))
+        .search(&q.text, None, 10, &support::replace_options(0))
         .unwrap());
     drop(index);
     let (_, mut index) = support::build_from_fixture(tmp.path().join("b").as_path());
@@ -123,7 +123,7 @@ fn a_depth_beyond_k_can_promote_a_candidate_from_below_k() {
     let reranker = support::TableReranker::from_fn(&h, |id| if id == seventh { 10.0 } else { 0.0 });
     index.set_reranker(Some(Box::new(reranker)));
     let r = index
-        .search(&q.text, None, 3, &support::rerank_options(10))
+        .search(&q.text, None, 3, &support::replace_options(10))
         .unwrap();
     assert_eq!(r.hits.len(), 3);
     assert_eq!(r.hits[0].id, fused[6]);
@@ -144,7 +144,7 @@ fn depth_zero_or_no_reranker_gives_the_feature_005_response() {
     let (h, index) = support::build_from_fixture(tmp.path());
     let q = &h.queries[0];
     let base = index
-        .search(&q.text, None, 10, &support::rerank_options(0))
+        .search(&q.text, None, 10, &support::replace_options(0))
         .unwrap();
     assert_eq!(base.stages.rerank, None);
     assert!(base.hits.iter().all(|h| h.rerank_score.is_none()));
@@ -158,13 +158,13 @@ fn depth_zero_or_no_reranker_gives_the_feature_005_response() {
         -(id as f32)
     }))));
     let d0 = index
-        .search(&q.text, None, 10, &support::rerank_options(0))
+        .search(&q.text, None, 10, &support::replace_options(0))
         .unwrap();
     assert_eq!(d0.hits, base.hits);
     assert_eq!(d0.stages.rerank, None);
     index.set_reranker(None);
     let detached = index
-        .search(&q.text, None, 10, &support::rerank_options(5))
+        .search(&q.text, None, 10, &support::replace_options(5))
         .unwrap();
     assert_eq!(detached.hits, base.hits);
     assert_eq!(detached.stages.rerank, None);
@@ -176,13 +176,13 @@ fn depth_beyond_the_fused_list_ties_by_id_and_determinism() {
     let (h, mut index) = support::build_from_fixture(tmp.path());
     let q = &h.queries[0];
     let n = index
-        .search(&q.text, None, 100, &support::rerank_options(0))
+        .search(&q.text, None, 100, &support::replace_options(0))
         .unwrap()
         .hits
         .len();
     index.set_reranker(Some(Box::new(support::TableReranker::from_fn(&h, |_| 1.0))));
     let r = index
-        .search(&q.text, None, 100, &support::rerank_options(1000))
+        .search(&q.text, None, 100, &support::replace_options(1000))
         .unwrap();
     assert_eq!(r.stages.rerank.as_ref().unwrap().candidates, n);
     assert_eq!(r.stages.rerank.as_ref().unwrap().scored, n);
@@ -191,7 +191,7 @@ fn depth_beyond_the_fused_list_ties_by_id_and_determinism() {
     sorted.sort_by_key(|d| d.0);
     assert_eq!(got, sorted, "equal scores order by ascending internal id");
     let again = index
-        .search(&q.text, None, 100, &support::rerank_options(1000))
+        .search(&q.text, None, 100, &support::replace_options(1000))
         .unwrap();
     assert_eq!(r, again);
 }
@@ -208,7 +208,7 @@ fn hits_carry_their_passage_text_and_the_stub_receives_the_item_budget() {
             max_items: Some(7),
             max_time: None,
         },
-        ..support::rerank_options(5)
+        ..support::replace_options(5)
     };
     let r = index.search(&q.text, None, 10, &opts).unwrap();
     for hit in &r.hits {
@@ -223,4 +223,148 @@ fn hits_carry_their_passage_text_and_the_stub_receives_the_item_budget() {
     assert_eq!(received.len(), 1);
     assert_eq!(received[0].max_items, Some(7));
     assert_eq!(received[0].max_time, None);
+}
+
+// ── Feature 015: the interpolating rule is the default; replace stays selectable ──────────────
+
+/// The cross-encoder reverses the fused order of the first 5; under `Replace` that is the 006
+/// order, under `Interpolate { 0.5 }` the fused term pulls the head back toward fused order.
+fn reversing_reranker(h: &support::Hybrid, fused: &[DocId]) -> support::TableReranker {
+    let pos: BTreeMap<u32, f32> = fused
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.0, i as f32))
+        .collect();
+    support::TableReranker::from_fn(h, move |id| *pos.get(&id).unwrap_or(&-1.0))
+}
+
+#[test]
+fn search_orders_head_by_combined_score_by_default() {
+    use xtriever_pipeline::{RerankMode, order_interpolated};
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, index) = support::build_from_fixture(tmp.path());
+    assert_eq!(
+        index.config().rerank_mode,
+        RerankMode::Interpolate { alpha: 0.5 },
+        "the default"
+    );
+    let q = &h.queries[0];
+    let plain = index
+        .search(&q.text, None, 10, &support::rerank_options(0))
+        .unwrap();
+    let fused = ids(&plain);
+    drop(index);
+    let (_, mut index) = support::build_from_fixture(tmp.path().join("b").as_path());
+    index.set_reranker(Some(Box::new(reversing_reranker(&h, &fused))));
+    let r = index
+        .search(&q.text, None, 10, &support::rerank_options(5))
+        .unwrap();
+    // Expected from the public rule on the plain response's fused scores.
+    let fused_scored: Vec<(DocId, f64)> = plain.hits.iter().map(|x| (x.id, x.score)).collect();
+    let scores: Vec<Option<f32>> = (0..5).map(|i| Some(i as f32)).collect();
+    let want = order_interpolated(&fused_scored, &scores, 10, 0.5);
+    assert_eq!(
+        ids(&r),
+        want.iter().map(|(id, _, _, _)| *id).collect::<Vec<_>>()
+    );
+    for (hit, (_, _, rerank, combined)) in r.hits.iter().zip(&want) {
+        let e = hit.explain.as_ref().unwrap();
+        assert_eq!(hit.rerank_score, *rerank);
+        assert_eq!(e.rerank_combined, *combined);
+        assert_eq!(
+            hit.score,
+            plain.hits.iter().find(|p| p.id == hit.id).unwrap().score,
+            "the fused score keeps its meaning"
+        );
+    }
+    // The head is not simply reversed (the fused term counts), and ties are none here.
+    let mut reversed: Vec<DocId> = fused[..5].to_vec();
+    reversed.reverse();
+    assert_ne!(&ids(&r)[..5], &reversed[..], "interpolation is not replace");
+}
+
+#[test]
+fn replace_override_reproduces_the_006_order() {
+    use xtriever_pipeline::RerankMode;
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, index) = support::build_from_fixture(tmp.path());
+    let q = &h.queries[0];
+    let fused = ids(&index
+        .search(&q.text, None, 10, &support::rerank_options(0))
+        .unwrap());
+    drop(index);
+    let (_, mut index) = support::build_from_fixture(tmp.path().join("b").as_path());
+    index.set_reranker(Some(Box::new(reversing_reranker(&h, &fused))));
+    let r = index
+        .search(
+            &q.text,
+            None,
+            10,
+            &SearchOptions {
+                rerank_mode: Some(RerankMode::Replace),
+                ..support::rerank_options(5)
+            },
+        )
+        .unwrap();
+    let mut expected: Vec<DocId> = fused[..5].to_vec();
+    expected.reverse();
+    expected.extend_from_slice(&fused[5..10]);
+    assert_eq!(ids(&r), expected, "the Feature 006 order");
+    assert!(
+        r.hits
+            .iter()
+            .all(|x| x.explain.as_ref().unwrap().rerank_combined.is_none()),
+        "no combined score under Replace"
+    );
+}
+
+#[test]
+fn invalid_alpha_is_a_schema_error_at_create_and_at_search() {
+    use xtriever_pipeline::RerankMode;
+    let h = support::hybrid();
+    for alpha in [1.5, -0.1, f64::NAN, f64::INFINITY] {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut cfg = support::fixture_config(&h);
+        cfg.rerank_mode = RerankMode::Interpolate { alpha };
+        match HybridIndex::create(
+            tmp.path(),
+            cfg,
+            Box::new(support::TableEmbedder::from_fixture(&h)),
+        ) {
+            Err(xtriever_core::Error::Schema(msg)) => {
+                assert!(msg.contains("alpha"), "{msg}");
+            }
+            other => panic!("alpha {alpha}: {:?}", other.map(|_| ())),
+        }
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, mut index) = support::build_from_fixture(tmp.path());
+    index.set_reranker(Some(Box::new(support::TableReranker::from_fn(&h, |_| 1.0))));
+    let q = &h.queries[0];
+    match index.search(
+        &q.text,
+        None,
+        10,
+        &SearchOptions {
+            rerank_mode: Some(RerankMode::Interpolate { alpha: 2.0 }),
+            ..support::rerank_options(5)
+        },
+    ) {
+        Err(xtriever_core::Error::Schema(msg)) => assert!(msg.contains("alpha"), "{msg}"),
+        other => panic!("{:?}", other.map(|_| ())),
+    }
+    // Boundary values are valid.
+    for alpha in [0.0, 1.0] {
+        index
+            .search(
+                &q.text,
+                None,
+                10,
+                &SearchOptions {
+                    rerank_mode: Some(RerankMode::Interpolate { alpha }),
+                    ..support::rerank_options(5)
+                },
+            )
+            .unwrap();
+    }
 }

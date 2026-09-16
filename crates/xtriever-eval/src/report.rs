@@ -62,7 +62,7 @@ pub struct Observations {
 }
 
 /// Identity of a non-lexical stage a report was produced with (Feature 004, spec FR-019/FR-021).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StageInfo {
     /// `dense`, `hybrid` or `hybrid-rerank`.
     pub kind: String,
@@ -81,6 +81,10 @@ pub struct StageInfo {
     /// Fused candidates re-scored per query (Feature 006; `hybrid-rerank` reports only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rerank_depth: Option<usize>,
+    /// How the re-ranked head was ordered (Feature 015; `hybrid-rerank` reports only), in the
+    /// configuration's shape: `"replace"` or `{"interpolate": {"alpha": 0.5}}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_mode: Option<crate::run::RerankMode>,
 }
 
 /// One dataset's evaluation. **Field order is the on-disk key order** (contract).

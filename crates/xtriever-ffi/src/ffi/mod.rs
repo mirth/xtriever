@@ -18,8 +18,8 @@ use std::sync::Arc;
 pub use error::XtrieverError;
 pub use types::{
     ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
-    HitExplain, IndexConfig, IndexInfo, LoadPath, RerankReport, SearchOptions, SearchResponse,
-    StageReport,
+    HitExplain, IndexConfig, IndexInfo, LoadPath, RerankMode, RerankReport, SearchOptions,
+    SearchResponse, StageReport,
 };
 
 /// An open hybrid index with its models; calls on one handle are serialised by a lock (no

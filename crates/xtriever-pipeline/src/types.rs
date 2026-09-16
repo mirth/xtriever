@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use xtriever_core::{Budget, ChunkInfo, DocId, FeatureName, FieldName, Schema, Value, features};
 
+use crate::rerank::RerankMode;
+
 /// How [`HybridIndex::open_with`](crate::HybridIndex::open_with) opens a directory (Feature 008
 /// D11). `Default` is the plain `open`: buffered dense stage, writable.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -34,10 +36,14 @@ pub struct HybridConfig {
     /// Fused candidates re-scored by an attached re-ranker unless the caller overrides;
     /// 0 = never by default.
     pub rerank_depth: usize,
+    /// How the re-ranked head is ordered unless the caller overrides (Feature 015; recorded in
+    /// the descriptor).
+    pub rerank_mode: RerankMode,
 }
 
 impl HybridConfig {
-    /// A configuration with the defaults: candidate depth 100, `rrf_k` 60, re-rank depth 20.
+    /// A configuration with the defaults: candidate depth 100, `rrf_k` 60, re-rank depth 20,
+    /// re-rank mode `Interpolate { alpha: 0.5 }`.
     #[must_use]
     pub fn new(schema: Schema, dense_fields: Vec<FieldName>) -> Self {
         Self {
@@ -46,6 +52,7 @@ impl HybridConfig {
             candidate_depth: 100,
             rrf_k: 60,
             rerank_depth: 20,
+            rerank_mode: RerankMode::default(),
         }
     }
 }
@@ -69,6 +76,9 @@ pub struct SearchOptions<'a> {
     /// Fused candidates handed to the re-ranker; `None` = the index's configured depth,
     /// `Some(0)` = no re-ranking on this call.
     pub rerank_depth: Option<usize>,
+    /// How the re-ranked head is ordered; `None` = the index's recorded mode. `Some(Replace)`
+    /// reproduces results from before Feature 015.
+    pub rerank_mode: Option<RerankMode>,
     /// Return an ML stage's error instead of degrading.
     pub strict: bool,
     /// Item limit caps the dense depth; the time limit needs `elapsed`.
@@ -84,6 +94,7 @@ impl std::fmt::Debug for SearchOptions<'_> {
         f.debug_struct("SearchOptions")
             .field("depth", &self.depth)
             .field("rerank_depth", &self.rerank_depth)
+            .field("rerank_mode", &self.rerank_mode)
             .field("strict", &self.strict)
             .field("budget", &self.budget)
             .field("elapsed", &self.elapsed.map(|_| "<fn>"))
@@ -96,8 +107,10 @@ impl std::fmt::Debug for SearchOptions<'_> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Response {
     /// At most `k` hits. Without re-ranking: `(score DESC, DocId ASC)`; degraded: the lexical
-    /// list in lexical order. With re-ranking: the hits with a `rerank_score` first, ordered
-    /// `(rerank_score DESC, DocId ASC)`, then every other hit in fused order.
+    /// list in lexical order. With re-ranking: the hits with a `rerank_score` first — under
+    /// [`RerankMode::Interpolate`] ordered `(rerank_combined DESC, fused position ASC)`, under
+    /// [`RerankMode::Replace`] `(rerank_score DESC, DocId ASC)` — then every other hit in fused
+    /// order.
     pub hits: Vec<HybridHit>,
     /// What ran, what was skipped and why.
     pub stages: StageReport,
@@ -140,13 +153,16 @@ pub struct HitExplain {
     pub rerank_score: Option<f32>,
     /// 1-based position among the re-ranked hits, where scored.
     pub rerank_rank: Option<u32>,
+    /// The combined score the hit was ordered by under [`RerankMode::Interpolate`], in
+    /// `[0, 1]`; `None` under `Replace` or where the stage did not score the hit (Feature 015).
+    pub rerank_combined: Option<f64>,
 }
 
 impl HitExplain {
     /// The explanation under the core's well-known feature names (plus the pipeline's
-    /// [`RERANK_RANK`]), `NaN` for absent values.
+    /// [`RERANK_RANK`] and [`RERANK_COMBINED`]), `NaN` for absent values.
     #[must_use]
-    pub fn features(&self) -> [(FeatureName, f32); 7] {
+    pub fn features(&self) -> [(FeatureName, f32); 8] {
         let opt = |v: Option<f32>| v.unwrap_or(f32::NAN);
         let rank = |r: Option<u32>| r.map_or(f32::NAN, |r| r as f32);
         [
@@ -178,6 +194,10 @@ impl HitExplain {
                 FeatureName::from_static(RERANK_RANK),
                 rank(self.rerank_rank),
             ),
+            (
+                FeatureName::from_static(RERANK_COMBINED),
+                self.rerank_combined.map_or(f32::NAN, |c| c as f32),
+            ),
         ]
     }
 }
@@ -185,6 +205,9 @@ impl HitExplain {
 /// 1-based position among the re-ranked hits — the pipeline's own feature name, beside the
 /// core's `rerank.score`.
 pub const RERANK_RANK: &str = "rerank.rank";
+
+/// The combined score of the interpolating rule — the pipeline's own feature name (Feature 015).
+pub const RERANK_COMBINED: &str = "rerank.combined";
 
 /// What the stages did for one search.
 #[derive(Debug, Clone, PartialEq, Eq)]

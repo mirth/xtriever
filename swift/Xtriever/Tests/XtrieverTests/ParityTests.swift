@@ -28,7 +28,7 @@ final class ParityTests: XCTestCase {
         let r = try await index.search(q.text, options: SearchOptions(k: q.k, rerankDepth: q.rerankDepth, explain: true))
         let features = try XCTUnwrap(r.hits.first?.explain).features()
         XCTAssertEqual(features.map(\.name),
-                       ["bm25.score", "bm25.rank", "dense.score", "dense.rank", "fused.score", "rerank.score", "rerank.rank"])
+                       ["bm25.score", "bm25.rank", "dense.score", "dense.rank", "fused.score", "rerank.score", "rerank.rank", "rerank.combined"])
         let unexplained = try await index.search(q.text, options: SearchOptions(k: q.k, rerankDepth: q.rerankDepth, explain: false))
         XCTAssertEqual(unexplained.hits.map(\.externalId), r.hits.map(\.externalId), "explanation never changes hits")
         XCTAssertTrue(unexplained.hits.allSatisfy { $0.explain == nil })

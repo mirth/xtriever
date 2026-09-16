@@ -65,6 +65,7 @@ impl std::fmt::Debug for HybridIndex {
             .field("live_docs", &self.descriptor.live_docs)
             .field("generation", &self.descriptor.generation)
             .field("rerank_depth", &self.config.rerank_depth)
+            .field("rerank_mode", &self.config.rerank_mode)
             .field("fingerprint", &self.embedder.fingerprint())
             .field("reranker", &self.reranker.as_ref().map(|r| r.model_id()))
             .finish_non_exhaustive()
@@ -98,6 +99,7 @@ impl HybridConfig {
         if self.rrf_k == 0 {
             return Err(schema_err("rrf_k must be at least 1"));
         }
+        self.rerank_mode.validate()?;
         Ok(())
     }
 }
@@ -133,6 +135,7 @@ impl HybridIndex {
             candidate_depth: config.candidate_depth,
             rrf_k: config.rrf_k,
             rerank_depth: config.rerank_depth,
+            rerank_mode: config.rerank_mode,
             live_docs: 0,
             generation: 0,
         };
@@ -251,7 +254,14 @@ impl HybridIndex {
             candidate_depth: descriptor.candidate_depth,
             rrf_k: descriptor.rrf_k,
             rerank_depth: descriptor.rerank_depth,
+            rerank_mode: descriptor.rerank_mode,
         };
+        // A persisted mode that could not have been created is corruption, not a schema error
+        // (review round 1 #4): every search would apply an α outside [0, 1].
+        config
+            .rerank_mode
+            .validate()
+            .map_err(|e| corrupt(format!("descriptor: {e}")))?;
         Ok(Self {
             dir: dir.to_path_buf(),
             config,

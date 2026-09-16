@@ -325,3 +325,93 @@ fn mapped_open_gives_identical_hits() {
         );
     }
 }
+
+// ── Feature 015: the re-rank mode in the descriptor (ADR-0012) ───────────────────────────────
+
+#[test]
+fn descriptor_round_trips_rerank_mode() {
+    use xtriever_pipeline::RerankMode;
+    let tmp = tempfile::tempdir().unwrap();
+    let h = support::hybrid();
+    let mut cfg = support::fixture_config(&h);
+    cfg.rerank_mode = RerankMode::Interpolate { alpha: 0.25 };
+    let index = HybridIndex::create(
+        tmp.path(),
+        cfg,
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap();
+    drop(index);
+    let text = std::fs::read_to_string(tmp.path().join("xtriever-pipeline.json")).unwrap();
+    let depth = text.find("\"rerank_depth\"").expect("rerank_depth key");
+    let mode = text.find("\"rerank_mode\"").expect("rerank_mode key");
+    assert!(
+        mode > depth,
+        "rerank_mode follows rerank_depth on disk:\n{text}"
+    );
+    assert!(text.contains("\"interpolate\""), "{text}");
+    assert!(text.contains("\"alpha\": 0.25"), "{text}");
+    let reopened = HybridIndex::open(
+        tmp.path(),
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap();
+    assert_eq!(
+        reopened.config().rerank_mode,
+        RerankMode::Interpolate { alpha: 0.25 }
+    );
+    assert!(
+        text.contains(&format!("\"format_version\": {FORMAT_VERSION}")),
+        "the format version does not change: {text}"
+    );
+}
+
+#[test]
+fn descriptor_without_rerank_mode_reads_as_interpolate_half() {
+    use xtriever_pipeline::RerankMode;
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, index) = support::build_from_fixture(tmp.path());
+    drop(index);
+    let path = tmp.path().join("xtriever-pipeline.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    // Strip the key the way an index written before Feature 015 lacks it.
+    let start = text.find("  \"rerank_mode\"").expect("rerank_mode key");
+    let end = text[start..]
+        .find("\n  \"live_docs\"")
+        .expect("live_docs follows")
+        + start
+        + 1;
+    let stripped = format!("{}{}", &text[..start], &text[end..]);
+    assert!(!stripped.contains("rerank_mode"), "{stripped}");
+    std::fs::write(&path, stripped).unwrap();
+    let reopened = HybridIndex::open(
+        tmp.path(),
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap();
+    assert_eq!(
+        reopened.config().rerank_mode,
+        RerankMode::Interpolate { alpha: 0.5 },
+        "a pre-015 index reads as the default (ADR-0012)"
+    );
+}
+
+#[test]
+fn a_descriptor_with_an_invalid_alpha_is_corrupt_at_open() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (h, index) = support::build_from_fixture(tmp.path());
+    drop(index);
+    let path = tmp.path().join("xtriever-pipeline.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("\"alpha\": 0.5"), "{text}");
+    std::fs::write(&path, text.replace("\"alpha\": 0.5", "\"alpha\": 2.0")).unwrap();
+    match HybridIndex::open(
+        tmp.path(),
+        Box::new(support::TableEmbedder::from_fixture(&h)),
+    )
+    .unwrap_err()
+    {
+        Error::Corrupt(msg) => assert!(msg.contains("alpha") && msg.contains('2'), "{msg}"),
+        other => panic!("{other:?}"),
+    }
+}

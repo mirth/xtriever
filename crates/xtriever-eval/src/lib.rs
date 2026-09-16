@@ -30,7 +30,10 @@
 //! 5.9 / 1.1 nDCG@10 points behind the joined one on SciFact / NFCorpus (FiQA has no titles):
 //! a boosted short field lets one title term outweigh several body matches, which is why
 //! BEIR's reference BM25 indexes one `contents` field too. `hybrid-baseline-v2` and
-//! `hybrid-rerank-v2` are their v1s over the v2 lexical list; every v1 stays runnable and
+//! `hybrid-rerank-v2` are their v1s over the v2 lexical list; `hybrid-rerank-v3` (Feature 015)
+//! re-ranks the v2 fused list under the interpolating rule — `RerankConfig::mode`, passed to the
+//! pipeline as a per-search override — and reproduces Feature 014's `lin-0.5-d20` cells
+//! (0.7207 / 0.3622 / 0.3910 nDCG@10); every v1 stays runnable and
 //! reproduces its baseline. The CI smoke compares against the v2 lexical baseline.
 //!
 //! Datasets are never committed: `scripts/fetch-beir.sh` downloads them into a git-ignored cache

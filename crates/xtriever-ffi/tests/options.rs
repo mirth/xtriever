@@ -5,7 +5,12 @@
 use std::time::Duration;
 
 use xtriever_core::{ChunkInfo, DocId};
-use xtriever_ffi::{DegradeReason, SearchOptions, from_response, to_pipeline_options};
+mod support;
+
+use xtriever_ffi::{
+    DegradeReason, IndexConfig, IndexHandle, LoadPath, RerankMode, SearchOptions, XtrieverError,
+    from_response, to_pipeline_options,
+};
 use xtriever_pipeline::{
     Degradation, DegradeReason as PipelineReason, HitExplain, HybridHit, RerankReport, Response,
     StageReport,
@@ -16,6 +21,7 @@ fn wire(k: u32) -> SearchOptions {
         k,
         depth: None,
         rerank_depth: None,
+        rerank_mode: None,
         max_time_ms: None,
         max_items: None,
         strict: false,
@@ -38,6 +44,7 @@ fn options_map_field_by_field_and_attach_the_clock_only_with_a_time_limit() {
         k: 5,
         depth: Some(50),
         rerank_depth: Some(3),
+        rerank_mode: Some(RerankMode::Interpolate { alpha: 0.25 }),
         max_time_ms: Some(200),
         max_items: Some(4),
         strict: true,
@@ -46,6 +53,10 @@ fn options_map_field_by_field_and_attach_the_clock_only_with_a_time_limit() {
     let p = to_pipeline_options(&full, Some(&clock));
     assert_eq!(p.depth, Some(50));
     assert_eq!(p.rerank_depth, Some(3));
+    assert_eq!(
+        p.rerank_mode,
+        Some(xtriever_pipeline::RerankMode::Interpolate { alpha: 0.25 })
+    );
     assert_eq!(p.budget.max_time, Some(Duration::from_millis(200)));
     assert_eq!(p.budget.max_items, Some(4));
     assert!(p.strict && p.explain);
@@ -86,6 +97,7 @@ fn responses_map_field_by_field() {
                     fused: 0.0327,
                     rerank_score: Some(4.5),
                     rerank_rank: Some(1),
+                    rerank_combined: Some(0.75),
                 }),
             },
             HybridHit {
@@ -135,6 +147,11 @@ fn responses_map_field_by_field() {
         (Some(1.5), Some(1), None, None)
     );
     assert_eq!((e.rerank_score, e.rerank_rank), (Some(4.5), Some(1)));
+    assert_eq!(
+        e.rerank_combined,
+        Some(0.75),
+        "Feature 015: the combined score crosses the wire"
+    );
     assert_eq!(e.fused.to_bits(), 0.0327f64.to_bits());
     assert!(
         r.hits[1].chunk.is_none()
@@ -162,4 +179,120 @@ fn responses_map_field_by_field() {
         })
     );
     assert!(!s.time_limit_ignored);
+}
+
+// ── Feature 015: the re-rank mode on the wire ────────────────────────────────────────────────
+
+#[test]
+fn rerank_mode_wire_defaults() {
+    let cfg = IndexConfig {
+        fields: vec![],
+        dense_fields: vec![],
+        candidate_depth: 100,
+        rrf_k: 60,
+        rerank_depth: 20,
+        rerank_mode: None,
+    };
+    assert_eq!(
+        cfg.rerank_mode, None,
+        "None = the engine's default at build"
+    );
+    assert_eq!(
+        wire(1).rerank_mode,
+        None,
+        "None = the index's mode at search"
+    );
+    let replace = to_pipeline_options(
+        &SearchOptions {
+            rerank_mode: Some(RerankMode::Replace),
+            ..wire(1)
+        },
+        None,
+    );
+    assert_eq!(
+        replace.rerank_mode,
+        Some(xtriever_pipeline::RerankMode::Replace)
+    );
+}
+
+/// The pre-015 re-ranked order of the first golden query (`expected.json` on `main`,
+/// query `q0` "zephyr", k 10, depth 5): what `Replace` must still produce.
+const Q0_REPLACE_ORDER: [&str; 10] = [
+    "d016", "d011", "d031", "d026", "d001", "d032", "d020", "d008", "d038", "d030",
+];
+
+#[test]
+#[ignore = "needs both models"]
+fn rerank_mode_defaults_and_override() {
+    let tmp = tempfile::tempdir().unwrap();
+    drop(support::build_fixture_index(tmp.path()));
+    let ffi = IndexHandle::open(
+        tmp.path().to_string_lossy().into_owned(),
+        support::embedder_dir().to_string_lossy().into_owned(),
+        Some(support::reranker_dir().to_string_lossy().into_owned()),
+        LoadPath::Buffered,
+    )
+    .unwrap();
+    assert_eq!(
+        ffi.info().rerank_mode,
+        RerankMode::Interpolate { alpha: 0.5 },
+        "the default, recorded"
+    );
+    let base = SearchOptions {
+        rerank_depth: Some(5),
+        explain: true,
+        ..wire(10)
+    };
+    let replaced = ffi
+        .search(
+            "zephyr".into(),
+            SearchOptions {
+                rerank_mode: Some(RerankMode::Replace),
+                ..base.clone()
+            },
+        )
+        .unwrap();
+    let ids: Vec<&str> = replaced
+        .hits
+        .iter()
+        .map(|h| h.external_id.as_str())
+        .collect();
+    assert_eq!(ids, Q0_REPLACE_ORDER, "the pre-015 order under Replace");
+    assert!(replaced.hits.iter().all(|h| {
+        h.explain
+            .as_ref()
+            .is_some_and(|e| e.rerank_combined.is_none())
+    }));
+    let interpolated = ffi.search("zephyr".into(), base.clone()).unwrap();
+    let head: Vec<&str> = interpolated.hits[..5]
+        .iter()
+        .map(|h| h.external_id.as_str())
+        .collect();
+    assert_eq!(
+        interpolated
+            .hits
+            .iter()
+            .filter(|h| h.explain.as_ref().unwrap().rerank_combined.is_some())
+            .count(),
+        5
+    );
+    assert_eq!(
+        &interpolated.hits[5..]
+            .iter()
+            .map(|h| h.external_id.as_str())
+            .collect::<Vec<_>>()[..],
+        &Q0_REPLACE_ORDER[5..],
+        "the tail is the fused order under both modes"
+    );
+    let _ = head;
+    match ffi.search(
+        "zephyr".into(),
+        SearchOptions {
+            rerank_mode: Some(RerankMode::Interpolate { alpha: 2.0 }),
+            ..base
+        },
+    ) {
+        Err(XtrieverError::Schema { .. }) => {}
+        other => panic!("{other:?}"),
+    }
 }

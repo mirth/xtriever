@@ -37,7 +37,7 @@ def test_every_golden_pair_is_bit_identical(goldens, handle, handle_fused):
     assert pairs == 16
 
 
-def test_hits_carry_text_and_seven_features(goldens, handle):
+def test_hits_carry_text_and_eight_features(goldens, handle):
     q = goldens["queries"][0]
     r = _run(handle, q)
     assert r.hits, "the first query has hits"
@@ -50,6 +50,8 @@ def test_hits_carry_text_and_seven_features(goldens, handle):
         assert (e.bm25_score is None) == (e.bm25_rank is None)
         assert (e.dense_score is None) == (e.dense_rank is None)
         assert (e.rerank_score is None) == (e.rerank_rank is None)
+        # Feature 015: the combined score exists exactly where the interpolating rule ordered.
+        assert (e.rerank_combined is None) == (e.rerank_score is None)
     assert r.elapsed_ms >= 0
 
 

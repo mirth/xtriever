@@ -21,6 +21,7 @@ fn budgeted(ms: u64, strict: bool) -> SearchOptions {
         k: 20,
         depth: None,
         rerank_depth: Some(20),
+        rerank_mode: None,
         max_time_ms: Some(ms),
         max_items: None,
         strict,
