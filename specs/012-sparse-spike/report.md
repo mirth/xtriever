@@ -2,6 +2,11 @@
 
 **Feature**: `012-sparse-spike` | **Date**: 2026-09-15 | **Spec**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md)
 
+> **GO status after Feature 016 (2026-09-16)**: withdrawn. Re-measured against the pipeline as
+> it stands (013 joined lexical field, 015 interpolated re-rank; `hybrid-rerank-v3` 0.4913), the
+> re-ranked three-way fusion reaches 0.4941 — +0.0028 mean nDCG@10, under the +0.005 floor fixed
+> in `specs/016-sparse-remeasure/spec.md` FR-007. Reopening conditions in that feature's report.
+
 ## Pins
 
 | model | revision | licence | parameters | activation | files |

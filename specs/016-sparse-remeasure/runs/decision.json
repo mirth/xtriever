@@ -1,0 +1,31 @@
+{
+ "rule": {
+  "row": "lex2+dense+dot-rr",
+  "mean_floor": 0.496307,
+  "max_drop": 0.005,
+  "anchor": "hybrid-rerank-v3",
+  "anchor_mean": 0.491307
+ },
+ "row": "lex2+dense+dot-rr",
+ "cells": {
+  "ndcg": {
+   "scifact": 0.7229923655735775,
+   "nfcorpus": 0.36240802048007165,
+   "fiqa": 0.3967921614702994
+  },
+  "mean": 0.49406418250798284,
+  "delta_vs_v3": {
+   "scifact": 0.0022816595508745596,
+   "nfcorpus": 0.00016199992516019446,
+   "fiqa": 0.005828306903423897
+  }
+ },
+ "qualifies": false,
+ "statement": "012's GO withdrawn: lex2+dense+dot-rr mean 0.4941 against the floor 0.496307; per-dataset deltas vs hybrid-rerank-v3 scifact +0.0023, nfcorpus +0.0002, fiqa +0.0058",
+ "reopen": [
+  "a corpus with heavy vocabulary mismatch (FiQA-shaped: no titles, colloquial queries) where a dense-free configuration is wanted",
+  "an encoder that is cheaper to run at index time or runnable inside the Rust pipeline (012 F-004: corpus encoding must happen outside Rust today)",
+  "a measured need at the head that the cross-encoder does not cover \u2014 e.g. a re-rank depth the phone cannot afford",
+  "a change to the fused signal (new dense model, new lexical layout) that re-opens the candidate-set question"
+ ]
+}

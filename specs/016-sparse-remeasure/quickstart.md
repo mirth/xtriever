@@ -33,5 +33,5 @@ The table and decision into `report.md`; a pointer in `specs/012-sparse-spike/re
 ```bash
 git diff --stat main -- crates/ specs/003-eval-harness specs/004-dense-stage specs/005-hybrid-pipeline specs/006-rerank-stage specs/013-lexical-quality/baselines specs/014-rerank-depth-study/runs specs/015-rerank-interpolation/baselines   # empty
 cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo nextest run --workspace && cargo deny check   # unchanged
-reference/.venv-012/bin/python -m pytest reference/tests_014 reference/tests_016 -q
+reference/.venv-012/bin/python -m pytest reference/tests_016 -q && reference/.venv-012/bin/python -m pytest reference/tests_014 -q   # separate runs: tests_014 imports from its own `conftest` module by name
 ```
