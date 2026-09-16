@@ -65,9 +65,10 @@ and the test fails).
 
 **Acceptance Scenarios**:
 
-1. **Given** a 200 ms budget in degrading mode, **When** the fixture queries run, **Then**
-   every search returns without error and at least one is partially re-ranked, with the
-   scored hits first.
+1. **Given** a short budget in degrading mode — found per query by probing, since any fixed
+   number is a statement about the machine — **When** the fixture queries run, **Then** every
+   search returns without error and at least one is partially re-ranked, with the scored hits
+   first; and with no budget at all every query is fully re-ranked and nothing is skipped.
 2. **Given** the same test, **When** the machine is slow, **Then** the outcome does not
    change.
 
@@ -105,8 +106,9 @@ shipped index adopts it on upgrade, and how to select the old order.
   (spec SC-001), so it waits rather than being marked done.
 - The regenerated goldens differ at depth 0: a defect (nothing un-re-ranked changed); stop.
 - The budget test never sees a partial re-rank on a fast machine (every query completes
-  inside 200 ms): the test must still make its point — it may shrink the budget adaptively
-  until a partial result appears, but it must never assert speed.
+  inside any small budget) or on a loaded one (no budget reaches the re-ranker): the test must
+  still make its point — it finds the budget by probing and bisecting, re-measuring each
+  time, and it must never assert speed.
 - Combined collection changes test ordering: suites must not depend on order.
 
 ## Requirements *(mandatory)*
@@ -149,9 +151,10 @@ shipped index adopts it on upgrade, and how to select the old order.
   and contains no elapsed-time assertion; the mutation check fails it.
 - **SC-004**: `pytest reference/tests_014 reference/tests_016` passes in one run.
 - **SC-005**: Both documents name the default, α, the upgrade behaviour and the override.
-- **SC-006**: `git diff --stat main -- crates/` shows only the FFI test file and, if the
-  device harness needs it, the measured-depths constant in the Swift test; no baseline
-  changes.
+- **SC-006**: `git diff --stat main -- crates/` shows only the FFI test file and the two CLI
+  Wikipedia files FR-001 and FR-005 require (`wiki/expected.rs` for depth 10, `wiki/mod.rs`
+  for the docs); the measured-depths constant and the depth-set check live in the Swift
+  harness; no baseline changes.
 
 ## Assumptions
 

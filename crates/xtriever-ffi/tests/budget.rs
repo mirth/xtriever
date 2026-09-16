@@ -42,8 +42,8 @@ fn unbudgeted() -> SearchOptions {
 /// first query took 3.4 s uncontended and the test failed on `main` (015 report F-003) — and on
 /// that machine a fixed 200 ms never even reaches the re-ranker (every stage report says
 /// `skipped`), while a fast machine finishes everything inside it. So the budget is derived from
-/// each query's own measured cost — bisected between the time to the re-rank check point (a
-/// depth-0 search) and a full search, re-measured at every step. What is then asserted is only the
+/// each query's own measured cost — endpoints *verified* by probing (a budget that scores
+/// nothing, one that re-ranks everything), then bisected, re-measured at every step. What is then asserted is only the
 /// contract: no error in degrading mode, the time-limit flag not set (the FFI attaches a clock),
 /// the scored hits first, at least one *partial* re-rank across the queries, and — the negative —
 /// with no budget everything is re-ranked and nothing skipped. No assertion mentions wall-clock time.
@@ -80,56 +80,128 @@ fn a_short_time_budget_yields_a_partial_rerank_without_an_error() {
         costs.push((q, pre, full.elapsed_ms.saturating_sub(pre)));
     }
 
-    // A budget that lands inside the re-rank stage on *this* machine, *now*: bisect per query
-    // between "too small" (the stage skipped, or nothing scored yet) and "too large" (fully
-    // re-ranked), re-measuring at every step — under a loaded machine the cost measured a
-    // moment ago does not predict the next call, so a one-shot budget derived from it misses.
+    /// What one budgeted probe did: the stage never scored (skipped, or nothing scored yet),
+    /// scored some of the head, or scored all of it.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Probe {
+        TooSmall,
+        Partial,
+        Full,
+    }
+    let probe = |q: &support::FixtureQuery, ms: u64| -> Probe {
+        let r = ffi
+            .search(q.text.clone(), budgeted(ms.max(1), false))
+            .unwrap();
+        assert!(
+            !r.stages.time_limit_ignored,
+            "{}: a clock is attached, the limit is never ignored",
+            q.id
+        );
+        let scored = r
+            .hits
+            .iter()
+            .take_while(|h| h.rerank_score.is_some())
+            .count();
+        match &r.stages.rerank {
+            None => {
+                assert_eq!(scored, 0, "{}: no re-rank report, no scored hits", q.id);
+                Probe::TooSmall
+            }
+            Some(rr) => {
+                assert_eq!(
+                    scored as u32, rr.scored,
+                    "{}: scored hits form the prefix",
+                    q.id
+                );
+                if rr.skipped.is_some() || rr.scored == 0 {
+                    Probe::TooSmall
+                } else if rr.scored < rr.candidates {
+                    Probe::Partial
+                } else {
+                    Probe::Full
+                }
+            }
+        }
+    };
+
+    // A budget that lands inside the re-rank stage on *this* machine, *now*. The elapsed times
+    // above are a starting guess, not a bracket: under a rising load the unbudgeted full time is
+    // no longer a budget that completes the call. So first *verify* the endpoints by probing —
+    // doubling the upper budget until a probe re-ranks everything, halving the lower until one
+    // scores nothing — and only then bisect between verified endpoints, re-measuring at every
+    // step. A probe that already lands on a partial result ends the search.
     let mut partial = 0;
     let mut tried = Vec::new();
     'queries: for (q, pre, rerank) in &costs {
-        let (mut lo, mut hi) = (*pre, pre + rerank);
+        let (mut lo, mut hi) = (*pre, pre + rerank.max(&1));
+        // Upper endpoint: a budget verified to re-rank everything (or a partial on the way).
+        let mut upper_ok = false;
         for _ in 0..8 {
-            let ms = (lo + hi) / 2;
-            tried.push(ms);
-            let r = ffi
-                .search(q.text.clone(), budgeted(ms.max(1), false))
-                .unwrap();
-            assert!(
-                !r.stages.time_limit_ignored,
-                "{}: a clock is attached, the limit is never ignored",
-                q.id
-            );
-            let scored = r
-                .hits
-                .iter()
-                .take_while(|h| h.rerank_score.is_some())
-                .count();
-            let Some(rr) = &r.stages.rerank else {
-                assert_eq!(scored, 0, "{}: no re-rank report, no scored hits", q.id);
-                lo = ms;
-                continue;
-            };
-            assert_eq!(
-                scored as u32, rr.scored,
-                "{}: scored hits form the prefix",
-                q.id
-            );
-            if rr.skipped.is_some() || rr.scored == 0 {
-                lo = ms; // too small: the stage did not get to score anything
-            } else if rr.scored < rr.candidates {
-                partial += 1;
-                break 'queries;
-            } else {
-                hi = ms; // too large: everything scored
+            tried.push(hi);
+            match probe(q, hi) {
+                Probe::Full => {
+                    upper_ok = true;
+                    break;
+                }
+                Probe::Partial => {
+                    partial += 1;
+                    break 'queries;
+                }
+                Probe::TooSmall => {
+                    lo = hi;
+                    hi *= 2;
+                }
             }
+        }
+        if !upper_ok {
+            continue; // this query never completed under any probed budget; try the next
+        }
+        // Lower endpoint: a budget verified to score nothing (or a partial on the way).
+        let mut lower_ok = false;
+        for _ in 0..8 {
+            tried.push(lo);
+            match probe(q, lo) {
+                Probe::TooSmall => {
+                    lower_ok = true;
+                    break;
+                }
+                Probe::Partial => {
+                    partial += 1;
+                    break 'queries;
+                }
+                Probe::Full => {
+                    hi = lo;
+                    lo /= 2;
+                    if lo == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        if !lower_ok {
+            continue;
+        }
+        // Bisect between verified endpoints; a probe may reclassify an endpoint under a
+        // changing load, which only narrows the bracket again.
+        for _ in 0..8 {
             if hi <= lo + 1 {
                 break;
+            }
+            let ms = (lo + hi) / 2;
+            tried.push(ms);
+            match probe(q, ms) {
+                Probe::TooSmall => lo = ms,
+                Probe::Full => hi = ms,
+                Probe::Partial => {
+                    partial += 1;
+                    break 'queries;
+                }
             }
         }
     }
     assert!(
         partial >= 1,
-        "no query was partially re-ranked under any of the bisected budgets {tried:?} ms"
+        "no query was partially re-ranked under any of the probed budgets {tried:?} ms"
     );
 }
 

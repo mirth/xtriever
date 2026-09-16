@@ -27,16 +27,25 @@ carries device and timestamp; the report says which feature ran it). Rebuild the
 
 ## D2 — The budget test
 
-`crates/xtriever-ffi/tests/budget.rs:32–60`: 200 ms budget, degrading mode, for each fixture
-query asserts `elapsed_ms < 1000` (the machine), `!time_limit_ignored` (a clock is attached),
-counts partially re-ranked queries and asserts the scored prefix, then `partial >= 1`. On this
-laptop today the first query takes ~3.2 s (a cold model in `Buffered` mode) and the test
-fails on `main`. **Decision**: drop the elapsed bound; keep the contract assertions; make the
-budget adaptive downward so a fast machine still produces a partial result (start at 200 ms,
-halve until `partial ≥ 1` or 10 ms — the loop is over budgets, not time); add the negative
-contract in the same test: with a 60 s budget no query is partial and none is skipped. The
-"mutation check" is a one-off verification for the report: comment out the engine's budget
-check point and confirm the test fails on `partial` — recorded, not committed.
+`crates/xtriever-ffi/tests/budget.rs:32–60` (before): 200 ms budget, degrading mode, for each
+fixture query asserts `elapsed_ms < 1000` (the machine), `!time_limit_ignored` (a clock is
+attached), counts partially re-ranked queries and asserts the scored prefix, then `partial >=
+1`. On this laptop today the first query takes ~3.4 s (a cold model in `Buffered` mode) and
+the test fails on `main`. **Decision (final, after three iterations recorded in the report)**:
+no number about the machine anywhere. Per query, an unbudgeted depth-0 search and an
+unbudgeted full search give the negative half (no budget → nothing skipped, everything
+re-ranked) and a starting guess for the budget; the endpoints are then *verified* by probing
+(double the upper budget until a probe re-ranks everything, halve the lower until one scores
+nothing) and bisected between them, every probe re-measuring the machine as it is now and
+asserting only the contract (`Ok`, `!time_limit_ignored`, scored hits first); the test passes
+when any query lands on a partial re-rank. Why not a fixed budget: too small on a slow
+machine (the stage is skipped before scoring anything), too large on a fast one. Why not a
+budget derived once from measured cost: under a loaded machine the cost measured a moment
+earlier does not predict the next call. Why not a "generous" 60 s negative: it was exhausted
+once under 22 parallel model-backed tests. The mutation check for the report: hand the
+re-ranker no remaining budget (`search.rs` `max_time: remaining` → `None`) — the test must
+fail on `partial >= 1`; restored, never committed. (Check point C is a different path: with it
+removed the stage is never *skipped*, but the re-ranker still honours its remaining budget.)
 
 ## D3 — Collecting the reference suites together
 

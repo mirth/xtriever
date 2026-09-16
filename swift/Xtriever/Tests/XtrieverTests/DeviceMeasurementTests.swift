@@ -201,6 +201,12 @@ final class DeviceMeasurementTests: XCTestCase {
         for tq in truth.queries {
             guard let byDepth = responses[tq.id] else { incomplete.append("\(tq.id): not searched"); continue }
             compared += 1
+            // The goldens must cover exactly the measured depths: a stale bundled file with fewer
+            // depths would otherwise never compare the missing one and still read PASS (017).
+            let truthDepths = Set(tq.depths.keys.compactMap(UInt32.init))
+            if truthDepths != Set(Self.depths) {
+                incomplete.append("\(tq.id): goldens carry depths \(truthDepths.sorted()), the harness measures \(Self.depths)")
+            }
             var lexicalIdentical = true
             var fusedIdentical = true
             for (depthKey, want) in tq.depths {

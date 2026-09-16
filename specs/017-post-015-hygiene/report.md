@@ -100,6 +100,25 @@ that `wiki expected` follows the index's recorded mode.
 | SC-005 both documents name the default, α, upgrade, override | **PASS** |
 | SC-006 `crates/` diff = the FFI test, the two wiki files; no baseline change | **PASS** (the harness's depth constant is under `swift/`) |
 
+## Review round 1 (Copilot, eight comments, all taken)
+
+1. The bisection's upper endpoint was an unbudgeted elapsed time, not a budget verified to
+   complete the call; under a rising load every probe could skip and the test would fail on
+   load again. Endpoints are now **verified by probing** (double the upper budget until a probe
+   re-ranks everything, halve the lower until one scores nothing) before bisecting; a partial
+   probe anywhere ends the search. Re-run alone and inside the contended suite.
+2. The device harness compared only the depths the *goldens* carried, so a stale bundled file
+   with 0 / 5 / 20 would read PASS without ever comparing depth 10. It now records an
+   `incomplete` entry (→ FAIL) when a truth query's depth set is not exactly `Self.depths`.
+   The two committed records were produced against goldens carrying all four depths (80
+   per-query entries = 20 × 4 in each record); the check guards future runs.
+3.–6., 8. The data model, plan summary, research D2, quickstart mutation pointer and tasks
+   T002/T003 described earlier forms of the test (fixed 200 → 10 ms budgets, a 60 s negative,
+   check point C as the mutation); all now describe the delivered test and the mutation that
+   was actually used (`max_time: remaining` → `None`; check point C is a different path).
+7. SC-006 allowed only the FFI test under `crates/` while FR-001/FR-005 require the two CLI
+   Wikipedia files; SC-006 now names them.
+
 ## Deliberately not done
 
 No default change (depth 10 is a measurement; the pipeline stays at 20); no Wikipedia index

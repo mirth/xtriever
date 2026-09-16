@@ -9,9 +9,11 @@ cargo nextest run -p xtriever-ffi --run-ignored all -E 'test(a_short_time_budget
 grep -n "elapsed_ms <" crates/xtriever-ffi/tests/budget.rs                            # nothing
 ```
 
-Mutation check (recorded in the report, not committed): comment out check point C in
-`crates/xtriever-pipeline/src/search.rs` `rerank()` → the test fails on `partial >= 1` /
-"no query was partially re-ranked"; restore.
+Mutation check (recorded in the report, not committed): in `crates/xtriever-pipeline/src/search.rs`
+`rerank()`, hand the re-ranker no remaining budget — `max_time: remaining` → `max_time: None` —
+so it scores every pair regardless of the caller's limit → the test fails on
+"no query was partially re-ranked under any of the probed budgets"; restore from HEAD
+(`git checkout HEAD -- crates/xtriever-pipeline/src/search.rs`).
 
 ## Step 2 — The host goldens and the device run
 
