@@ -11,7 +11,7 @@ Combining the fused signal with the cross-encoder score inside the head does: li
 interpolation at α = 0.5, depth 20 scores 0.7207 / 0.3622 / 0.3910 nDCG@10 — above the
 un-re-ranked list on all three sets (+0.6 / +0.9 / +2.2 points) and a three-set mean of
 0.4913 against the current default's 0.4768 (+0.0145), for the same 20 cross-encoder calls per
-query. Fifteen of the twenty interpolation rows qualify; the winner is the highest mean,
+query. Fifteen of the sixteen interpolation rows qualify (only `rrf-d5`, 0.4812, misses the floor); the winner is the highest mean,
 depth 50 (0.4911) offering nothing more for 2.5× the calls. Every cell was verified by the
 003 reference; the offline derivation reproduced the 013 depth-20 run and an end-to-end
 depth-5 run exactly. Nothing in the pipeline changes here; the follow-up is named below.

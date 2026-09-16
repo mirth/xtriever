@@ -30,7 +30,7 @@ All 21 rows: `specs/014-rerank-depth-study/runs/table.md`; every cell verified t
 ## The decision (rule fixed in the spec before any run)
 
 Qualifies iff mean ≥ 0.4768 + 0.005 and no dataset > 0.005 below depth 0; highest qualifying
-mean wins, ties by the smaller depth. **Fifteen interpolation rows qualify, no replace-order
+mean wins, ties by the smaller depth. **Fifteen of the sixteen interpolation rows qualify (only `rrf-d5` misses the floor), no replace-order
 row does. Winner: `lin-0.5` at depth 20** — +1.45 mean points over today's default at the same
 20 cross-encoder calls per query, positive on every dataset.
 
