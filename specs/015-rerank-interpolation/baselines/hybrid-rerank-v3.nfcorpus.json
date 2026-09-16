@@ -2,7 +2,7 @@
   "config": "hybrid-rerank-v3",
   "dataset": "nfcorpus",
   "lexical_commit": "94ddbe67f926badf962b93e8bd29d687e300189a",
-  "harness_commit": "1290eb6e6bf5b47fe365fe36d0435e5cd0d7350f",
+  "harness_commit": "28d5a97d1face95adb04e74ffc199bb40878b9da",
   "dataset_hashes": {
     "corpus.jsonl": "10cc83ef1826b1425e6a87090b5140b39b27755d5a27e48215a88611c899991f",
     "qrels/test.tsv": "f8fba6ef3d4dd9c3a242a8ba4ae38276fc3622fce7dcbae764766d564542fd2a",
@@ -1326,6 +1326,11 @@
     "thread_count": 4,
     "baseline": "guarded",
     "reranker_model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2@233902d25c440f23af6f7d6e94d2946bac0bee0a;weights=sha256:821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=f32;engine=candle-0.9.2",
-    "rerank_depth": 20
+    "rerank_depth": 20,
+    "rerank_mode": {
+      "interpolate": {
+        "alpha": 0.5
+      }
+    }
   }
 }
