@@ -1,7 +1,7 @@
 # Report: The Python Wikipedia Demo
 
-**Feature**: 019 · **Branch**: `019-python-wiki-demo` · **Status**: PR A done (search, about,
-measure, the host record); PR B (build, slice parity) follows the merge.
+**Feature**: 019 · **Branch**: `019-python-wiki-demo` · **Status**: PR A merged (search, about,
+measure, the host record); PR B done (build, slice parity).
 
 ## Verdict (PR A)
 
@@ -145,6 +145,88 @@ tolerance — and the 007 goldens through the same comparison → PASS, all bits
 
 The demo suite after the round: **54 passed, 0 skipped** (41 model-free). The record and
 the Rust gate are unaffected (no engine value changed; the goldens tests still pass on bits).
+
+## Red checkpoint B (2026-09-17)
+
+`pytest tests/test_chunking.py tests/test_rules.py tests/test_build.py` at commit B1:
+`test_chunking` and `test_rules` fail on import (`wikidemo.chunking`, `wikidemo.rules` do
+not exist); `test_build` 2 failed, 4 errors, 1 passed — the pass is `--limit 0` → exit 2,
+which argparse gives for the not-yet-offered subcommand as well.
+
+## US3 — the index built from scratch (PR B)
+
+`wikidemo build --limit 2000 --out target/xt-wiki-slice-py` (this laptop, 10 threads, both
+models memory-mapped, the snapshot verified against the manifest first):
+
+| | Python demo (`wikidemo build`) | Rust CLI (`xtriever wiki build --limit 2000`) |
+|---|---|---|
+| articles read / excluded / selected | 2,000 / 30 (15 disambiguation, 5 "may refer to", 10 "may mean") / 1,970 | 2,000 / 30 / 1,970 |
+| passages | **8,529** | **8,529** |
+| corpus identity | `20949fb4…966133` | `20949fb4…966133` — **equal** (`corpus.json` identical, counts included) |
+| `index/` bytes | 24,352 KiB | 24,352 KiB; **`dense/index.bin` byte-identical** (`cmp`) |
+| phases | verify 0.15 s · chunk 4.3 s · embed+ingest **871 s** (102 ms/passage) · commit 0.13 s · merge 0.28 s · **total 14.6 min** | 0.7 min (two cache shards hit; the 337 uncached passages at 101 ms each) |
+
+`wikidemo measure --artefact target/xt-wiki-slice-py --against target/xt-wiki-slice-rs` —
+`runs/slice-MacBookPro18,3-20260916T232213Z-mmap-threadsdefault.json`: **parity PASS** with
+the order of ids checked at every depth (20/20 queries), lexical bit-identical 20/20, dense
+and re-rank max |Δ| 0, **800/800 hits identical on every score bit**; `against` PASS
+(identity, counts and document counts equal). Research D8's expectation — one-passage
+embedding on both sides gives the same vectors — held to the byte.
+
+Also verified by hand: `about` on the slice shows `partial: first 2,000 articles`; `build` into
+an existing `--out` is refused (exit 1, nothing touched); `--limit 0` is a usage error (exit 2);
+without `--limit` the cost line prints and a Ctrl-C within the pause leaves nothing behind;
+`search --artefact target/xt-wiki-slice-py "April"` returns the article's passages with marks.
+
+The recorded `against.artefact` path is repository-relative: the first record of this run
+carried the absolute path (and with it the user's home directory) — caught by the
+identifier grep of the gate, fixed in `measure` (`repo_relative`, tested), and the
+comparison re-run for the committed record.
+
+**Owner decision (2026-09-17)**: this iteration builds the 2,000-article slice only; the full
+corpus build (≈ 11 h) is documented with its cost and not run — no record is claimed for it.
+
+`test_build.py` (7 passed, models): a three-article synthetic snapshot with its own manifest →
+the 008-shaped artefact (sidecar with `partial: 3`, the per-rule exclusion counts, the
+four-line attribution, `wiki-build.json`), searchable through `search`, `about` reading the
+sidecar; the refusals (existing output, hash mismatch naming both hashes and
+`scripts/fetch-wiki.sh`, `--limit 0`, a URL that is not the derived one — nothing left on
+disk in each case). `test_chunking.py` (5 passed): the 008 fixtures byte for byte — set A
+48 cases, set B 9 articles through the fixture's `unit_costs` — and the document shaping;
+`test_rules.py` (3 passed): the three manifest rules, the character window, first match wins.
+
+## Success criteria (PR B)
+
+| SC | Result |
+|---|---|
+| SC-005 | 2,000 articles (≥ 1,000): same ids in the same order at every depth for all twenty queries, 800/800 bits, identity and counts equal; built in 14.6 min (< 30) — **met** |
+| SC-007 | still empty — **met** |
+
+## Gate (PR B)
+
+The demo suite **70 passed** (50 model-free; per file: about 2, build 7, chunking 5, cli 3,
+hits 6, inputs 4, measure 15, record 5, render 10, rules 3, search 10); `cargo fmt --check`, `clippy`, `deny` ok
+(`nextest` 279 passed at PR A; no Rust changed since — `git diff --stat main -- crates/`
+empty); no hostname, user name or home directory in `specs/019-python-wiki-demo/` or
+`apps/python-wiki-demo/` (grepped); the slice artefacts stay under `target/` (gitignored).
+
+## Deliberately not done (PR B)
+
+- The full-corpus build (owner decision above) — documented, not run.
+- A `contents`-schema build: the demo keeps 008's schema so the Rust build is its oracle;
+  the README shows the one-line 013 change for a new corpus.
+- The Rust embedding cache is not read (D8): the slice's 14.6 min is the honest cost.
+- The repository has no root `README.md` to point from (spec FR-020 assumed one); the
+  pointers live in `apps/ios-wiki-demo/README.md` and the 009 spec/report.
+
+## Review round 2 (Copilot, 2 comments — both taken)
+
+1. The README's sections were not in run order (FR-020) — reordered: Inputs → Install →
+   **In run order** (fetch, install, build a slice, search, explain, about, measure) →
+   Build → Search → About → Measure.
+2. The per-file test counts were wrong (chunking 6 → **5**, rules 4 → **3**); the suite
+   total is **70** (the `repo_relative` test was added after the gate's 69 run) — the per-file
+   list is now in the gate section, from `pytest --collect-only`.
 
 ## Gate (PR A)
 

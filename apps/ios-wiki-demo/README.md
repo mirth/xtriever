@@ -16,6 +16,12 @@ The previous order is one option away — `SearchOptions(k: 10, rerankMode: .rep
 `hit.explain?.rerankCombined` is the score a re-ranked hit was ordered by. Numbers:
 `specs/015-rerank-interpolation/report.md`.
 
+**The second demo.** The same corpus, engine and measurement queries from a Python command
+line — `apps/python-wiki-demo/` (Feature 019): `wikidemo search`, `about`, `build` (the index
+from the raw snapshot through the package alone) and `measure` (the laptop against the same
+host goldens this app's parity check uses; its record beside this app's under
+`specs/019-python-wiki-demo/runs/`).
+
 **Re-rank depth.** The app re-ranks the first **10** fused candidates by default (Feature 018);
 the engine's own default is 20. Feature 014 measured depth 10 at −0.3 mean nDCG@10 on the BEIR
 sets for half the cross-encoder calls, and Feature 017 measured the reference phone at 1.4 s

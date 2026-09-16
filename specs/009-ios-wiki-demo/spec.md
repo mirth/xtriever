@@ -262,7 +262,8 @@ re-rank stage (or the dense stage) cut short and the list still arrives.
   *(Owner decision 2026-09-14, Q1 = A: submit only.)*
 - **Default budget**: 3,000 ms and re-rank depth 20 at the pipeline defaults *(since Feature
   018 the pipeline's default is still 20, but the demo app overrides it to 10 by default —
-  `specs/018-demo-rerank-depth-10/report.md`)* — the plan sets
+  `specs/018-demo-rerank-depth-10/report.md`; Feature 019's Python demo over the same corpus
+  uses the same default and the same host goldens — `specs/019-python-wiki-demo/report.md`)* — the plan sets
   the number from the 008 records so that the default never cuts a stage on the reference
   device. **Thread count**: the process default — as many threads as the inference library
   takes on the device, bounded by common sense (004 F-005: no gain beyond ~2–4 cores; the

@@ -1,52 +1,42 @@
-# 019 python wiki demo — PR A: search, about, measure
+# 019 python wiki demo — PR B: build from the raw snapshot, slice parity
 
-The second demo of the engine over the same corpus as the iOS one: a Python command line
-at `apps/python-wiki-demo/` over the Feature 011 package. No engine, FFI, format,
-package-wire or baseline change (`git diff --stat main -- crates/ swift/ python/src
-specs/*/baselines` is empty). Spec, plan, research, contracts and quickstart under
-`specs/019-python-wiki-demo/`; PR B (the build from the raw snapshot and the slice parity
-check) follows.
+`wikidemo build --limit N --out DIR` turns the raw Simple English Wikipedia snapshot into a
+searchable 008-shaped artefact through the `xtriever` package alone — verify the snapshot
+against its manifest, drop the disambiguation pages by the manifest's rules, cut each article
+into passages that fit the embedder's window (the 008 contract chunker, priced by the pinned
+tokenizer), `add` in batches of 4,096 (the engine embeds), `commit`, `merge`, write
+`corpus.json` / `ATTRIBUTION.txt` / `wiki-build.json`, rename `<out>.partial` into place —
+and `wikidemo measure --against DIR2` checks a demo-built slice against the Rust build of the
+same slice. No engine, FFI, format, package-wire or baseline change.
 
-**What it does**
+**The check** (`specs/019-python-wiki-demo/runs/slice-MacBookPro18,3-…json`): the first
+2,000 articles built by both — 1,970 selected, **8,529 passages** each, the same corpus
+identity, `corpus.json` identical, and `dense/index.bin` **byte-identical**. The twenty
+measurement queries at depths 0 / 5 / 10 / 20: **the same ids in the same order at every
+depth, 800/800 hits identical on every score bit**; identity, counts and document counts
+equal. The Python build took 14.6 min (102 ms per passage — the Rust build's own rate on a
+cache miss); the full corpus (≈ 11 h) is documented with its cost and, by the owner's
+decision, not run this iteration.
 
-- `wikidemo search "why is the sky blue"` — the fused (lexical + dense) list printed first,
-  then the re-ranked list with a mark per hit (`↑n` / `↓n` / `=` / `new`, dropped hits
-  named), each hit's title / id / position / article URL / passage derived from the engine's
-  hit by the 008 convention (the Swift package's and the CLI's rules, the CLI's eleven URL
-  cases in the tests); `--explain` for the eight features under the engine's names; the
-  engine's stage report, wall clocks and peak resident size. Flags: `-k`, `--depth
-  {0,5,10,20}` (default **10** — the 018 trade-off in the help), `--budget-ms`, `--strict`,
-  `--mode {interpolate,replace}`, `--snippet`.
-- `wikidemo about` — corpus identity and counts from `corpus.json`, `info()`'s fields, the
-  engine's re-rank depth beside the demo's default, the attribution verbatim (byte-identical
-  to `ATTRIBUTION.txt`, tested).
-- `wikidemo measure` — the twenty measurement queries at depths 0 / 5 / 10 / 20 compared
-  with the host goldens by the device test's rule, and a record with per-depth latency and
-  footprint.
+**Tests** (committed red first: two import errors, build 2 failed / 4 errors): the demo
+suite **70 passed** (50 model-free) — the chunker replays `reference/fixtures/008/`
+byte for byte (48 + 9 cases, no tokenizer needed), the rules (character window, first match
+wins), and a synthetic three-article snapshot built end to end with its sidecar, attribution
+and record, searched, and the four refusals (existing output, hash mismatch, `--limit 0`,
+a URL that is not the derived one — nothing left on disk).
 
-**The record** (`specs/019-python-wiki-demo/runs/MacBookPro18,3-…-mmap-threadsdefault.json`):
-parity **PASS** — lexical bit-identical 20/20, fused order 20/20, dense and re-rank max |Δ|
-0, **800 of 800 hits identical on every score bit**. Medians: fused **246 ms**, re-ranked at
-depth 10 **1,005 ms**, total 1,251 ms; depth 20 1,683 ms (the iPhone 16e at depth 10, 018:
-341.5 / 1,369 / 1,704.5 ms). Peak resident 1,029 MB — includes the memory-mapped 1 GB index;
-the phone's 600 MB ceiling is recorded for comparison only.
+**Docs**: the demo README's build section (the recipe module by module; the 013 note — one
+joined `contents` field measured +5.9 SciFact / +1.1 NFCorpus, with the one-line change for
+a new corpus — and why this build keeps 008's schema: the Rust build is its oracle);
+pointers from `apps/ios-wiki-demo/README.md` and the 009 spec/report.
 
-**Tests** (Rule 4: committed red first, 7 collection errors at A1): the demo suite **54
-passed** — 41 model-free (rendering line for line, the eleven URL cases, the iOS
-mark rule, the identity hash of the shipped corpus, inputs and producers, the comparison
-rule on synthetic truths) and 12 model-backed against the 007 fixture and its goldens (ids
-and every score bit). The "no passages found" path — unreachable while the dense stage always
-returns candidates — is exercised through a stubbed empty response. Package suite `python/tests` 33 passed, untouched.
+**Gate**: fmt, clippy, deny unchanged; `git diff --stat main -- crates/ swift/ python/src
+specs/*/baselines` empty; no identifiers in any record (a first slice record carried the
+absolute artefact path — caught by the gate's grep, `measure` now records repository-relative
+paths, the run repeated).
 
-**Gate**: fmt, clippy, `nextest` (279 passed), deny — unchanged; no eval deltas because
-nothing ranking-affecting changed.
-
-**Review round 1** (8 comments, all taken): `build` not offered until PR B; `--against`
-checks order at every depth and fails on unequal identity / counts; the empty-result path
-tested through a stub; `--budget-ms` non-negative; the fused block printed before the
-re-ranked call starts; the ceiling inclusive; `--mode` explicit with the recorded mode
-labelled separately in About.
-
-**Not in this PR**: `build` (PR B), a CI job (research D18), persisted settings, `--json`.
+**Review round 2** (2 comments, both taken): the README in run order (fetch → install →
+build a slice → search → explain → about → measure); the per-file test counts corrected
+(chunking 5, rules 3; 70 in all).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

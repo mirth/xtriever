@@ -1,5 +1,5 @@
-"""The ``wikidemo`` command line (contracts/cli.md): ``search``, ``about``, ``measure``
-(``build`` lands with PR B). Exit 0 on success (an empty result is success), 1 on a missing input, an engine
+"""The ``wikidemo`` command line (contracts/cli.md): ``search``, ``about``, ``build``,
+``measure``. Exit 0 on success (an empty result is success), 1 on a missing input, an engine
 error, a refused build or a parity FAIL, 2 on a usage error.
 """
 
@@ -60,7 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("about", help="the corpus, the models, the index and the attribution")
     _common(a)
 
-    # `build` (the raw snapshot to an index with the 008 recipe) lands with PR B.
+    b = sub.add_parser("build", help="build an index from the raw snapshot with the Feature 008 recipe, through the package alone")
+    _common(b)
+    b.add_argument("--out", required=True, help="output directory (must not exist; written as <out>.partial until complete)")
+    b.add_argument("--limit", type=_positive, default=None, help="the first N articles only; without it the whole corpus (hours)")
+    b.add_argument("--snapshot", help="the snapshot JSONL; default reference/datasets/wiki/simple.jsonl")
+    b.add_argument("--manifest", help="the snapshot manifest; default reference/datasets/wiki-manifest.json")
 
     m = sub.add_parser("measure", help="run the 20 measurement queries at depths 0/5/10/20, check parity, write a record")
     _common(m)
@@ -74,6 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def needs_for(args) -> list[str]:
     """The inputs a command must find before anything loads (contracts/cli.md)."""
+    if args.command == "build":
+        return ["embedder", "reranker", "snapshot", "manifest"]
     if args.command == "measure":
         needs = ["artefact", "embedder", "reranker", "queries"]
         return needs if args.against else needs + ["expected"]
@@ -114,6 +121,12 @@ def cmd_search(args, paths) -> int:
     return 0
 
 
+def cmd_build(args, paths) -> int:
+    from .build import run_build
+
+    return run_build(args, paths)
+
+
 def cmd_about(args, paths) -> int:
     from .about import run_about
 
@@ -126,7 +139,7 @@ def cmd_measure(args, paths) -> int:
     return run_measure(args, paths)
 
 
-COMMANDS = {"search": cmd_search, "about": cmd_about, "measure": cmd_measure}
+COMMANDS = {"search": cmd_search, "about": cmd_about, "build": cmd_build, "measure": cmd_measure}
 
 
 def main(argv=None) -> int:
