@@ -49,7 +49,9 @@ settings, about). ~760 lines of app Swift, ~480 of tests, one UI walk. Staged an
 | Threads | `effectiveThreads: 6` — the 16e's active processor count, candle's default when `RAYON_NUM_THREADS` is unset (recorded as such; the engine exposes no readback) |
 
 > Feature 018 moved the app's default re-rank depth to 10; its record beside this one:
-> `specs/018-demo-rerank-depth-10/runs/`.
+> `specs/018-demo-rerank-depth-10/runs/`. Feature 019's Python demo runs the same queries on
+> the laptop against the same host goldens (parity PASS, 800/800 bits): fused 246 ms,
+> re-ranked (depth 10) 1,005 ms, total 1,251 ms — `specs/019-python-wiki-demo/runs/`.
 
 vs 008's harness on the same index (run 2, default threads): depth-0 339 vs 339 ms; depth-20
 2,288 vs 2,285 ms; peak 533 vs 536 MB. The app costs nothing measurable beyond the fused pass
