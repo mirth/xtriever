@@ -33,7 +33,9 @@ struct AboutView: View {
                     row("passages (documents)", info.info.documents.formatted())
                     row("format version", "\(info.info.formatVersion)")
                     row("candidate depth", "\(info.info.candidateDepth)")
-                    row("re-rank depth", "\(info.info.rerankDepth)")
+                    row("re-rank depth (engine default)", "\(info.info.rerankDepth)")
+                    row("re-rank depth (app default)", "\(Settings().rerankDepth)")
+                    Text("The app re-ranks fewer candidates than the engine's default; see Settings.").font(.footnote).foregroundStyle(.secondary)
                     row("rrf k", "\(info.info.rrfK)")
                     VStack(alignment: .leading) {
                         Text("embedder").font(.footnote)
