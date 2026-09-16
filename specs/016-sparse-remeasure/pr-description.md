@@ -1,4 +1,4 @@
-# 016 sparse re-measurement — 012's GO withdrawn
+# 016 sparse re-measurement — not the default; kept as an opt-in stage
 
 **The question**: 012 said GO to an inference-free sparse stage on +1.6 mean nDCG@10 over a
 0.468 pipeline. The pipeline is now at 0.4913 (013 joined lexical field, 015 interpolated
@@ -27,8 +27,9 @@ list for list; re-ranked = `hybrid-rerank-v3` list for list with zero reference 
 ## Decision (rule fixed in the spec before any run)
 
 Specify the stage only if the re-ranked three-way mean ≥ 0.4913 + 0.005 = 0.4963 with no
-dataset > 0.005 below v3. It reaches **0.4941** — nothing hurt, floor not met. **012's GO is
-withdrawn.** 013 and 015 took the gain by cheaper means: the joined field removed the NFCorpus
+dataset > 0.005 below v3. It reaches **0.4941** — nothing hurt, floor not met: **not the default
+stage.** Owner's decision: keep it as an **opt-in option** (off by default) for FiQA-shaped
+corpora, to be specified as its own feature. 013 and 015 took the gain by cheaper means: the joined field removed the NFCorpus
 contribution, the interpolating re-ranker already reads the cross-encoder's view of the head.
 
 Reopening conditions (in `runs/decision.json` and the report): a FiQA-shaped corpus wanting a

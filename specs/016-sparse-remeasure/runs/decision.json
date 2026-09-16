@@ -27,5 +27,10 @@
   "an encoder that is cheaper to run at index time or runnable inside the Rust pipeline (012 F-004: corpus encoding must happen outside Rust today)",
   "a measured need at the head that the cross-encoder does not cover \u2014 e.g. a re-rank depth the phone cannot afford",
   "a change to the fused signal (new dense model, new lexical layout) that re-opens the candidate-set question"
- ]
+ ],
+ "owner_decision": {
+  "date": "2026-09-16",
+  "decision": "keep the sparse stage as an opt-in option (off by default), not as the default pipeline stage",
+  "rationale": "the rule decides the default only; dense+dot reaches 0.4101 on FiQA (+1.9 over hybrid-rerank-v3) \u2014 FiQA-shaped corpora (no titles, vocabulary mismatch) are the use case; the cost is paid only by indexes that build the sparse field"
+ }
 }

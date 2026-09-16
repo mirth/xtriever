@@ -128,7 +128,7 @@ depth 20; ADR-0011's SciFact loss stands as recorded.
   interpolated re-rank alone. The sparse stage's remaining case is FiQA-shaped corpora
   (no titles, vocabulary mismatch) and the phone's cost profile; its expected gain needs
   re-measuring from `lin-0.5-d20` before it is specified.
-  **Re-read in 016**: +0.0028 mean after re-ranking; 012's GO withdrawn under the rule fixed there
+  **Re-read in 016**: +0.0028 mean after re-ranking; not the default under the rule fixed there; kept as an opt-in stage by the owner
   (`specs/016-sparse-remeasure/report.md`).
 
 ## Review of the derivation's precision

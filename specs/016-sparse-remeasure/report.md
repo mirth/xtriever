@@ -1,6 +1,6 @@
 # Report: Sparse Stage Re-measurement
 
-**Feature**: `016-sparse-remeasure` | **Date**: 2026-09-16 | **Status**: done — **012's GO withdrawn** under the fixed rule (re-ranked three-way mean 0.4941 vs the 0.4963 floor)
+**Feature**: `016-sparse-remeasure` | **Date**: 2026-09-16 | **Status**: done — **not the default** under the fixed rule (re-ranked three-way mean 0.4941 vs the 0.4963 floor); **kept as an opt-in stage by the owner's decision** (below)
 
 ## Verdict
 
@@ -70,7 +70,13 @@ With agreement at 10⁻⁵ the estimate is, for practical purposes, what the eng
 Rule, fixed before any run: specify the sparse stage only if `lex2+dense+dot-rr`'s three-set
 mean nDCG@10 ≥ 0.4913 + 0.005 = 0.4963 **and** no dataset is more than 0.005 below
 `hybrid-rerank-v3`. Cells: 0.7230 / 0.3624 / 0.3968, mean **0.4941**; deltas vs v3 +0.0023 /
-+0.0002 / +0.0058 — the drop bound holds, the floor does not. **Outcome: 012's GO withdrawn.**
++0.0002 / +0.0058 — the drop bound holds, the floor does not. **Outcome under the rule: not the default pipeline stage** (012's GO as stated — a default stage — is withdrawn).
+
+**Owner's decision (2026-09-16)**: keep the sparse stage as an **opt-in option**, off by default —
+built only for indexes that carry the sparse field and switched per search. The rule decided the
+default; the FiQA-shaped case (`dense+dot-rr` 0.4101, +1.9 over v3) is the use case the option
+serves. Its specification is a feature of its own (a sparse field and scorer, fusion over a
+selectable set of first-stage lists, a descriptor flag with an ADR, the surfaces).
 
 **What would reopen it** (`runs/decision.json`):
 - a corpus shaped like FiQA — no titles, colloquial queries, heavy vocabulary mismatch —
