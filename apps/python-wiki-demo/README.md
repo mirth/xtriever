@@ -5,8 +5,8 @@ a command line that searches all of Simple English Wikipedia through the `xtriev
 package and shows the pipeline working — the fused (lexical + dense) list first, then the
 re-ranked order with what moved, each hit's eight explained features under the engine's
 names, the engine's stage report, and the corpus's identity and licence attribution. It
-also builds such an index from the raw snapshot with nothing but the package (`build`,
-Feature 019 PR B), and checks itself against the goldens the phone is checked against
+also builds such an index from the raw snapshot with nothing but the package (`build`), and
+checks itself against the goldens the phone is checked against
 (`measure`). Feature 019 (`specs/019-python-wiki-demo/`).
 
 The demo owns no retrieval logic: every number it prints is the engine's or a wall clock
@@ -98,11 +98,55 @@ ceiling is a phone rule, recorded for comparison only.
 
 ## Build
 
-*Lands with Feature 019's second PR:* `wikidemo build --limit N --out DIR` — the raw
-snapshot to a searchable index with the Feature 008 recipe through the package alone, and
-`wikidemo measure --artefact DIR --against DIR2` to check a demo-built slice against the
-Rust build of the same slice (ids in the same order at every depth, identity and counts
-equal). Until then `build` is not offered.
+```bash
+wikidemo build --limit 2000 --out target/xt-wiki-slice-py     # the first 2,000 articles: ~8.5k passages, minutes
+wikidemo search --artefact target/xt-wiki-slice-py "April"
+wikidemo build --out target/xt-wiki-py                         # the whole corpus: 427,947 passages ≈ 11 h on a laptop
+```
+
+The recipe, module by module, is the one the shipped index was built with (Feature 008):
+
+1. **verify** (`build.py`): the snapshot's bytes and sha256 against
+   `reference/datasets/wiki-manifest.json` before a line is read — a mismatch names both
+   hashes and `scripts/fetch-wiki.sh`;
+2. **exclude** (`rules.py`): the manifest's rules in order, first match wins —
+   `" (disambiguation)"` titles, "may refer to" / "may mean" within the first 300 characters;
+3. **chunk** (`chunking.py`): each article into passages that fit the embedder's window —
+   paragraphs, then sentences, then words, then fragments, priced by the embedder's own
+   tokenizer (`tokenizers==0.23.2`, the engine's version) with a budget of
+   `256 − token_count(title)`; the implementation is the 008 contract's reference, replayed
+   byte for byte against `reference/fixtures/008/` in the tests;
+4. **add** through the package: one `Document` per passage — `external_id = "<article id>#<ordinal>"`,
+   fields `title` and `text` (`"<title>\n\n<passage>"`), `ChunkInfo(parent, ordinal, byte_start, byte_end)` —
+   in batches of 4,096; the engine embeds each passage (one at a time, exactly as the Rust build does);
+5. **commit**, **merge**;
+6. the **sidecars**: `index/corpus.json` (the corpus identity — the same hash as the Rust
+   build's, `record.py`), `ATTRIBUTION.txt`, `wiki-build.json`; then `<out>.partial` is renamed
+   to `<out>` — nothing openable exists at `<out>` before the build is complete, and an
+   existing `<out>` is refused.
+
+**Schema.** The build keeps the shipped index's schema — `title` boosted 2.0 beside `text`,
+the dense field `text` — so that the Rust build is its oracle and a full build matches the
+phone's goldens. Feature 013 measured one joined `contents` field **better** on the BEIR sets
+(+5.9 nDCG@10 on SciFact, +1.1 on NFCorpus): for a new corpus of your own, index one text
+field and make it the dense field —
+
+```python
+IndexConfig(fields=[FieldDef(name="contents", kind=FieldKind.TEXT(analyzer="standard_en"))], dense_fields=["contents"])
+```
+
+— and put the title on the first line of `contents` as this corpus does.
+
+**The check.** A demo-built slice is compared with the Rust build of the same slice:
+
+```bash
+cargo run --release -p xtriever-cli -- wiki build --limit 2000 --out target/xt-wiki-slice-rs
+wikidemo measure --artefact target/xt-wiki-slice-py --against target/xt-wiki-slice-rs
+```
+
+The twenty queries at depths 0 / 5 / 10 / 20 must give the same ids in the same order at every
+depth, and the two `corpus.json`s the same identity and counts; the record under
+`specs/019-python-wiki-demo/runs/slice-…` also says how many hits matched on every score bit.
 
 ## Threads
 

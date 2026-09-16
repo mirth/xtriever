@@ -294,6 +294,16 @@ def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_
     return record
 
 
+def repo_relative(path: Path) -> str:
+    """A path as recorded: relative to the repository root when inside it (an absolute path
+    would carry the user's home directory into a committed record)."""
+    root = repo_root()
+    try:
+        return str(path.resolve().relative_to(root))
+    except ValueError:
+        return path.name
+
+
 def index_meta(opened: Opened, sidecar: dict | None) -> dict:
     info = opened.info
     return {
@@ -365,7 +375,7 @@ def run_measure(args, paths: Paths) -> int:
                 truth[q["id"]][depth] = truth_from_hits(r.hits)
         other_sidecar = read_sidecar(against_paths)
         against = {
-            "artefact": str(against_paths.artefact),
+            "artefact": repo_relative(against_paths.artefact),
             "corpusIdentity": None if other_sidecar is None else other_sidecar.get("corpus_identity"),
             "identityEqual": (sidecar or {}).get("corpus_identity") == (other_sidecar or {}).get("corpus_identity"),
             "counts": None if other_sidecar is None else other_sidecar.get("counts"),

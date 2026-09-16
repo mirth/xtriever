@@ -13,6 +13,7 @@ import xtriever
 from conftest import EMBEDDER, RERANKER, f32_bits, f64_bits
 from wikidemo.measure import (
     QueryRun,
+    repo_relative,
     TruthHit,
     compare,
     load_truth,
@@ -209,6 +210,13 @@ def test_medians_and_latency_keys():
         "medianTotalMs": 902,
         "maxTotalMs": 904,
     }
+
+
+def test_recorded_paths_are_repo_relative():
+    from conftest import REPO
+
+    assert repo_relative(REPO / "target/xt-wiki-slice-rs") == "target/xt-wiki-slice-rs"
+    assert "/" not in repo_relative(REPO.parent / "elsewhere")  # outside the checkout: the name only
 
 
 def test_record_shape_and_no_hostname():

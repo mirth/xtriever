@@ -49,7 +49,7 @@ def test_negative_budget_is_a_usage_error():
     assert code == 2
 
 
-def test_build_is_not_offered_before_pr_b():
-    code, out, err = run_cli(["build", "--out", "/tmp/x"])
-    assert code == 2 and "invalid choice: 'build'" in err
-    assert set(cli.COMMANDS) == {"search", "about", "measure"}
+def test_the_four_subcommands_are_offered():
+    assert set(cli.COMMANDS) == {"search", "about", "build", "measure"}
+    code, out, err = run_cli(["build"])
+    assert code == 2 and "--out" in err  # required
