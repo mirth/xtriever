@@ -60,12 +60,13 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("about", help="the corpus, the models, the index and the attribution")
     _common(a)
 
-    b = sub.add_parser("build", help="build an index from the raw snapshot with the Feature 008 recipe, through the package alone")
+    b = sub.add_parser("build", help="build an index from the raw snapshot through the package alone: verify, exclude, split with the chonky splitter, add, commit, merge")
     _common(b)
     b.add_argument("--out", required=True, help="output directory (must not exist; written as <out>.partial until complete)")
     b.add_argument("--limit", type=_positive, default=None, help="the first N articles only; without it the whole corpus (hours)")
     b.add_argument("--snapshot", help="the snapshot JSONL; default reference/datasets/wiki/simple.jsonl")
     b.add_argument("--manifest", help="the snapshot manifest; default reference/datasets/wiki-manifest.json")
+    b.add_argument("--chonky", help="the chonky splitter model directory; env XTRIEVER_CHONKY_MODEL_DIR; default reference/models/chonky_distilbert_base_uncased_1")
 
     m = sub.add_parser("measure", help="run the 20 measurement queries at depths 0/5/10/20, check parity, write a record")
     _common(m)
@@ -80,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
 def needs_for(args) -> list[str]:
     """The inputs a command must find before anything loads (contracts/cli.md)."""
     if args.command == "build":
-        return ["embedder", "reranker", "snapshot", "manifest"]
+        return ["embedder", "reranker", "snapshot", "manifest", "chonky"]
     if args.command == "measure":
         needs = ["artefact", "embedder", "reranker", "queries"]
         return needs if args.against else needs + ["expected"]

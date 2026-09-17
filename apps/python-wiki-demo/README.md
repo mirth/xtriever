@@ -24,6 +24,7 @@ demo: ten documents in one file, build and search, under 80 lines, no snapshot (
 | the re-ranker | `reference/models/ms-marco-MiniLM-L-6-v2` | `--reranker`, `XTRIEVER_RERANK_MODEL_DIR` | `scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json` |
 | the Wikipedia artefact (`index/`, `ATTRIBUTION.txt`, `expected.json`) | `target/xt-wiki` | `--artefact`, `XTRIEVER_WIKI_ARTEFACT` | `cargo run --release -p xtriever-cli -- wiki build --out target/xt-wiki` (hours) or `wikidemo build --limit N --out DIR` (minutes) |
 | the snapshot (for `build`) | `reference/datasets/wiki/simple.jsonl` | `--snapshot` | `scripts/fetch-wiki.sh` |
+| the chonky splitter model (for `build`) | `reference/models/chonky_distilbert_base_uncased_1` | `--chonky`, `XTRIEVER_CHONKY_MODEL_DIR` | `scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json` |
 
 Relative paths resolve against the repository root; a missing input is named with its
 producer before anything loads, exit 1.
@@ -37,17 +38,20 @@ uv pip install --python .venv/bin/python ../../target/wheels/xtriever-*.whl -e "
 .venv/bin/wikidemo --help
 ```
 
-The demo's own dependencies are the wheel and `tokenizers==0.23.2` (the version the engine
-pins, used only by `build` to price passages); the tests need `pytest`.
+The demo's own dependencies are the wheel, `chonky` with `transformers` and `torch` (the
+splitter `build` uses — the heavy install; `search`, `about` and `measure` never import
+them) and `tokenizers==0.23.2` (the engine's tokenizer, for counting passages against the
+window); the tests need `pytest`.
 
 ## In run order
 
 ```bash
-scripts/fetch-model.sh && scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   # the two models
+scripts/fetch-model.sh && scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   # the two engine models
+scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json                            # the chonky splitter (for build)
 scripts/fetch-wiki.sh                                                                             # the snapshot (once)
 (cd python && .venv/bin/maturin build --release)                                                  # the wheel
 cd apps/python-wiki-demo && uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python ../../target/wheels/xtriever-*.whl -e ".[test]" && cd ../..
-apps/python-wiki-demo/.venv/bin/wikidemo build --limit 2000 --out target/xt-wiki-slice-py          # a slice: ~8.5k passages, ~15 min
+apps/python-wiki-demo/.venv/bin/wikidemo build --limit 2000 --out target/xt-wiki-slice-py          # a slice: the first 2,000 articles, ~15 min
 apps/python-wiki-demo/.venv/bin/wikidemo search --artefact target/xt-wiki-slice-py "April"
 apps/python-wiki-demo/.venv/bin/wikidemo search --artefact target/xt-wiki-slice-py --explain "April"
 apps/python-wiki-demo/.venv/bin/wikidemo about --artefact target/xt-wiki-slice-py
@@ -61,35 +65,39 @@ order.
 ## Build an index
 
 ```bash
-wikidemo build --limit 2000 --out target/xt-wiki-slice-py     # the first 2,000 articles: ~8.5k passages, minutes
+wikidemo build --limit 2000 --out target/xt-wiki-slice-py     # the first 2,000 articles, minutes
 wikidemo search --artefact target/xt-wiki-slice-py "April"
 wikidemo build --out target/xt-wiki-py                         # the whole corpus: 427,947 passages ≈ 11 h on a laptop
 ```
 
-The recipe, module by module, is the one the shipped index was built with (Feature 008):
+The recipe, module by module:
 
 1. **verify** (`build.py`): the snapshot's bytes and sha256 against
    `reference/datasets/wiki-manifest.json` before a line is read — a mismatch names both
    hashes and `scripts/fetch-wiki.sh`;
 2. **exclude** (`rules.py`): the manifest's rules in order, first match wins —
    `" (disambiguation)"` titles, "may refer to" / "may mean" within the first 300 characters;
-3. **chunk** (`chunking.py`): each article into passages that fit the embedder's window —
-   paragraphs, then sentences, then words, then fragments, priced by the embedder's own
-   tokenizer (`tokenizers==0.23.2`, the engine's version) with a budget of
-   `256 − token_count(title)`; the implementation is the 008 contract's reference, replayed
-   byte for byte against `reference/fixtures/008/` in the tests;
+3. **split** (`chunking.py`, Feature 021): each article through the
+   [chonky](https://github.com/mirth/chonky) splitter — a small fine-tuned model that returns
+   the text as contiguous slices at predicted paragraph breaks; every non-empty slice is one
+   passage with its byte range, and the build checks that the slices partition the text. The
+   model (`mirth/chonky_distilbert_base_uncased_1`) is pinned by revision and file hashes in
+   `reference/models/manifest-chonky.json`, fetched by the same script as the engine's models
+   and loaded from disk. The splitter has no length bound: chunks longer than the embedder's
+   256-token window are embedded from their first 256 word-pieces and indexed whole for
+   lexical search — about 10 % on Wikipedia (median 77 tokens, p90 248); the count is in
+   `about` and in the build's record;
 4. **add** through the package: one `Document` per passage — `external_id = "<article id>#<ordinal>"`,
    fields `title` and `text` (`"<title>\n\n<passage>"`), `ChunkInfo(parent, ordinal, byte_start, byte_end)` —
-   in batches of 4,096; the engine embeds each passage (one at a time, exactly as the Rust build does);
+   in batches of 4,096; the engine embeds each passage;
 5. **commit**, **merge**;
-6. the **sidecars**: `index/corpus.json` (the corpus identity — the same hash as the Rust
-   build's, `record.py`), `ATTRIBUTION.txt`, `wiki-build.json`; then `<out>.partial` is renamed
+6. the **sidecars**: `index/corpus.json` (the corpus identity, whose chunker block names
+   the splitter and its revision — `record.py`), `ATTRIBUTION.txt`, `wiki-build.json`; then `<out>.partial` is renamed
    to `<out>` — nothing openable exists at `<out>` before the build is complete, and an
    existing `<out>` is refused.
 
 **Schema.** The build keeps the shipped index's schema — `title` boosted 2.0 beside `text`,
-the dense field `text` — so that the Rust build is its oracle and a full build matches the
-phone's goldens. Feature 013 measured one joined `contents` field **better** on the BEIR sets
+the dense field `text` (Feature 008's). Feature 013 measured one joined `contents` field **better** on the BEIR sets
 (+5.9 nDCG@10 on SciFact, +1.1 on NFCorpus): for a new corpus of your own, index one text
 field and make it the dense field —
 
@@ -99,16 +107,14 @@ IndexConfig(fields=[FieldDef(name="contents", kind=FieldKind.TEXT(analyzer="stan
 
 — and put the title on the first line of `contents` as this corpus does.
 
-**The check.** A demo-built slice is compared with the Rust build of the same slice:
-
-```bash
-cargo run --release -p xtriever-cli -- wiki build --limit 2000 --out target/xt-wiki-slice-rs
-wikidemo measure --artefact target/xt-wiki-slice-py --against target/xt-wiki-slice-rs
-```
-
-The twenty queries at depths 0 / 5 / 10 / 20 must give the same ids in the same order at every
-depth, and the two `corpus.json`s the same identity and counts; the record under
-`specs/019-python-wiki-demo/runs/slice-…` also says how many hits matched on every score bit.
+**Not the shipped index.** The Rust build (`xtriever wiki build`) cuts articles with the
+Feature 008 contract chunker; this build cuts them with chonky. The passages differ, so a
+demo-built index is not the shipped one — its corpus identity says so — and comparing the
+two with `measure --against` would (correctly) fail. Until Feature 021 the demo carried a
+copy of the contract chunker and was byte-identical to the Rust build
+(`specs/019-python-wiki-demo/runs/slice-…`, kept as history); what is checked now is that
+the split partitions the text (tested on every build) and that `measure` over the shipped
+artefact still matches the phone's goldens (unchanged).
 
 ## Search
 

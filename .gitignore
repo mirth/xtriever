@@ -13,6 +13,7 @@ reference/models/*
 !reference/models/manifest-rerank.json
 !reference/models/manifest-sparse-doc-v2.json
 !reference/models/manifest-sparse-doc-v3.json
+!reference/models/manifest-chonky.json
 *.safetensors
 
 # uniffi bindgen output (quickstart Step 3)
