@@ -13,8 +13,13 @@ dependencies = [
   # The engine's Python surface (Feature 011), installed from the locally built wheel —
   # `cd python && .venv/bin/maturin build --release` → target/wheels/xtriever-*.whl.
   "xtriever>=0.1.0",
-  # Unit pricing for the build's chunker: the same version crates/xtriever-dense/Cargo.toml
-  # pins for the engine, so the word-piece counts are the counts the build sees (research D5).
+  # The build's splitter (Feature 021): chonky's ParagraphSplitter and what it runs on, at the
+  # versions the resolver installed on 2026-09-17 (specs/021-chonky-wiki-chunking, research D7).
+  "chonky==0.1.7",
+  "transformers==5.17.0",
+  "torch==2.14.0",
+  # The embedder's tokenizer, for the over-window count only: the same version
+  # crates/xtriever-dense/Cargo.toml pins for the engine, so the counts are the engine's.
   "tokenizers==0.23.2",
 ]
 

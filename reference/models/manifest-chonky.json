@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "repository": "mirth/chonky_distilbert_base_uncased_1",
+  "revision": "01d8aae08726368a1b1645de2a7086610f2e86a5",
+  "local_dir": "chonky_distilbert_base_uncased_1",
+  "files": [
+    {
+      "name": "config.json",
+      "bytes": 681,
+      "sha256": "70eeab02faefceae57ea6355a4d9aafd2c3f88fa8a1dc88012e6b0e0c9c365df"
+    },
+    {
+      "name": "model.safetensors",
+      "bytes": 265470008,
+      "sha256": "9a2cd8b8d81b29612d5045430353e213df61f2e896fb834ce5eb7a8b6efd99ab"
+    },
+    {
+      "name": "special_tokens_map.json",
+      "bytes": 695,
+      "sha256": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a"
+    },
+    {
+      "name": "tokenizer.json",
+      "bytes": 711494,
+      "sha256": "435667fab0c06c165b1283ecb422497c37124f2d6a35b2ac73dc876332fc9518"
+    },
+    {
+      "name": "tokenizer_config.json",
+      "bytes": 1335,
+      "sha256": "769fd5b8e7e5d12eca596adb3d90eae5003fcaf1e77926a61d1694dd49f90c62"
+    },
+    {
+      "name": "vocab.txt",
+      "bytes": 231508,
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    }
+  ],
+  "note": "The chonky paragraph splitter (Feature 021, specs/021-chonky-wiki-chunking): DistilBertForTokenClassification, 512 positions, labels O / separator, uncased. Fetched by scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json; loaded by the Wikipedia demo's build (wikidemo build) from the local directory, never from the hub. Sizes and hashes measured from the files at the pinned revision on 2026-09-17."
+}

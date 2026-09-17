@@ -1,7 +1,8 @@
 """Shared paths, skips and helpers for the demo's suite (Feature 019; the Feature 011 pattern).
 
-Tests marked ``models`` need the two pinned models and the 007 fixture index on disk
-(``scripts/fetch-model.sh``; ``cargo run --release -p xtriever-ffi --example fixture_index --
+Tests marked ``models`` need the two pinned engine models, the chonky splitter model
+(Feature 021) and the 007 fixture index on disk (``scripts/fetch-model.sh``, also with
+``--manifest reference/models/manifest-chonky.json``; ``cargo run --release -p xtriever-ffi --example fixture_index --
 swift/Xtriever/Tests/Fixtures``). Without them they are skipped with the missing path in the
 reason — never silently green. The Wikipedia artefact (``target/xt-wiki``) is optional: the
 tests that can use it fall back to the fixture and say so.
@@ -23,6 +24,9 @@ EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/al
 RERANKER = Path(
     os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2")
 )
+CHONKY = Path(
+    os.environ.get("XTRIEVER_CHONKY_MODEL_DIR", REPO / "reference/models/chonky_distilbert_base_uncased_1")
+)
 WIKI_ARTEFACT = REPO / "target/xt-wiki"
 CHUNK_A = REPO / "reference/fixtures/008/chunk_a.json"
 CHUNK_B = REPO / "reference/fixtures/008/chunk_b.json"
@@ -35,6 +39,7 @@ def missing_for_models():
     for path in (
         EMBEDDER / "model.safetensors",
         RERANKER / "model.safetensors",
+        CHONKY / "model.safetensors",
         FIXTURE_INDEX / "xtriever-pipeline.json",
         FIXTURE_GOLDENS,
     ):

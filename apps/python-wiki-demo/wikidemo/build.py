@@ -2,12 +2,13 @@
 the Feature 008 recipe, through the package alone (research D7–D10; spec FR-010–FR-013):
 
     verify the snapshot against its manifest → read the articles → drop the ones the
-    manifest's rules exclude → cut each into passages that fit the embedder's window →
-    add them (the engine embeds) → commit → merge → write the sidecars → rename into place.
+    manifest's rules exclude → split each with the chonky splitter (Feature 021) →
+    add the passages (the engine embeds) → commit → merge → write the sidecars → rename.
 
 The result has the shipped artefact's layout — `<out>/index/` with `corpus.json` inside,
 `<out>/ATTRIBUTION.txt`, `<out>/wiki-build.json` — so `search`, `about` and `measure` work on
-it unchanged, and with the same first N articles it is the index the Rust build produces.
+it unchanged. Its passages are the splitter's, not the 008 contract chunker's the Rust
+build uses, so a demo-built index is not the shipped one (its corpus identity says so).
 """
 
 from __future__ import annotations
@@ -17,13 +18,14 @@ import json
 import os
 import platform
 import shutil
+import statistics
 import sys
 import time
 from pathlib import Path
 
 import xtriever
 
-from .chunking import BuildError, Pricer, documents_for
+from .chunking import WINDOW, BuildError, Splitter, Window, documents_for
 from .hits import wikipedia_url
 from .inputs import Paths
 from .record import CHUNKER, attribution_text, corpus_identity, dir_bytes, now_rfc3339, threads, write_json
@@ -114,7 +116,11 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
 
     handle = xtriever.IndexHandle.create(str(index_dir), wiki_config(), str(paths.embedder), str(paths.reranker), xtriever.LoadPath.MMAP)
     info = handle.info()
-    pricer = Pricer(paths.embedder)
+    t = time.perf_counter()
+    splitter = Splitter(paths.chonky)
+    phases["load_splitter"] = _ms(t)
+    window = Window(paths.embedder)
+    tokens_all: list[int] = []
 
     counts = {
         "articles": 0,
@@ -161,9 +167,11 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
             counts["selected"] += 1
             read_exclude_ms += _ms(t)
             t = time.perf_counter()
-            docs = documents_for(article, pricer)
+            docs, tokens = documents_for(article, splitter, window)
             chunk_ms += _ms(t)
             counts["passages"] += len(docs)
+            counts["passages_over_window"] += sum(n > WINDOW for n in tokens)
+            tokens_all.extend(tokens)
             batch.extend(docs)
             if len(batch) >= BATCH:
                 ingest()
@@ -204,6 +212,14 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
     (staging / "ATTRIBUTION.txt").write_text(attribution_text(manifest, identity, recorded_at), encoding="utf-8")
 
     phases["total"] = _ms(t_total)
+    ordered = sorted(tokens_all)
+    chunking = {
+        "passages": len(ordered),
+        "over_window": counts["passages_over_window"],
+        "token_median": statistics.median(ordered) if ordered else None,
+        "token_p90": ordered[int(0.9 * len(ordered))] if ordered else None,
+        "token_max": ordered[-1] if ordered else None,
+    }
     n_threads, _source = threads()
     artefact_bytes = {str(p.relative_to(index_dir)): p.stat().st_size for p in sorted(index_dir.rglob("*")) if p.is_file()}
     artefact_bytes["total"] = dir_bytes(index_dir)
@@ -224,6 +240,7 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
         "counts": counts,
         "phases_ms": phases,
         "artefact_bytes": artefact_bytes,
+        "chunking": chunking,
     }
     write_json(staging / "wiki-build.json", record)
 
@@ -232,6 +249,9 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
     print(f"articles: {counts['articles']:,} read, {counts['selected']:,} selected, {counts['passages']:,} passages")
     for name, n in counts["excluded"].items():
         print(f"excluded {name}: {n:,}")
+    share = 100 * counts["passages_over_window"] / counts["passages"] if counts["passages"] else 0.0
+    print(f"passages over the embedder window: {counts['passages_over_window']:,} ({share:.1f} %)")
+    print(f"chunker: chonky ({CHUNKER['model']}, revision {CHUNKER['revision'][:7]}…)")
     print("phases: " + " · ".join(f"{k} {v:,} ms" for k, v in phases.items()))
     print(f"corpus identity: {identity}" + (f" (partial: first {limit:,} articles)" if limit is not None else ""))
     print(f"wrote {out}")

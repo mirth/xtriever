@@ -37,15 +37,29 @@ def test_canonical_json_matches_the_rust_rule():
     assert canonical_json({"b": 1, "a": "é", "c": [True, None, 1.5]}) == '{"a":"é","b":1,"c":[true,null,1.5]}'
 
 
+SHIPPED_CHUNKER = {
+    "version": 1,
+    "budget": "256 - token_count(title)",
+    "cost": "MiniLmEmbedder::token_count(unit) - 2",
+}
+
+
 def test_identity_of_the_shipped_corpus():
-    assert CHUNKER == {
-        "version": 1,
-        "budget": "256 - token_count(title)",
-        "cost": "MiniLmEmbedder::token_count(unit) - 2",
-    }
-    assert corpus_identity(SNAPSHOT, EXCLUSIONS, CHUNKER, FINGERPRINT) == SHIPPED_IDENTITY
-    partial = corpus_identity(SNAPSHOT, EXCLUSIONS, CHUNKER, FINGERPRINT, partial=2000)
+    # The identity function is the Rust build's; with the shipped artefact's chunker block
+    # it still reproduces the shipped identity.
+    assert corpus_identity(SNAPSHOT, EXCLUSIONS, SHIPPED_CHUNKER, FINGERPRINT) == SHIPPED_IDENTITY
+    partial = corpus_identity(SNAPSHOT, EXCLUSIONS, SHIPPED_CHUNKER, FINGERPRINT, partial=2000)
     assert partial != SHIPPED_IDENTITY and len(partial) == 64
+
+
+def test_chunker_block_is_chonky():
+    assert CHUNKER == {
+        "name": "chonky",
+        "model": "mirth/chonky_distilbert_base_uncased_1",
+        "revision": "01d8aae08726368a1b1645de2a7086610f2e86a5",
+    }
+    # Different passages, different identity — a chonky-built index is never the shipped one.
+    assert corpus_identity(SNAPSHOT, EXCLUSIONS, CHUNKER, FINGERPRINT) != SHIPPED_IDENTITY
 
 
 def test_attribution_text_shape():

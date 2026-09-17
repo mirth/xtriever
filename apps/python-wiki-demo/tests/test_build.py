@@ -77,19 +77,25 @@ def test_build_produces_the_artefact(built):
     }
     assert sidecar["exclusions"] == manifest["exclusions"]
     assert sidecar["chunker"] == CHUNKER
+    assert sidecar["chunker"] == {"name": "chonky", "model": "mirth/chonky_distilbert_base_uncased_1", "revision": "01d8aae08726368a1b1645de2a7086610f2e86a5"}
     assert sidecar["embedder_fingerprint"].startswith("sentence-transformers/all-MiniLM-L6-v2@")
     counts = sidecar["counts"]
     assert counts["articles"] == 3 and counts["selected"] == 2
     assert counts["excluded"] == {"title_suffix: (disambiguation)": 1, "lead_contains:may refer to:300": 0, "lead_contains:may mean:300": 0}
-    assert counts["passages"] >= 2 and counts["url_mismatches"] == 0 and counts["passages_over_window"] == 0
+    assert counts["passages"] >= 2 and counts["url_mismatches"] == 0
+    assert isinstance(counts["passages_over_window"], int) and 0 <= counts["passages_over_window"] <= counts["passages"]
     attribution = (out / "ATTRIBUTION.txt").read_text(encoding="utf-8")
     lines = attribution.splitlines()
     assert len(lines) == 4 and lines[0].startswith("Text from Simple English Wikipedia, snapshot 2023-11-01 (")
     assert f"Corpus identity {sidecar['corpus_identity']}, built " in lines[3]
     record = json.loads((out / "wiki-build.json").read_text(encoding="utf-8"))
-    assert set(record) == {"schema_version", "feature", "recorded_at", "corpus_identity", "partial", "host", "models", "counts", "phases_ms", "artefact_bytes"}
+    assert set(record) == {"schema_version", "feature", "recorded_at", "corpus_identity", "partial", "host", "models", "counts", "phases_ms", "artefact_bytes", "chunking"}
+    assert set(record["chunking"]) == {"passages", "over_window", "token_median", "token_p90", "token_max"}
+    assert record["chunking"]["passages"] == counts["passages"] and record["chunking"]["over_window"] == counts["passages_over_window"]
     assert record["feature"] == "019-python-wiki-demo" and record["corpus_identity"] == sidecar["corpus_identity"]
-    assert set(record["phases_ms"]) == {"fetch_verify", "read_exclude", "chunk", "embed_ingest", "commit", "merge", "total"}
+    assert set(record["phases_ms"]) == {"fetch_verify", "load_splitter", "read_exclude", "chunk", "embed_ingest", "commit", "merge", "total"}
+    assert "chunker: chonky (mirth/chonky_distilbert_base_uncased_1, revision 01d8aae" in stdout
+    assert "passages over the embedder window: " in stdout
     assert record["artefact_bytes"]["total"] > 0 and record["counts"] == counts
     assert "wrote " in stdout and "corpus identity: " in stdout
 
@@ -108,6 +114,8 @@ def test_built_index_searches(built):
     assert "Mercury" not in stdout
     code, stdout, stderr = run_cli(["about", "--artefact", str(out)], ENV)
     assert code == 0 and "partial: first 3 articles" in stdout and "articles: 3 read, 2 selected" in stdout
+    assert "chunker: chonky (mirth/chonky_distilbert_base_uncased_1, revision 01d8aae" in stdout
+    assert "passages over the embedder window: " in stdout
 
 
 def test_refuses_existing_out(built, tmp_path):

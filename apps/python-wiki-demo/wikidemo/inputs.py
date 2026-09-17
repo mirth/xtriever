@@ -15,12 +15,14 @@ ENV = {
     "artefact": "XTRIEVER_WIKI_ARTEFACT",
     "embedder": "XTRIEVER_MODEL_DIR",
     "reranker": "XTRIEVER_RERANK_MODEL_DIR",
+    "chonky": "XTRIEVER_CHONKY_MODEL_DIR",
 }
 
 DEFAULTS = {
     "artefact": "target/xt-wiki",
     "embedder": "reference/models/all-MiniLM-L6-v2",
     "reranker": "reference/models/ms-marco-MiniLM-L-6-v2",
+    "chonky": "reference/models/chonky_distilbert_base_uncased_1",
     "snapshot": "reference/datasets/wiki/simple.jsonl",
     "manifest": "reference/datasets/wiki-manifest.json",
     "queries": "reference/fixtures/008/queries.json",
@@ -34,6 +36,7 @@ PRODUCERS = {
     ),
     "embedder": "scripts/fetch-model.sh",
     "reranker": "scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json",
+    "chonky": "scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json",
     "snapshot": "scripts/fetch-wiki.sh",
     "manifest": "git checkout -- reference/datasets/wiki-manifest.json   (it is in the tree)",
     "expected": (
@@ -48,6 +51,7 @@ WHAT = {
     "artefact": "the Wikipedia artefact",
     "embedder": "the embedder",
     "reranker": "the re-ranker",
+    "chonky": "the chonky splitter model",
     "snapshot": "the snapshot",
     "manifest": "the snapshot manifest",
     "expected": "the host goldens",
@@ -69,6 +73,7 @@ class Paths:
     artefact: Path
     embedder: Path
     reranker: Path
+    chonky: Path
     snapshot: Path
     manifest: Path
     queries: Path
@@ -107,6 +112,7 @@ def resolve(args) -> Paths:
         artefact=artefact,
         embedder=_pick(get("embedder"), ENV["embedder"], DEFAULTS["embedder"], root),
         reranker=_pick(get("reranker"), ENV["reranker"], DEFAULTS["reranker"], root),
+        chonky=_pick(get("chonky"), ENV["chonky"], DEFAULTS["chonky"], root),
         snapshot=_pick(get("snapshot"), None, DEFAULTS["snapshot"], root),
         manifest=_pick(get("manifest"), None, DEFAULTS["manifest"], root),
         queries=_pick(get("queries"), None, DEFAULTS["queries"], root),
@@ -119,6 +125,7 @@ def _sentinel(paths: Paths, name: str) -> Path:
         "artefact": paths.index_dir / "xtriever-pipeline.json",
         "embedder": paths.embedder / "model.safetensors",
         "reranker": paths.reranker / "model.safetensors",
+        "chonky": paths.chonky / "model.safetensors",
         "snapshot": paths.snapshot,
         "manifest": paths.manifest,
         "expected": paths.expected,
