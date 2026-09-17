@@ -21,7 +21,7 @@ python apps/python-minimal-demo/demo.py "why does the sea rise and fall"
 | the re-ranker | `reference/models/ms-marco-MiniLM-L-6-v2` (`XTRIEVER_RERANK_MODEL_DIR`) | `scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json` |
 
 The index is built into a temporary directory each run (a second or two for ten documents)
-and removed afterwards; nothing is left on disk.
+and removed afterwards — also when a step fails; nothing is left on disk.
 
 ## What the output shows
 
@@ -67,7 +67,7 @@ default since Feature 015).
 apps/python-wiki-demo/.venv/bin/pytest apps/python-minimal-demo/tests -q
 ```
 
-Four model-free tests (the 80-line budget, the usage exit, the printed lines, the corpus's
-shape) and one with the models: the script's hits equal a direct use of the package on the
+Five model-free tests (the 80-line budget, the usage exit, the printed lines, the corpus's
+shape, and that a failed build leaves no temporary directory behind) and one with the models: the script's hits equal a direct use of the package on the
 same documents — ids in order and identical score bits at both depths — and a second run
 gives the same result.

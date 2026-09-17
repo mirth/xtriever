@@ -68,7 +68,7 @@ oracle) → US3 (README) → Polish.
 
 ## Phase 6: Polish
 
-- [X] T010 Gate (quickstart Step 4): `git diff --stat main -- crates/ swift/ python/src apps/python-wiki-demo/wikidemo specs/*/baselines` empty; `cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo deny check` unchanged; `$PY/pytest apps/python-wiki-demo/tests -q` → 70 passed (untouched); `$PY/pytest apps/python-minimal-demo/tests -q` → 5 passed; `wc -l apps/python-minimal-demo/demo.py` ≤ 80; no identifiers in any new file; `git status --short` shows only the intended files
+- [X] T010 Gate (quickstart Step 4): `git diff --stat main -- crates/ swift/ python/src apps/python-wiki-demo/wikidemo specs/*/baselines` empty; `cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo deny check` unchanged; `$PY/pytest apps/python-wiki-demo/tests -q` → 70 passed (untouched); `$PY/pytest apps/python-minimal-demo/tests -q` → 6 passed; `wc -l apps/python-minimal-demo/demo.py` ≤ 80; no identifiers in any new file; `git status --short` shows only the intended files
 - [X] T011 Write `specs/020-minimal-python-example/report.md` (verdict; the red checkpoint; the two outputs and the wall time; the oracle test's result; SC-001–SC-004; "Deliberately not done": no chunker, no snapshot, no output directory, no CI job) and `specs/020-minimal-python-example/pr-description.md` (what it is in three lines, the line count, the oracle, the run time, the attribution line). **⛔ Checkpoint C2 — the owner commits**, pushes and opens the PR
 
 ---

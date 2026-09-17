@@ -37,24 +37,25 @@ SCHEMA = xtriever.IndexConfig(
     dense_fields=["contents"],
 )
 
-def build():
+def build(index_dir):
     # build: create → add → commit → merge (the engine embeds each document as it is added)
-    index_dir = tempfile.mkdtemp(prefix="xtriever-minimal-")
     handle = xtriever.IndexHandle.create(index_dir, SCHEMA, EMBEDDER, RERANKER, xtriever.LoadPath.MMAP)
     handle.add([xtriever.Document(external_id=i, fields={"contents": xtriever.FieldValue.TEXT(t)}) for i, t in DOCS])
     handle.commit()
     handle.merge()
-    return handle, index_dir
+    return handle
 
 def run(query):
     # search: the fused stage (depth 0), then the re-ranked stage (the first 10 fused candidates)
-    handle, index_dir = build()
+    index_dir = tempfile.mkdtemp(prefix="xtriever-minimal-")  # removed below, whatever happens
+    handle = None
     try:
+        handle = build(index_dir)
         fused = handle.search(query, xtriever.SearchOptions(k=5, rerank_depth=0))
         reranked = handle.search(query, xtriever.SearchOptions(k=5, rerank_depth=10))
     finally:
         del handle  # close the index before removing it
-        shutil.rmtree(index_dir, ignore_errors=True)
+        shutil.rmtree(index_dir)
     return fused, reranked
 
 def print_hits(label, hits):

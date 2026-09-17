@@ -1,10 +1,10 @@
 # Report: The Minimal Python Demo
 
-**Feature**: 020 · **Branch**: `020-minimal-python-example` · **Status**: done
+**Feature**: 020 · **Branch**: `020-minimal-python-example` · **Status**: done; review round 1 taken
 
 ## Verdict
 
-`apps/python-minimal-demo/demo.py` — **79 lines**, ten documents written in it, one
+`apps/python-minimal-demo/demo.py` — **80 lines**, ten documents written in it, one
 `contents` field, `create` → `add` → `commit` → `merge` in a temporary directory, a search at
 depth 0 and at depth 10, both lists printed, the directory removed. It needs the wheel and
 the two models and nothing else; it imports nothing from the Wikipedia demo. Its hits are
@@ -21,7 +21,7 @@ both depths — and a second run gives the same. A run takes **1.8 s** on this l
 
 The first draft was **87 lines** (the budget test failed, as it should); the docstring was
 tightened and the blank lines between definitions reduced to one — the steps, the comments
-per step and the corpus are unchanged. Final: 79.
+per step and the corpus are unchanged. Final: 79 (80 after review round 1).
 
 `python apps/python-minimal-demo/demo.py "how do bees make honey"` (1.8 s wall):
 
@@ -62,7 +62,7 @@ hit lines on stubs, the corpus's shape (ten unique ids, title / blank / body).
 
 | SC | Result |
 |---|---|
-| SC-001 | 79 lines ≤ 80 (tested) — **met** |
+| SC-001 | 80 lines ≤ 80 (tested) — **met** |
 | SC-002 | ids in order and score bits equal the direct call at depths 0 and 10; two runs identical (tested) — **met** |
 | SC-003 | one command, 1.8 s end to end — **met** |
 | SC-004 | `git diff --stat main -- crates/ swift/ python/src apps/python-wiki-demo/wikidemo specs/*/baselines` empty — **met** |
@@ -70,7 +70,19 @@ hit lines on stubs, the corpus's shape (ten unique ids, title / blank / body).
 ## Gate
 
 `cargo fmt --check`, `clippy`, `deny` unchanged; the Wikipedia demo suite 70 passed
-(untouched); this suite 5 passed; no identifiers in the new files.
+(untouched); this suite 6 passed; no identifiers in the new files.
+
+## Review round 1 (Copilot, 2 comments — both taken)
+
+1. The temporary directory was created inside `build()` and removed only after `build()`
+   returned: a failure in `create` / `add` / `commit` / `merge` leaked it, and
+   `ignore_errors=True` hid a failed removal. Now `run()` owns the directory's lifetime —
+   `mkdtemp` before, `shutil.rmtree` (no `ignore_errors`) in the `finally` around both the
+   build and the searches — and a new model-free test patches `create` to raise and asserts
+   nothing is left behind; the oracle test asserts the same after two real runs. The file
+   grew to exactly 80 lines (one comment merged).
+2. The quickstart said "3 model-free + 1": it is now 5 + 1 (corrected in the quickstart,
+   the README and the tasks).
 
 ## Deliberately not done
 

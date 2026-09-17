@@ -4,6 +4,7 @@ and the same on a second run (spec FR-005–FR-007; contracts/example.md)."""
 
 import shutil
 import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -43,6 +44,19 @@ def test_print_hits_on_stubs(capsys):
         " 1. doc-03  score=0.0328  Honey bees",
         " 2. doc-07  score=0.0301  rerank=8.6573  Tides",
     ]
+
+
+def test_a_failed_build_leaves_nothing_behind(monkeypatch):
+    demo = load_demo()
+    before = {p for p in Path(tempfile.gettempdir()).glob("xtriever-minimal-*")}
+
+    def boom(*a, **k):
+        raise RuntimeError("create failed")
+
+    monkeypatch.setattr(xtriever.IndexHandle, "create", boom)
+    with pytest.raises(RuntimeError):
+        demo.run("anything")
+    assert {p for p in Path(tempfile.gettempdir()).glob("xtriever-minimal-*")} == before
 
 
 def test_corpus_shape():
@@ -90,3 +104,4 @@ def test_hits_are_the_engines():
     assert all(h.rerank_score is not None for h in reranked.hits)
     again_fused, again_reranked = demo.run(query)
     assert _tuples(again_fused) == _tuples(fused) and _tuples(again_reranked) == _tuples(reranked)
+    assert not list(Path(tempfile.gettempdir()).glob("xtriever-minimal-*"))

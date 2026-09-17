@@ -23,7 +23,7 @@ Expected: `indexed 10 documents`, the fused list, the re-ranked list; under ten 
 ## Step 3 — the tests
 
 ```bash
-$PY/pytest apps/python-minimal-demo/tests -q         # 3 model-free + 1 model-backed
+$PY/pytest apps/python-minimal-demo/tests -q         # 5 model-free + 1 model-backed
 ```
 
 ## Step 4 — gate
