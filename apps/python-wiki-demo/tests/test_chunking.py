@@ -6,7 +6,7 @@ splitter (``models``) must return a partition of real-shaped articles."""
 
 import pytest
 
-from conftest import CHONKY
+from conftest import CHONKY, EMBEDDER
 from wikidemo.chunking import WINDOW, BuildError, Splitter, Window, documents_for, passage_text
 
 TEXT = "Café au lait.\n\n" + "  " + "Deuxième paragraphe — fin."
@@ -121,7 +121,7 @@ def test_real_splitter_partitions_articles():
         assert all(a[1] == b[0] for a, b in zip(ranges, ranges[1:]))
         assert "".join(text[s:e] for s, e in ranges) == text
     assert len(splitter.chunks(LONG)) >= 2
-    window = Window(CHONKY.parent / "all-MiniLM-L6-v2")
+    window = Window(EMBEDDER)
     docs, tokens = documents_for({"id": "7", "title": article["title"], "text": LONG}, splitter, window)
     assert len(docs) == len(tokens) >= 2
     import xtriever

@@ -101,6 +101,24 @@ shipped artefact's block and the record comment.
 (53 model-free); the minimal demo suite 6 passed (untouched); no identifiers in the new
 files or the record; `reference/models/chonky_…` gitignored.
 
+## Review round 1 (Copilot, 6 comments — all taken)
+
+1. **The manifest was never in the PR**: `.gitignore` ignores `reference/models/*` and
+   re-includes only the four existing manifests, so `manifest-chonky.json` was silently
+   excluded — my T001 check (`git status --short reference/models` empty) passed for the wrong
+   reason. An explicit `!reference/models/manifest-chonky.json` exception added; the manifest
+   is now tracked, and `scripts/fetch-model.sh --manifest …` works from a fresh checkout.
+2. The real-splitter test built the embedder path as a sibling of the chonky path, ignoring
+   `XTRIEVER_MODEL_DIR` — it uses `EMBEDDER` now.
+3. The README's run-order block fetched only the two engine models — the chonky fetch line
+   added before the build.
+4. The chunker docstring quoted the 60-article estimate ("max seen 4,745") — replaced by the
+   slice record's figures (9.2 %, median 82, p90 239, max 10,367).
+5. `wikidemo build --help` still said "the Feature 008 recipe" — now names the chonky split.
+6. The quickstart's red-checkpoint command omitted `test_cli.py` — added.
+
+Suite after the round: 74 passed.
+
 ## Deliberately not done
 
 - No fallback split for over-window chunks (owner's decision); the count is the evidence.

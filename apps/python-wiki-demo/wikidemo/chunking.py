@@ -4,11 +4,11 @@
 returns a text as contiguous slices at predicted paragraph breaks; every non-empty slice is
 one passage with its byte range, and a result that is not a partition of the text is a build
 error. The model is pinned like the engine's (`reference/models/manifest-chonky.json`) and
-loaded from disk. The splitter has no length bound: on Wikipedia about a tenth of the chunks
-exceed the embedder's 256-position window (median 77, p90 248, max seen 4,745 tokens); such a
-passage is added whole — the engine embeds its first 256 word-pieces, the lexical index sees
-all of it — and counted. The Rust build keeps the 008 contract chunker, so a demo-built
-index is not the shipped one.
+loaded from disk. The splitter has no length bound: on the 2,000-article slice 9.2 % of the
+passages exceed the embedder's 256-position window (median 82, p90 239, max 10,367 —
+`specs/021-chonky-wiki-chunking/runs/`); such a passage is added whole — the engine embeds
+its first 256 word-pieces, the lexical index sees all of it — and counted. The Rust build
+keeps the 008 contract chunker, so a demo-built index is not the shipped one.
 """
 
 from pathlib import Path

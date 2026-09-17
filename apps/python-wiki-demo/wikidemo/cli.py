@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("about", help="the corpus, the models, the index and the attribution")
     _common(a)
 
-    b = sub.add_parser("build", help="build an index from the raw snapshot with the Feature 008 recipe, through the package alone")
+    b = sub.add_parser("build", help="build an index from the raw snapshot through the package alone: verify, exclude, split with the chonky splitter, add, commit, merge")
     _common(b)
     b.add_argument("--out", required=True, help="output directory (must not exist; written as <out>.partial until complete)")
     b.add_argument("--limit", type=_positive, default=None, help="the first N articles only; without it the whole corpus (hours)")

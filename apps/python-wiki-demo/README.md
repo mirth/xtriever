@@ -46,7 +46,8 @@ window); the tests need `pytest`.
 ## In run order
 
 ```bash
-scripts/fetch-model.sh && scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   # the two models
+scripts/fetch-model.sh && scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   # the two engine models
+scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json                            # the chonky splitter (for build)
 scripts/fetch-wiki.sh                                                                             # the snapshot (once)
 (cd python && .venv/bin/maturin build --release)                                                  # the wheel
 cd apps/python-wiki-demo && uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python ../../target/wheels/xtriever-*.whl -e ".[test]" && cd ../..

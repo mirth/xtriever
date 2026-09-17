@@ -36,4 +36,10 @@ said under a minute — the 60-article rate did not hold on long articles); `chu
 No change under `crates/`, `swift/`, `python/src`, `apps/python-minimal-demo`,
 `reference/fixtures` or any baseline; the Rust gate unchanged; no CI job.
 
+**Review round 1** (6 comments, all taken) — the important one: the manifest was gitignored by
+the `reference/models/*` rule and missing from the first push; an explicit exception now
+tracks it. Also: the real-splitter test honours `XTRIEVER_MODEL_DIR`, the README's run order
+fetches the chonky model, the docstring quotes the slice record's numbers, the `build` help
+names the chonky split, the quickstart's red command includes `test_cli.py`.
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

@@ -13,11 +13,12 @@ $PY/python -c "import chonky, torch, transformers; print(chonky.__name__, torch.
 ## Step 1 — red
 
 ```bash
-$PY/pytest apps/python-wiki-demo/tests/test_chunking.py apps/python-wiki-demo/tests/test_build.py apps/python-wiki-demo/tests/test_record.py apps/python-wiki-demo/tests/test_inputs.py -q
+$PY/pytest apps/python-wiki-demo/tests/test_chunking.py apps/python-wiki-demo/tests/test_build.py apps/python-wiki-demo/tests/test_record.py apps/python-wiki-demo/tests/test_inputs.py apps/python-wiki-demo/tests/test_cli.py -q
 ```
 
 Expected: `test_chunking` fails on import (`Splitter`, `Window` do not exist); the build,
-record and inputs tests fail on the chunker block / the new input.
+record, inputs and cli tests fail on the chunker block / the new input / the missing-model
+refusal.
 
 ## Step 2 — green
 
