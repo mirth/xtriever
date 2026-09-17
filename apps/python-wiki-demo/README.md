@@ -12,6 +12,9 @@ checks itself against the goldens the phone is checked against
 The demo owns no retrieval logic: every number it prints is the engine's or a wall clock
 around one engine call.
 
+Looking for the recipe before the measurements? `apps/python-minimal-demo/` is the smallest
+demo: ten documents in one file, build and search, under 80 lines, no snapshot (Feature 020).
+
 ## Inputs
 
 | Input | Default | Override | Produced by |
