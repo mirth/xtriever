@@ -37,6 +37,16 @@ def licence_url(paths: Paths) -> str:
     return LICENCE_URL
 
 
+def chunker_label(block: dict) -> str:
+    """The sidecar's chunker block in words: the chonky splitter (Feature 021) or the 008
+    contract chunker the Rust build uses."""
+    if block.get("name") == "chonky":
+        return f"chonky ({block.get('model')}, revision {str(block.get('revision', ''))[:7]}…)"
+    if "budget" in block:
+        return f"008 contract ({block['budget']})"
+    return "(unknown)"
+
+
 def about_lines(opened: Opened, sidecar: dict | None, attribution: str | None, licence: str) -> list[str]:
     info = opened.info
     lines = [open_line(opened), ""]
@@ -55,6 +65,8 @@ def about_lines(opened: Opened, sidecar: dict | None, attribution: str | None, l
         ]
         if "partial" in sidecar and sidecar["partial"] is not None:
             lines.append(f"partial: first {sidecar['partial']:,} articles")
+        lines.append(f"passages over the embedder window: {counts.get('passages_over_window', 0):,}")
+        lines.append(f"chunker: {chunker_label(sidecar.get('chunker') or {})}")
     lines += [
         f"passages (documents): {info.documents:,}",
         f"format version: {info.format_version}",

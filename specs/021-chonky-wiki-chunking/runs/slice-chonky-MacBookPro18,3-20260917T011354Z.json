@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "feature": "019-python-wiki-demo",
+  "recorded_at": "2026-09-17T01:12:55Z",
+  "corpus_identity": "20ef0cd9af48cec1c1b9794289a73c5bca91de24bf466d6308b28816335a405b",
+  "partial": 2000,
+  "host": {
+    "os": "macos",
+    "arch": "arm64",
+    "threads": 10,
+    "python": "3.12.0",
+    "xtriever": "0.1.0"
+  },
+  "models": {
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2@1110a243fdf4706b3f48f1d95db1a4f5529b4d41;weights=sha256:53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=f32;prefix=none;engine=candle-0.9.2",
+    "reranker_for_demo": "cross-encoder/ms-marco-MiniLM-L-6-v2@233902d25c440f23af6f7d6e94d2946bac0bee0a;weights=sha256:821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=f32;engine=candle-0.9.2"
+  },
+  "counts": {
+    "articles": 2000,
+    "excluded": {
+      "title_suffix: (disambiguation)": 15,
+      "lead_contains:may refer to:300": 5,
+      "lead_contains:may mean:300": 10
+    },
+    "selected": 1970,
+    "passages": 8487,
+    "passages_over_window": 784,
+    "url_mismatches": 0
+  },
+  "phases_ms": {
+    "fetch_verify": 175,
+    "load_splitter": 3164,
+    "read_exclude": 0,
+    "chunk": 139628,
+    "embed_ingest": 870351,
+    "commit": 159,
+    "merge": 260,
+    "total": 1014129
+  },
+  "artefact_bytes": {
+    "corpus.json": 1416,
+    "dense/index.bin": 13104269,
+    "ids.json": 584600,
+    "lexical/.managed.json": 258,
+    "lexical/.tantivy-meta.lock": 0,
+    "lexical/.tantivy-writer.lock": 0,
+    "lexical/a97a7f9e3b394c7088b68d7c0544ed9f.fast": 20005,
+    "lexical/a97a7f9e3b394c7088b68d7c0544ed9f.fieldnorm": 25579,
+    "lexical/a97a7f9e3b394c7088b68d7c0544ed9f.idx": 1267799,
+    "lexical/a97a7f9e3b394c7088b68d7c0544ed9f.pos": 1778853,
+    "lexical/a97a7f9e3b394c7088b68d7c0544ed9f.store": 34276,
+    "lexical/a97a7f9e3b394c7088b68d7c0544ed9f.term": 589391,
+    "lexical/meta.json": 1364,
+    "lexical/xtriever-lexical.json": 412,
+    "passages.bin": 7776508,
+    "xtriever-pipeline.json": 898,
+    "total": 25185628
+  },
+  "chunking": {
+    "passages": 8487,
+    "over_window": 784,
+    "token_median": 82,
+    "token_p90": 239,
+    "token_max": 10367
+  }
+}

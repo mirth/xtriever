@@ -89,16 +89,27 @@ def test_empty_text_yields_no_documents():
     assert docs == [] and tokens == []
 
 
-LONG = "\n\n".join(
-    f"Paragraph {i}. The river runs past the old mill and under the stone bridge, where the "
-    f"children fish in summer and the ice creeps in winter. In {1800 + i} the bridge was rebuilt."
-    for i in range(120)
-)
+def _long_article():
+    """The snapshot's first article (~16k characters) — a real long text for the stride
+    windows; the model finds no breaks in monotonous synthetic prose, so nothing synthetic
+    stands in for it."""
+    from conftest import REPO
+
+    snapshot = REPO / "reference/datasets/wiki/simple.jsonl"
+    if not snapshot.exists():
+        pytest.skip(f"snapshot not on disk: {snapshot}")
+    import json
+
+    with snapshot.open(encoding="utf-8") as fh:
+        return json.loads(fh.readline())
 
 
 @pytest.mark.models
 def test_real_splitter_partitions_articles():
     splitter = Splitter(CHONKY)
+    article = _long_article()
+    LONG = article["text"]
+    assert len(LONG) > 5_000
     texts = [
         "The sky is the appearance of the atmosphere around the surface of the planet.\n\nThe sky is blue because of the random scattering of sunlight by the molecules.",
         "A café is a place that sells coffee.\n\nPeople sit and talk in cafés for hours.",
@@ -111,11 +122,11 @@ def test_real_splitter_partitions_articles():
         assert "".join(text[s:e] for s, e in ranges) == text
     assert len(splitter.chunks(LONG)) >= 2
     window = Window(CHONKY.parent / "all-MiniLM-L6-v2")
-    docs, tokens = documents_for({"id": "7", "title": "Long", "text": LONG}, splitter, window)
+    docs, tokens = documents_for({"id": "7", "title": article["title"], "text": LONG}, splitter, window)
     assert len(docs) == len(tokens) >= 2
     import xtriever
 
     raw = LONG.encode("utf-8")
     for d in docs:
         chunk = raw[d.chunk.byte_start : d.chunk.byte_end].decode("utf-8")
-        assert d.fields["text"] == xtriever.FieldValue.TEXT(passage_text("Long", chunk.strip()))
+        assert d.fields["text"] == xtriever.FieldValue.TEXT(passage_text(article["title"], chunk.strip()))
