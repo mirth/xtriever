@@ -103,7 +103,7 @@ reference/
     ├── test_splitters.py               # contract budget and the title-fills-window case; chonky-bounded merge and re-chunk on a stub splitter and a stub cost
     ├── test_maxp.py                    # first occurrence, dedupe, truncation, short queries counted
     ├── test_runs.py                    # run/score file names and shapes; the anchor comparison on synthetic reports
-    └── test_decide.py                  # the rule at its boundaries; two-way vs three-way scope; ties
+    └── test_decide_022.py                  # the rule at its boundaries; two-way vs three-way scope; ties
 ```
 
 Not touched: `crates/`, `swift/`, `python/src/`, `apps/`, `reference/fixtures/`, any baseline,

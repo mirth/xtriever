@@ -42,10 +42,12 @@ def _cost_positions(text):
 
 
 def test_bound_and_merge_merges_fragments_into_predecessor():
-    chunks = ["alpha beta gamma delta epsilon zeta eta theta", "tiny", "iota kappa lambda mu nu xi omicron pi"]
+    first = " ".join(f"a{i}" for i in range(20))  # 22 positions under the stub: a full chunk
+    third = " ".join(f"b{i}" for i in range(20))
+    chunks = [first, "tiny", third]
     # "tiny" is 1 word + 2 = 3 positions < 16 → joins its predecessor with a newline
     out, kept = cs.bound_and_merge(chunks, words_cost, _cost_positions, title_positions=2)
-    assert out == ["alpha beta gamma delta epsilon zeta eta theta\ntiny", "iota kappa lambda mu nu xi omicron pi"]
+    assert out == [first + "\ntiny", third]
     assert kept == 0
 
 
