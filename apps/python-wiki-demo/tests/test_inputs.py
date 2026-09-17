@@ -18,13 +18,14 @@ def _args(**kw):
         manifest=None,
         expected=None,
         queries=None,
+        chonky=None,
     )
     base.update(kw)
     return SimpleNamespace(**base)
 
 
 def test_defaults_resolve_against_the_repo_root(monkeypatch):
-    for var in ("XTRIEVER_WIKI_ARTEFACT", "XTRIEVER_MODEL_DIR", "XTRIEVER_RERANK_MODEL_DIR"):
+    for var in ("XTRIEVER_WIKI_ARTEFACT", "XTRIEVER_MODEL_DIR", "XTRIEVER_RERANK_MODEL_DIR", "XTRIEVER_CHONKY_MODEL_DIR"):
         monkeypatch.delenv(var, raising=False)
     assert repo_root() == REPO
     p = resolve(_args())
@@ -38,13 +39,17 @@ def test_defaults_resolve_against_the_repo_root(monkeypatch):
     assert p.snapshot == REPO / "reference/datasets/wiki/simple.jsonl"
     assert p.manifest == REPO / "reference/datasets/wiki-manifest.json"
     assert p.queries == REPO / "reference/fixtures/008/queries.json"
+    assert p.chonky == REPO / "reference/models/chonky_distilbert_base_uncased_1"
 
 
 def test_flag_beats_env_beats_default(monkeypatch, tmp_path):
     monkeypatch.setenv("XTRIEVER_WIKI_ARTEFACT", str(tmp_path / "env-artefact"))
     monkeypatch.setenv("XTRIEVER_MODEL_DIR", str(tmp_path / "env-embedder"))
     monkeypatch.setenv("XTRIEVER_RERANK_MODEL_DIR", str(tmp_path / "env-reranker"))
+    monkeypatch.setenv("XTRIEVER_CHONKY_MODEL_DIR", str(tmp_path / "env-chonky"))
     p = resolve(_args())
+    assert p.chonky == tmp_path / "env-chonky"
+    assert resolve(_args(chonky="rel/chonky")).chonky == REPO / "rel/chonky"
     assert p.artefact == tmp_path / "env-artefact"
     assert p.embedder == tmp_path / "env-embedder"
     assert p.reranker == tmp_path / "env-reranker"
@@ -63,6 +68,8 @@ def test_missing_input_names_the_producer(tmp_path):
     assert first_missing(p, ["snapshot"]) == ("the snapshot", p.snapshot, "scripts/fetch-wiki.sh")
     assert first_missing(p, ["expected"])[2].startswith("cargo run --release -p xtriever-cli -- wiki expected")
     assert first_missing(p, ["queries"])[0] == "the measurement queries"
+    q = resolve(_args(chonky=str(tmp_path / "c")))
+    assert first_missing(q, ["chonky"]) == ("the chonky splitter model", q.chonky / "model.safetensors", "scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json")
     assert "wiki build" in PRODUCERS["artefact"] and "wikidemo build" in PRODUCERS["artefact"]
     # In order: the first missing one is reported.
     assert first_missing(p, ["embedder", "artefact"])[0] == "the embedder"

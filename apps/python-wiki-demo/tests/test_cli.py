@@ -53,3 +53,26 @@ def test_the_four_subcommands_are_offered():
     assert set(cli.COMMANDS) == {"search", "about", "build", "measure"}
     code, out, err = run_cli(["build"])
     assert code == 2 and "--out" in err  # required
+
+
+def test_build_refuses_a_missing_splitter_model_before_loading_torch(tmp_path):
+    import sys
+    import time
+
+    from conftest import EMBEDDER, RERANKER, REPO
+
+    had_torch = "torch" in sys.modules
+    t = time.perf_counter()
+    code, out, err = run_cli(
+        ["build", "--out", str(tmp_path / "out"), "--limit", "1", "--chonky", "/nonexistent",
+         "--snapshot", str(REPO / "reference/datasets/wiki/simple.jsonl"), "--manifest", str(REPO / "reference/datasets/wiki-manifest.json")],
+        {"XTRIEVER_MODEL_DIR": str(EMBEDDER), "XTRIEVER_RERANK_MODEL_DIR": str(RERANKER)},
+    )
+    assert time.perf_counter() - t < 1.0
+    if not (EMBEDDER / "model.safetensors").exists() or not (REPO / "reference/datasets/wiki/simple.jsonl").exists():
+        assert code == 1 and err.startswith("wikidemo: missing")  # an earlier input is reported first
+        return
+    assert code == 1, err
+    assert err.startswith("wikidemo: missing the chonky splitter model: /nonexistent/model.safetensors\n  produce it with: scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json")
+    assert had_torch or "torch" not in sys.modules
+    assert not (tmp_path / "out").exists()
