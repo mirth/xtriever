@@ -19,8 +19,8 @@ the demos or the shipped artefact changes. Research D1–D10 in [research.md](./
 
 ## Technical Context
 
-**Language/Version**: Python 3.12 in `reference/.venv-022` (the 012 pins + `chonky==0.1.7`,
-hashed requirements; the `xtriever` wheel installed from the local build). **Primary
+**Language/Version**: Python 3.12 in `reference/.venv-022` (the 012 lock + `chonky==0.1.7`,
+pinned — see research D1 on why not re-hashed; the `xtriever` wheel installed from the local build). **Primary
 Dependencies**: `xtriever`, `chonky` / `transformers` / `torch`, `tokenizers`, `pytrec_eval`;
 the repository's `gen_003_fixtures` (scoring) and `gen_008_fixtures` (the contract chunker).
 **Storage**: indexes and the cached chonky splits under `target/xt-chunking-study/`
@@ -55,10 +55,10 @@ marked **PASS**, **FAIL**, or **N/A** with a one-line justification — an empty
 | I | Reuse Before Build | Commodity components come from `tantivy`, `tokenizers`, `candle`, `roaring`. No hand-written inverted index, ANN graph, or tensor runtime without an accepted ADR. | PASS | The study calls the package for indexing and retrieval, `chonky` for the neural split, `pytrec_eval` for scoring; the contract chunker is the existing reference implementation, imported. |
 | II | Executable Oracles Over Prose (NON-NEGOTIABLE) | Acceptance tests first, committed failing; reference behaviour pinned to goldens at stated tolerances; ranking work reports nDCG@10 / Recall@100 deltas on the three sets. | PASS | Tests first for every pure part; the anchor reproduces the committed baselines at 1e-6 per query before any variant runs (Rule 6 stop otherwise); the outcome *is* nDCG@10 / Recall@100 deltas on the BEIR sets, per cell, committed. |
 | III | Portability Is a Feature | Pure crates stay pure; cross-target checks pass; RSS under the ceiling. | PASS | No crate change (SC-005). |
-| IV | Measured, Not Asserted | Performance claims backed by benchmarks/records; reproducible: pinned models and datasets, fixed seeds; `explain()` per hit. | PASS | Models pinned (the engine's and the chonky manifest), datasets pinned by the BEIR manifest, the environment hashed; every cell a committed run file; the decision by a rule fixed in the spec with literal constants. |
+| IV | Measured, Not Asserted | Performance claims backed by benchmarks/records; reproducible: pinned models and datasets, fixed seeds; `explain()` per hit. | PASS | Models pinned (the engine's and the chonky manifest), datasets pinned by the BEIR manifest, the environment pinned; every cell a committed run file; the decision by a rule fixed in the spec with literal constants. |
 | V | Small, Explicit Interfaces | Core traits, on-disk format, error semantics unchanged. | PASS | Nothing touched. |
 | VI | Graceful Degradation and Determinism | Degrade not error unless strict; identical results for identical inputs. | PASS | The engine unchanged; no budgets; the same index and query give the same run (the anchor check relies on it). |
-| VII | Rust Hygiene | Toolchain, lints, `cargo add`, no `unwrap` in libraries, `unsafe` confined. | PASS | No Rust touched; the four commands run once. Python pins come from the resolver with hashes, never from memory. |
+| VII | Rust Hygiene | Toolchain, lints, `cargo add`, no `unwrap` in libraries, `unsafe` confined. | PASS | No Rust touched; the four commands run once. Python pins are the 012 lock's (resolver output) plus chonky's 021 pin, never from memory. |
 
 ### Agent Operating Rules
 
@@ -75,7 +75,7 @@ marked **PASS**, **FAIL**, or **N/A** with a one-line justification — an empty
 **Initial gate (pre-Phase 0)**: PASS — 2026-09-17, Claude (agent).
 
 **Post-design gate (post-Phase 1)**: PASS — 2026-09-17, Claude (agent); the design adds a
-hashed reference environment and nothing to the workspace.
+pinned reference environment and nothing to the workspace.
 
 ## Project Structure
 
@@ -96,7 +96,7 @@ specs/022-chunking-study/
 ```text
 reference/
 ├── chunking_study.py              # build | search | score | check | table | decide | all (contracts/study.md)
-├── requirements-022.in / .txt     # the 012 pins + chonky, hashed (D1)
+├── requirements-022.in / .txt     # the 012 pins + chonky, pinned (D1)
 └── tests_022/
     ├── conftest.py · helpers_022.py    # sys.path, REPO, the constants
     ├── test_join.py                    # the baselines' title/text join

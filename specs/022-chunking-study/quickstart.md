@@ -5,9 +5,9 @@ From the repository root, `unset SDKROOT`; `PY=reference/.venv-022/bin/python`.
 ## Step 0 — environment
 
 ```bash
-reference/.venv-012/bin/pip-compile --generate-hashes --output-file=reference/requirements-022.txt reference/requirements-022.in
-scripts/setup-reference-venv.sh 022
-VIRTUAL_ENV=reference/.venv-022 uv pip install target/wheels/xtriever-*.whl      # the local wheel (unhashed)
+uv venv --python 3.12 reference/.venv-022
+VIRTUAL_ENV=reference/.venv-022 uv pip install -r reference/requirements-022.txt   # the 012 lock + chonky (pinned; see the file header)
+VIRTUAL_ENV=reference/.venv-022 uv pip install target/wheels/xtriever-*.whl      # the local wheel
 $PY -c "import xtriever, chonky, pytrec_eval, torch; print(xtriever.__version__, torch.__version__)"
 ls reference/models/chonky_distilbert_base_uncased_1/model.safetensors reference/datasets/beir/scifact/corpus.jsonl
 ```

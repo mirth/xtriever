@@ -1,0 +1,19 @@
+# Direct dependencies for reference/chunking_study.py (Feature 022: the chunking study).
+#
+# torch / transformers / tokenizers / safetensors / numpy / pytrec_eval / huggingface-hub are
+# Feature 012's pins (reference/requirements-012.in) — the stack the earlier studies scored
+# with, so the scorer and the tokenizer agree with them. chonky is the paragraph splitter
+# Feature 021 pinned for the Wikipedia demo (its model is pinned separately in
+# reference/models/manifest-chonky.json). The xtriever wheel is not a resolvable requirement:
+# it is built locally (cd python && .venv/bin/maturin build --release) and installed into
+# this environment afterwards (specs/022-chunking-study/quickstart.md, Step 0).
+torch==2.14.0
+transformers==5.17.0
+tokenizers==0.23.2
+safetensors==0.8.0
+numpy==2.5.3
+pytrec_eval==0.5
+huggingface-hub==1.31.0
+chonky==0.1.7
+pytest
+pip-tools

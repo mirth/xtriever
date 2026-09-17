@@ -10,13 +10,18 @@ baselines' document shaping and depth), `crates/xtriever-ffi/src/index.rs` (`Sea
 ## D1 — Environment: `reference/.venv-022`
 
 `reference/requirements-022.in` = the 012 pins (torch 2.14.0, transformers 5.17.0, tokenizers
-0.23.2, safetensors 0.8.0, numpy 2.5.3, pytrec_eval 0.5, pytest, pip-tools) + `chonky==0.1.7`
-(the versions 021 pinned, which the 012 stack already satisfies), compiled with hashes to
-`requirements-022.txt` by pip-tools (from `.venv-012`); `scripts/setup-reference-venv.sh 022`
-builds the venv; the `xtriever` wheel is installed afterwards from `target/wheels/`
-(unhashed — a local build, stated in the quickstart). The study imports
-`gen_003_fixtures` (scoring) and `gen_008_fixtures` (the contract chunker) by `sys.path`, as
-`rerank_study.py` does.
+0.23.2, safetensors 0.8.0, numpy 2.5.3, pytrec_eval 0.5, huggingface-hub, pytest, pip-tools)
++ `chonky==0.1.7` (the version 021 pinned, satisfied by the 012 stack).
+`requirements-022.txt` is the 012 lock verbatim plus `chonky==0.1.7`: the 012 lock is
+pinned but **not hashed** (0 hashes — contrary to what this document first said, and to
+`scripts/setup-reference-venv.sh`'s `--require-hashes`, which cannot have produced
+`.venv-012`); a fresh `pip-compile --generate-hashes` downloaded more than 1 GB of torch
+wheels in 30 minutes without finishing and `--no-index` cannot see torch, so the lock is
+derived, not re-resolved, and says so in its header. The venv: `uv venv --python 3.12
+reference/.venv-022 && VIRTUAL_ENV=reference/.venv-022 uv pip install -r
+reference/requirements-022.txt`, then the `xtriever` wheel from `target/wheels/` (a local
+build, not a resolvable requirement). The study imports `gen_003_fixtures` (scoring) and
+`gen_008_fixtures` (the contract chunker) by `sys.path`, as `rerank_study.py` does.
 
 ## D2 — Reading BEIR as the harness does
 
