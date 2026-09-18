@@ -58,7 +58,9 @@ fn create_writes_an_empty_generation_that_opens() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("idx");
     let index = FlatIndex::create(&dir, 4, Metric::Dot, "fp").unwrap();
-    assert!(dir.join("index.bin").is_file());
+    assert!(dir.join("manifest.bin").is_file());
+    assert_eq!(std::fs::metadata(dir.join("vectors.0.bin")).unwrap().len(), 0);
+    assert!(!dir.join("index.bin").exists());
     drop(index);
     let opened = FlatIndex::open(&dir).unwrap();
     assert!(opened.is_empty());
@@ -128,18 +130,23 @@ fn a_leftover_tmp_file_is_ignored_and_replaced() {
     index.add(DocId(1), &[1.0, 0.0]).unwrap();
     index.commit().unwrap();
     std::fs::write(
-        tmp.path().join("index.bin.tmp"),
+        tmp.path().join("manifest.bin.tmp"),
         b"garbage from a crashed commit",
     )
     .unwrap();
+    std::fs::write(tmp.path().join("vectors.7.bin"), b"a stale generation").unwrap();
     let opened = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(opened.len(), 1);
     drop(opened);
     index.add(DocId(2), &[0.0, 1.0]).unwrap();
     index.commit().unwrap();
     assert!(
-        !tmp.path().join("index.bin.tmp").exists(),
+        !tmp.path().join("manifest.bin.tmp").exists(),
         "commit leaves no tmp behind"
+    );
+    assert!(
+        !tmp.path().join("vectors.7.bin").exists(),
+        "a writable open sweeps stale generations"
     );
     assert_eq!(FlatIndex::open(tmp.path()).unwrap().len(), 2);
 }
@@ -147,8 +154,9 @@ fn a_leftover_tmp_file_is_ignored_and_replaced() {
 #[cfg(feature = "mmap")]
 #[test]
 fn a_mapped_handle_survives_a_commit_by_another_handle() {
-    // The writer never modifies index.bin in place (ADR-0007 condition 2), so a mapping of the
-    // previous generation stays valid and unchanged.
+    // The writer never modifies a mapped byte (ADR-0007 condition 2 as amended by ADR-0013): an
+    // append extends the row file beyond the mapping, a compaction replaces it by rename — so a
+    // mapping of the previous state stays valid and unchanged through both.
     let tmp = tempfile::tempdir().unwrap();
     let mut a = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
     a.add(DocId(1), &[1.0, 0.0]).unwrap();
@@ -158,6 +166,9 @@ fn a_mapped_handle_survives_a_commit_by_another_handle() {
     a.add(DocId(2), &[0.5, 0.5]).unwrap();
     a.delete(&[DocId(1)]).unwrap();
     a.commit().unwrap();
+    assert_eq!(mapped.len(), 1);
+    assert_eq!(mapped.search(&[1.0, 0.0], None, 5).unwrap(), before);
+    a.compact().unwrap();
     assert_eq!(mapped.len(), 1);
     assert_eq!(mapped.search(&[1.0, 0.0], None, 5).unwrap(), before);
     assert_eq!(FlatIndex::open_mapped(tmp.path()).unwrap().len(), 1);

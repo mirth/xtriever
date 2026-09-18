@@ -1,5 +1,7 @@
 //! Property tests for the index invariants (Principle II): results ⊆ allowed, total ordering,
-//! `len` round-trips through add/delete/commit, and (under `mmap`) owned ≡ mapped. Offline.
+//! `len` round-trips through add/delete/commit, (under `mmap`) owned ≡ mapped, and — Feature
+//! 024 — random add/replace/delete/commit sequences whose results survive `compact` and a
+//! reopen bit for bit, with no dead row ever surfacing. Offline.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
@@ -104,6 +106,75 @@ proptest! {
         let all = reopened.search(&[1.0, 1.0, 1.0, 1.0], None, 100).unwrap();
         let got: Vec<u32> = { let mut v: Vec<u32> = all.iter().map(|h| h.id.0).collect(); v.sort_unstable(); v };
         prop_assert_eq!(got, model.keys().copied().collect::<Vec<_>>());
+    }
+}
+
+/// One step of a random mutation sequence (Feature 024).
+#[derive(Debug, Clone)]
+enum Op {
+    Add(u32, Vec<f32>),
+    Delete(Vec<u32>),
+    Commit,
+}
+
+fn op() -> impl Strategy<Value = Op> {
+    prop_oneof![
+        5 => (0u32..40, finite_vec(6)).prop_map(|(id, v)| Op::Add(id, v)),
+        2 => prop::collection::vec(0u32..44, 1..4).prop_map(Op::Delete),
+        2 => Just(Op::Commit),
+    ]
+}
+
+fn bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
+    hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 200, ..ProptestConfig::default() })]
+
+    #[test]
+    fn compact_and_reopen_preserve_every_bit(
+        metric in metric(),
+        ops in prop::collection::vec(op(), 1..200),
+        queries in prop::collection::vec(finite_vec(6), 1..4),
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut index = FlatIndex::create(tmp.path(), 6, metric, "prop").unwrap();
+        let mut model: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
+        let mut committed: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
+        for o in &ops {
+            match o {
+                Op::Add(id, v) => { index.add(DocId(*id), v).unwrap(); model.insert(*id, v.clone()); }
+                Op::Delete(ids) => {
+                    let d: Vec<DocId> = ids.iter().map(|&i| DocId(i)).collect();
+                    index.delete(&d).unwrap();
+                    for i in ids { model.remove(i); }
+                }
+                Op::Commit => { index.commit().unwrap(); committed = model.clone(); }
+            }
+        }
+        index.commit().unwrap();
+        committed = model.clone();
+        prop_assert_eq!(index.len(), committed.len() as u64);
+        let before: Vec<Vec<(u32, u32)>> = queries.iter().map(|q| bits(&index.search(q, None, 64).unwrap())).collect();
+        // Dead rows never surface, live rows always do, vectors are the model's.
+        for hits in &before {
+            let ids: Vec<u32> = { let mut v: Vec<u32> = hits.iter().map(|h| h.0).collect(); v.sort_unstable(); v };
+            prop_assert_eq!(&ids, &committed.keys().copied().collect::<Vec<_>>());
+        }
+        for (id, v) in &committed {
+            prop_assert_eq!(index.vector(DocId(*id)).as_deref(), Some(v.as_slice()));
+        }
+        index.compact().unwrap();
+        prop_assert_eq!(index.stats().dead, 0);
+        prop_assert_eq!(index.stats().rows, committed.len() as u64);
+        let after: Vec<Vec<(u32, u32)>> = queries.iter().map(|q| bits(&index.search(q, None, 64).unwrap())).collect();
+        prop_assert_eq!(&after, &before);
+        drop(index);
+        let reopened = FlatIndex::open(tmp.path()).unwrap();
+        let again: Vec<Vec<(u32, u32)>> = queries.iter().map(|q| bits(&reopened.search(q, None, 64).unwrap())).collect();
+        prop_assert_eq!(&again, &before);
+        prop_assert_eq!(reopened.len(), committed.len() as u64);
     }
 }
 
