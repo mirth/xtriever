@@ -45,6 +45,8 @@ exactly the committed bytes.
 
 **Review round 7** (one comment, applied): read-only opens (`open_read_only*`, used by the pipeline's `OpenOptions { read_only }`) neither truncate nor sweep and refuse mutations — the one pipeline change in this PR.
 
+**Review round 8** (three comments, applied): the rewrite validates its row count against the `u32` limit before I/O, an empty index's open checks its row file exists, and read-only opens keep the no-concurrent-writer precondition.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

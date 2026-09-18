@@ -204,6 +204,23 @@ fn a_generation_that_cannot_advance_is_corrupt_not_an_overflow() {
 }
 
 #[test]
+fn an_empty_index_still_needs_its_row_file() {
+    // A manifest naming zero rows is still a manifest naming a generation: the row file must
+    // exist, for a read-only open as for a writable one.
+    let tmp = tempfile::tempdir().unwrap();
+    drop(FlatIndex::create(tmp.path(), 3, Metric::Dot, "fp").unwrap());
+    std::fs::remove_file(tmp.path().join("vectors.0.bin")).unwrap();
+    assert!(matches!(
+        FlatIndex::open_read_only(tmp.path()).unwrap_err(),
+        Error::Io(_)
+    ));
+    assert!(matches!(
+        FlatIndex::open(tmp.path()).unwrap_err(),
+        Error::Io(_)
+    ));
+}
+
+#[test]
 fn bad_magic_and_truncation_are_corrupt() {
     let tmp = tempfile::tempdir().unwrap();
     drop(small(tmp.path()));

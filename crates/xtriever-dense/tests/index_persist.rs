@@ -252,8 +252,8 @@ fn a_mapping_covers_only_the_committed_rows() {
 #[test]
 fn a_read_only_open_touches_nothing_and_refuses_mutations() {
     // A logical read-only open holds no writer's role: a crashed tail, a manifest temporary and
-    // a stale generation all survive it (a concurrent writer may be preparing them), and
-    // `commit` / `compact` are refused — the state is still the committed one.
+    // a stale generation all survive it (it alters nothing it did not write), and `commit` /
+    // `compact` are refused — the state is still the committed one.
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
     index.add(DocId(1), &[1.0, 0.0]).unwrap();

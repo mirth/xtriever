@@ -105,8 +105,10 @@ impl FlatIndex {
 
     /// Open read-only, reading the committed rows into memory: nothing in the directory is
     /// touched — no crashed tail is cut, no stale generation swept — and `commit` / `compact`
-    /// are refused. For a directory another handle may be writing to, or one that is
-    /// read-only by construction (an app bundle).
+    /// are refused. For a directory that is read-only by construction (an app bundle) or one
+    /// this handle must not alter. The precondition every open has stands: no writer changes
+    /// the directory while the handle lives — a concurrent compaction could switch the
+    /// manifest and remove the generation between the manifest and the row file being read.
     ///
     /// # Errors
     ///
@@ -278,9 +280,20 @@ impl FlatIndex {
                 self.header.generation
             ))
         })?;
+        // The new generation's row count, validated against the row-space limit before any
+        // I/O: the committed live rows, minus those a pending change supersedes or deletes,
+        // plus the pending inserts and replacements.
+        let superseded = self
+            .pending
+            .keys()
+            .filter(|id| self.live_row(**id).is_some())
+            .count();
+        let adds = self.pending.values().filter(|c| c.is_some()).count();
+        let total = self.rows_by_id.len() - superseded + adds;
+        row_space(0, total)?;
         let old_path = self.dir.join(format::row_file(self.header.generation));
         let bytes = self.rows.as_slice();
-        let mut buf = Vec::with_capacity(self.header.live as usize * self.layout.row_bytes);
+        let mut buf = Vec::with_capacity(total * self.layout.row_bytes);
         let mut rows_by_id = BTreeMap::new();
         let mut committed = self.rows_by_id.iter().peekable();
         let mut pending = self.pending.iter().peekable();
@@ -320,6 +333,7 @@ impl FlatIndex {
                 (Some(_), None) => unreachable!("covered by the first arm"),
             }
         }
+        debug_assert_eq!(next as usize, total);
         let count = u64::from(next);
         let layout = Rows::new(next as usize, self.header.dim);
         let new_path = self.dir.join(format::row_file(generation));
@@ -421,7 +435,7 @@ impl FlatIndex {
     /// it (best effort: a read-only file keeps it, and only the committed rows are ever read);
     /// stale generations and a manifest temporary are swept the same way. Nothing here touches
     /// a committed byte, and nothing is mapped yet. A read-only open skips this entirely: it
-    /// holds no writer's role and may share the directory with one.
+    /// holds no writer's role, so it alters nothing.
     fn settle(&self) -> Result<()> {
         let layout = Rows::new(self.header.rows as usize, self.header.dim);
         let path = self.dir.join(format::row_file(self.header.generation));
@@ -459,6 +473,9 @@ impl FlatIndex {
         let layout = Rows::new(self.header.rows as usize, self.header.dim);
         let path = self.dir.join(format::row_file(self.header.generation));
         let rows = if layout.count == 0 {
+            // Nothing to read, but the generation the manifest names must be there: a missing
+            // row file is an incomplete directory, whatever the open's mode.
+            std::fs::metadata(&path)?;
             Bytes::Owned(Vec::new())
         } else {
             bytes::read_prefix(&path, self.load_path, layout.len_bytes())?

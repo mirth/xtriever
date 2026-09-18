@@ -157,11 +157,22 @@ The commit bench re-run after the directory syncs: **17.5 ms** per 10-row commit
 
 `FlatIndex` gains a read-only mode after all: `open_read_only[_for]` and, under `mmap`,
 `open_mapped_read_only[_for]` skip the truncation and the sweep (`settle`) — a logical
-read-only open holds no writer's role and may share the directory with a writer preparing a
-generation or a manifest — read exactly the committed rows, and refuse `commit` / `compact`
+read-only open holds no writer's role, so it alters nothing — the no-concurrent-writer
+precondition of every open stands, see round 8 — read exactly the committed rows, and refuse `commit` / `compact`
 with the lexical stage's "read-only index" `Error::Io`. The pipeline's `open_with(...,
 read_only: true)` now uses them (a four-line change in `crates/xtriever-pipeline/src/index.rs`,
 pulled into PR A because the reachable path is the pipeline's). The round-1 "no read-only
 mode" wording in the contract is superseded. Tests: a read-only open leaves a crashed tail, a
 manifest temporary and a stale generation in place and refuses mutations; a mapped read-only
 open exposes the committed rows only; the next writable open cleans up.
+
+### Review round 8 (Copilot, three comments — all applied)
+
+1. The rewrite protocol computes the new generation's row count (committed live − superseded
+   + pending inserts) and checks it against the `u32` row-space limit before any I/O, as the
+   append path does; the loop counter is bounded by it (`debug_assert`).
+2. An empty index's open — read-only included — stats the row file the manifest names: a
+   missing generation is `Error::Io` in every mode (`index_errors::an_empty_index_still_needs_its_row_file`).
+3. The read-only docs no longer suggest sharing the directory with a writer: the
+   no-concurrent-writer precondition of every open (spec edge cases, the pipeline's
+   `OpenOptions`) stands; a read-only open merely alters nothing.

@@ -17,9 +17,10 @@ New:
 - `open_read_only(dir)`, `open_read_only_for(dir, embedder)` and, under `mmap`,
   `open_mapped_read_only(dir)`, `open_mapped_read_only_for(dir, embedder)`: a read-only open
   touches nothing in the directory — no crashed tail is cut, no stale generation or manifest
-  temporary swept (a concurrent writer may be preparing them) — reads exactly the committed
-  rows, and refuses `commit` / `compact` with `Error::Io` (permission denied, "read-only
+  temporary swept — reads exactly the committed rows, and refuses `commit` / `compact` with `Error::Io` (permission denied, "read-only
   index"). `is_read_only()` tells. The pipeline uses these for `OpenOptions { read_only: true }`.
+  The no-concurrent-writer precondition of every open (spec edge cases; `OpenOptions`) stands
+  for read-only opens too.
 - `compact(&mut self) -> Result<()>`: commits pending changes, then rewrites the row file
   with live rows only in ascending id order under a new generation; a no-op when there is
   nothing dead and the rows are already ascending. On a read-only handle → `Error::Io`
