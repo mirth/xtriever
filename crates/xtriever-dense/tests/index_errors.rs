@@ -152,6 +152,29 @@ fn a_version_1_directory_is_refused_naming_both_versions() {
 }
 
 #[test]
+fn two_live_rows_for_one_id_are_corrupt() {
+    // A row file with a duplicate id and no tombstone for either row (review round 1 #2): the
+    // one-live-row invariant is checked while the id table is rebuilt at open.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 3, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0, 0.0]).unwrap();
+    index.commit().unwrap();
+    drop(index);
+    let rows = tmp.path().join("vectors.0.bin");
+    let one = std::fs::read(&rows).unwrap();
+    let mut twice = one.clone();
+    twice.extend_from_slice(&one);
+    std::fs::write(&rows, twice).unwrap();
+    rewrite_manifest_header(tmp.path(), |h| {
+        h.replace("\"rows\":1,\"live\":1", "\"rows\":2,\"live\":2")
+    });
+    match FlatIndex::open(tmp.path()).unwrap_err() {
+        Error::Corrupt(msg) => assert!(msg.contains("two live rows for id 1"), "{msg}"),
+        other => panic!("expected Corrupt, got {other:?}"),
+    }
+}
+
+#[test]
 fn bad_magic_and_truncation_are_corrupt() {
     let tmp = tempfile::tempdir().unwrap();
     drop(small(tmp.path()));

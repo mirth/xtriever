@@ -131,9 +131,11 @@ PR and committed under `runs/`.
 
 - **Fixture index** (`swift/Xtriever/Tests/Fixtures/index`, untracked; `expected.json`
   tracked): `cargo run --release -p xtriever-ffi --example fixture_index -- swift/Xtriever/Tests/Fixtures`
-  regenerates both; `git diff --stat swift/Xtriever/Tests/Fixtures/expected.json` must be
-  empty — the goldens reproduce bit for bit. The same for the FFI/Python/Swift test suites
-  that open it.
+  regenerates both. The generator also rewrites the file's `generated_by` provenance line
+  (its own commit hash), so the check is: every line other than `generated_by` identical —
+  then the committed file is kept (restored from the working copy's backup) so the diff is
+  empty; a difference anywhere else is a stop point. The same for the FFI/Python/Swift test
+  suites that open it.
 - **The shipped Wikipedia artefact** (`target/xt-wiki`, 427,947 rows): its vectors are the
   pinned embedder's output; a throwaway converter (`reference/convert_dense_v1_to_v2.py`
   under the 024 spec's `reference/`, not shipped in the engine — or a `#[ignore]`d Rust

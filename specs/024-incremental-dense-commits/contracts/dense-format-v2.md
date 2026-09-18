@@ -16,16 +16,18 @@ New:
 
 - `compact(&mut self) -> Result<()>`: commits pending changes, then rewrites the row file
   with live rows only in ascending id order under a new generation; a no-op when there is
-  nothing dead and the rows are already ascending; `Error::Io` "read-only index" on a
-  read-only handle.
+  nothing dead and the rows are already ascending. `FlatIndex` has no read-only mode (a
+  mapped handle may append): the pipeline refuses `merge` on a read-only open before calling
+  it; on a directory that cannot be written the underlying `Error::Io` surfaces.
 - `set_compaction_threshold(&mut self, share: Option<f32>) -> Result<()>`: `Error::Schema`
   unless `share` is `None` or in `0.0..=1.0`; when set, `commit` compacts after a commit whose
   `dead / rows` exceeds it.
 - `stats(&self) -> DenseStats { rows, live, dead, generation }` for tests and records.
 
 Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other version →
-`Error::Corrupt` naming the found and the expected version; a row file shorter than
-`rows × row_bytes` → `Error::Corrupt`; the agreement errors as before.
+`Error::Corrupt` naming the found and the expected version; a header whose `rows × (8 + dim
+× 4)` overflows, a row file shorter than `rows × row_bytes`, or two live rows for one id →
+`Error::Corrupt`; the agreement errors as before.
 
 ## Guarantees
 

@@ -28,7 +28,7 @@ cargo nextest run -p xtriever-dense                                     # all gr
 cargo test -p xtriever-dense --features mmap --test index_persist       # the mapped paths
 cargo bench -p xtriever-dense --bench scan -- --save-baseline v2        # scan v1-shaped vs v2; the 10-row commit
 cargo run --release -p xtriever-ffi --example fixture_index -- swift/Xtriever/Tests/Fixtures
-git diff --stat swift/Xtriever/Tests/Fixtures/expected.json             # empty: the goldens reproduce bit for bit
+git diff swift/Xtriever/Tests/Fixtures/expected.json | grep '^[-+] ' | grep -v generated_by   # nothing: only the provenance line may differ; then restore the committed file
 cargo nextest run --workspace                                            # the FFI / pipeline suites over the regenerated fixture
 ```
 

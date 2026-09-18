@@ -109,9 +109,11 @@ that commit. The default is off, so nothing changes for callers who do not ask.
 **Why this priority**: the option gives a phone app a no-maintenance mode; the default keeps
 commit cost predictable for everyone else.
 
-**Independent Test**: with the threshold set to 0.25, a sequence whose deletes reach 25 % of
-the rows compacts on that commit (file rows = live rows, tombstones empty) and not before;
-with it unset, the same sequence never compacts until `merge`.
+**Independent Test**: with the threshold set to 0.25, a sequence whose deletes bring the
+dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two commits
+(the comparison is strict — `dead / rows > threshold`), compaction on the third (file rows
+= live rows, tombstones empty); with it unset, the same sequence never compacts until
+`merge`.
 
 ---
 

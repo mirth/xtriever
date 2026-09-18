@@ -32,9 +32,10 @@ the version-1 oracle **bit for bit** on version 2 (three metrics, 159 commits, ~
 compaction (~1,250 lengths) — each reopens to the previous committed state. Workspace: 294
 passed; the Python surface 33 passed over the regenerated fixture.
 
-**The fixture** regenerated (`fixture_index` example): `expected.json` differs from the
-committed file in one line — the generator's commit hash in `generated_by`; every hit and
-score bit is identical. The regenerated `index/dense/` holds `manifest.bin` + `vectors.0.bin`.
+**The fixture** regenerated (`fixture_index` example): the minted `expected.json` differs
+from the committed file in one line only — the generator's commit hash in `generated_by`;
+every hit and score bit is identical, so the committed file is kept (restored; the diff is
+empty) and the regenerated `index/dense/` (`manifest.bin` + `vectors.0.bin`) passes it.
 (`XtrieverData/` is staged from it by `scripts/build-ios-package.sh` at package build time;
 no device job here.)
 
@@ -59,3 +60,20 @@ re-made without a read) before the numbers were recorded.
 source is ~900 lines (`format.rs`, `index/mod.rs`, `lib.rs`, `bytes.rs`), tests ~1,000, the
 bench 228, ADR-0013 123; plus the 289 KB oracle JSON. Over Rule 3's ~800 as stated in the
 plan's split: PR A is the format with its oracle and tests, PR B the pipeline and artefacts.
+
+### Review round 1 (Copilot, six comments — all applied)
+
+1. `decode_manifest` validates the full row layout with checked arithmetic
+   (`Rows::checked`: `8 + dim × 4` and `rows × row_bytes`), so an absurd `dim` is `Corrupt`,
+   never an overflow; unit-tested with three overflowing pairs.
+2. `reload` rejects two live rows for one id (`Corrupt` naming the id and both rows) instead
+   of overwriting the table entry; `index_errors::two_live_rows_for_one_id_are_corrupt`.
+3. The 024 property block uses `ProptestConfig::default()`, so `PROPTEST_CASES=1000` is
+   honoured: re-run, 1,000 cases in 253 s, green.
+4. `compact`'s contract and doc no longer promise a "read-only index" error — `FlatIndex`
+   has no read-only mode; the pipeline refuses `merge` first; a read-only directory surfaces
+   the underlying `Error::Io`.
+5. The threshold acceptance test covers 20 % → exactly 25 % (no compaction — strict `>`) →
+   26 % (compaction); the spec's US4 wording matches.
+6. `expected.json`: the committed golden is restored (the regeneration changed only the
+   provenance line); research D9, the quickstart and T018 now say so explicitly.

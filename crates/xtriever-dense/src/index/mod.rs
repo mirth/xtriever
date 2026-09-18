@@ -189,6 +189,10 @@ impl FlatIndex {
     /// id order, under the next generation — the manifest switches to it by `rename` and the
     /// old row file is removed. A no-op when nothing is dead and the rows already ascend.
     ///
+    /// `FlatIndex` has no read-only mode: the pipeline refuses `merge` on a read-only open
+    /// before reaching this; on a directory that cannot be written the underlying `Error::Io`
+    /// surfaces.
+    ///
     /// # Errors
     ///
     /// `Error::Io`; a failure before the manifest is renamed leaves the previous state (the
@@ -368,6 +372,15 @@ impl FlatIndex {
             let at = id as usize;
             if rows_by_id.len() <= at {
                 rows_by_id.resize(at + 1, NONE);
+            }
+            // One live row per id: a second one is a corrupt file, not a silent overwrite
+            // (review round 1 #2).
+            if rows_by_id[at] != NONE {
+                return Err(corrupt(format!(
+                    "{} has two live rows for id {id} (rows {} and {r})",
+                    path.display(),
+                    rows_by_id[at]
+                )));
             }
             rows_by_id[at] = r as u32;
         }

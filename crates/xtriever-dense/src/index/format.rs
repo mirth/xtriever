@@ -50,11 +50,6 @@ pub(crate) fn row_file_generation(name: &str) -> Option<u64> {
         .ok()
 }
 
-/// Bytes per row: id, norm, vector.
-pub(crate) fn row_bytes(dim: usize) -> usize {
-    8 + dim * 4
-}
-
 /// The JSON header. Field order is the on-disk key order.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Header {
@@ -106,12 +101,24 @@ pub(crate) struct Rows {
 }
 
 impl Rows {
-    pub fn new(count: usize, dim: usize) -> Self {
-        Self {
+    /// The layout of `count` rows of `dim`, or `None` if the byte arithmetic overflows.
+    pub fn checked(count: usize, dim: usize) -> Option<Self> {
+        let row_bytes = dim.checked_mul(4)?.checked_add(8)?;
+        count.checked_mul(row_bytes)?;
+        Some(Self {
             count,
             dim,
-            row_bytes: row_bytes(dim),
-        }
+            row_bytes,
+        })
+    }
+
+    /// As [`checked`](Self::checked) for a header `decode_manifest` has already validated.
+    pub fn new(count: usize, dim: usize) -> Self {
+        Self::checked(count, dim).unwrap_or(Self {
+            count: 0,
+            dim,
+            row_bytes: 0,
+        })
     }
 
     /// The committed length in bytes.
@@ -222,6 +229,14 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, RoaringBitmap)> {
             header.rows
         )));
     }
+    // The row layout comes from the untrusted header: checked arithmetic, so an absurd `dim`
+    // or `rows` is `Corrupt`, never an overflow (review round 1 #1).
+    Rows::checked(header.rows as usize, header.dim).ok_or_else(|| {
+        corrupt(format!(
+            "{MANIFEST} rows {} × dim {} does not fit this platform",
+            header.rows, header.dim
+        ))
+    })?;
     let tombstones_at = 16 + hdr_len;
     let tombstones_len = usize::try_from(header.tombstones_len).map_err(|_| {
         corrupt(format!(

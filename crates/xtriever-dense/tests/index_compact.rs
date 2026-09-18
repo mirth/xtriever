@@ -158,18 +158,30 @@ fn threshold_compacts_on_the_crossing_commit() {
         },
         "20 % is not over 25 %"
     );
-    let more: Vec<DocId> = (20..30).map(DocId).collect();
-    index.delete(&more).unwrap();
+    let five: Vec<DocId> = (20..25).map(DocId).collect();
+    index.delete(&five).unwrap();
     index.commit().unwrap();
     assert_eq!(
         index.stats(),
         DenseStats {
-            rows: 70,
-            live: 70,
+            rows: 100,
+            live: 75,
+            dead: 25,
+            generation: 0
+        },
+        "exactly 25 % is not over 25 %: the comparison is strict"
+    );
+    index.delete(&[DocId(25)]).unwrap();
+    index.commit().unwrap();
+    assert_eq!(
+        index.stats(),
+        DenseStats {
+            rows: 74,
+            live: 74,
             dead: 0,
             generation: 1
         },
-        "30 % crosses 25 %: compacted in that commit"
+        "26 % crosses 25 %: compacted in that commit"
     );
     assert!(!tmp.path().join("vectors.0.bin").exists());
 }

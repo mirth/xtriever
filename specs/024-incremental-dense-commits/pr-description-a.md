@@ -19,6 +19,12 @@ in its `generated_by` commit hash); 1,000 random property cases survive `compact
 **Bench** (`MacBookPro18,3`, 100k × 384): scan 31.6 ms vs 32.8 ms for the version-1 shape;
 a 10-row commit writes **15.4 KB in 12.9 ms** instead of **154 MB in 175 ms**.
 
+**Review round 1** (six comments, all applied): checked layout arithmetic in the manifest
+decoder, a duplicate-live-id check at open, the property test honouring `PROPTEST_CASES`
+(1,000 cases run), the threshold's strict comparison tested at equality, `compact`'s
+read-only wording corrected, the fixture's committed `expected.json` kept (only its
+provenance line had changed).
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

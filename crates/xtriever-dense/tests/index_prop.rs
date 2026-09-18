@@ -130,7 +130,8 @@ fn bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 200, ..ProptestConfig::default() })]
+    // The default case count honours `PROPTEST_CASES` (SC-002's 1,000-sequence run).
+    #![proptest_config(ProptestConfig::default())]
 
     #[test]
     fn compact_and_reopen_preserve_every_bit(
