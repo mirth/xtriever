@@ -13,17 +13,18 @@ dependencies = [
   # The engine's Python surface (Feature 011), installed from the locally built wheel —
   # `cd python && .venv/bin/maturin build --release` → target/wheels/xtriever-*.whl.
   "xtriever>=0.1.0",
-  # The build's splitter (Feature 021): chonky's ParagraphSplitter and what it runs on, at the
-  # versions the resolver installed on 2026-09-17 (specs/021-chonky-wiki-chunking, research D7).
-  "chonky==0.1.7",
-  "transformers==5.17.0",
-  "torch==2.14.0",
-  # The embedder's tokenizer, for the over-window count only: the same version
-  # crates/xtriever-dense/Cargo.toml pins for the engine, so the counts are the engine's.
+  # The embedder's tokenizer: prices the contract chunker's units and counts passages
+  # against the window — the same version crates/xtriever-dense/Cargo.toml pins for the
+  # engine, so the counts are the engine's (research D5 of Feature 019).
   "tokenizers==0.23.2",
 ]
 
 [project.optional-dependencies]
+# The `--chunker chonky` splitter (Feature 021, optional since Feature 023): chonky's
+# ParagraphSplitter and what it runs on, at the versions the resolver installed on
+# 2026-09-17 (specs/021-chonky-wiki-chunking, research D7). `search`, `about`, `measure`
+# and a default build never import them.
+chonky = ["chonky==0.1.7", "transformers==5.17.0", "torch==2.14.0"]
 test = ["pytest>=8"]
 
 [project.scripts]
@@ -34,4 +35,7 @@ packages = ["wikidemo"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["models: needs the pinned models and the 007 fixture index on disk (skipped otherwise)"]
+markers = [
+  "models: needs the two pinned engine models and the 007 fixture index on disk (skipped otherwise)",
+  "chonky: needs the chonky extra and its pinned model on disk (skipped otherwise)",
+]
