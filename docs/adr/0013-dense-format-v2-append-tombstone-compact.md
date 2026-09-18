@@ -52,7 +52,9 @@ dense/
   `vectors.<g+1>.bin`, replaces the manifest (`generation g+1`, no tombstones), and removes
   the old file. The pipeline's `merge` calls it; `commit` calls it when the configured
   dead-row share (`HybridConfig::dense_compact_dead_share`, default `None`) is exceeded.
-- **Crash safety**: a crash before the manifest rename leaves the previous manifest, so the
+- **Crash safety**: the directory is fsynced after a new row file is created and after every
+  manifest rename, so a power loss cannot keep a manifest naming a row file whose entry never
+  reached disk; a crash before the manifest rename leaves the previous manifest, so the
   previous state; a partial append's tail beyond the committed rows is ignored and cut at the
   next open (best effort — a read-only directory keeps it, and only committed rows are read);
   a stale generation or manifest temporary is swept the same way.

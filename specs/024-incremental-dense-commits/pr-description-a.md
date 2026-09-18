@@ -17,7 +17,7 @@ goldens and the Swift fixture goldens reproduce (the fixture's `expected.json` d
 in its `generated_by` commit hash); 1,000 random property cases survive `compact` and reopen.
 
 **Bench** (`MacBookPro18,3`, 100k × 384): scan 31.6 ms vs 32.8 ms for the version-1 shape;
-a 10-row commit writes **15.4 KB in 12.9 ms** instead of **154 MB in 175 ms**.
+a 10-row commit writes **15.4 KB in 17.5 ms** (three fsyncs: rows, manifest, directory) instead of **154 MB in 175 ms**.
 
 **Review round 1** (six comments, all applied): checked layout arithmetic in the manifest
 decoder, a duplicate-live-id check at open, the property test honouring `PROPTEST_CASES`
@@ -33,6 +33,11 @@ before the manifest rename, so a failure never leaves the handle disagreeing wit
 crashed tail is never mapped), row-space exhaustion is refused before any I/O, the
 generation error is plain, and a mapped handle keeps mapping after its first append and
 after a compaction to zero rows.
+
+**Review round 4** (four comments, applied): the live-row table is a map keyed by id (memory
+follows rows, not the largest id), the directory is fsynced at the protocol's ordering
+points, a temporary mapping is dropped before any truncation, and the buffered open reads
+exactly the committed bytes.
 
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob

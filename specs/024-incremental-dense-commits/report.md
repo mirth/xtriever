@@ -46,7 +46,7 @@ no device job here.)
 | unfiltered scan | 32.8 ms | **31.6 ms** (−4 %) | within 5 % |
 | scan, `allowed` = every other id | — | 16.2 ms | reported |
 | 10-row commit, bytes written | 154,400,101 | **15,440** (+ a manifest under 1 KB) | < 100 KB |
-| 10-row commit, time | 175 ms (134 ms in the first run) | **12.9 ms** (two `fsync`s) | < 50 ms |
+| 10-row commit, time | 175 ms (134 ms in the first run) | **17.5 ms** (12.9 ms before the directory fsyncs of review round 4; three `fsync`s now) | < 50 ms |
 
 The first commit run measured 37.6 ms: `commit` re-read the whole row file after each
 append. Fixed (`absorb`: the in-memory buffer grows by the appended bytes; a mapping is
@@ -105,3 +105,22 @@ plan's split: PR A is the format with its oracle and tests, PR B the pipeline an
    `open_mapped` handle maps after its first append and after compacting to zero rows and
    back (`is_mapped()` probe, feature `mmap`;
    `index_persist::a_mapped_handle_maps_after_its_first_append_and_after_compacting_to_empty`).
+
+### Review round 4 (Copilot, four comments — all applied)
+
+1. The live-row table is a `BTreeMap<id, row>`: memory follows the row count whatever ids
+   the caller chooses (a sparse `u32::MAX` costs one entry), and it iterates in ascending id
+   order — the order a compaction writes. `index_persist::a_sparse_id_costs_one_entry_not_a_table`.
+   (The pipeline's ids are dense by contract; the fix is for `FlatIndex`'s public surface.)
+2. Directory syncs at the ordering points (`sync_dir`, POSIX `fsync` on the directory):
+   after creating the row file at `create` and the new generation at `compact` (before a
+   manifest names it), and after every manifest rename (inside `write_manifest`) — so the old
+   generation is removed only once the rename is durable. A removal itself need not be
+   durable: a survivor is swept at open.
+3. On the mapped path the temporary mapping over the appended bytes is dropped before a failed
+   manifest write truncates them.
+4. The buffered prefix read takes exactly `len` bytes (`Read::take`): a crashed tail is never
+   read; `index_persist::a_buffered_open_reads_only_the_committed_bytes` uses a sparse 64 MB
+   tail on a read-only directory.
+
+The commit bench re-run after the directory syncs: **17.5 ms** per 10-row commit (was 12.9 ms), still 15.4 KB written; `runs/bench-scan-…txt` carries both runs.

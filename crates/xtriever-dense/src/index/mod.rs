@@ -18,9 +18,6 @@ use crate::bytes::{self, Bytes};
 use crate::error::{corrupt, dim_mismatch, schema_err};
 use format::{Header, MANIFEST, MANIFEST_TMP, Rows, V1_FILE};
 
-/// No live row for this id (`rows_by_id`).
-const NONE: u32 = u32::MAX;
-
 /// What the manifest says about the committed state — for tests, records and `about`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DenseStats {
@@ -51,8 +48,10 @@ pub struct FlatIndex {
     rows: Bytes,
     layout: Rows,
     dead: RoaringBitmap,
-    /// Indexed by `DocId`: the live row for that id, or `NONE`.
-    rows_by_id: Vec<u32>,
+    /// The live row of every live id. A map, not a table indexed by id: memory follows the
+    /// row count, whatever ids the caller chooses, and it iterates in ascending id order —
+    /// the order a compaction writes.
+    rows_by_id: BTreeMap<u32, u32>,
     /// Whether the file's ids are strictly ascending (so a compaction with no dead rows would
     /// write the same rows again — skipped).
     ascending: bool,
@@ -87,6 +86,7 @@ impl FlatIndex {
             tombstones_len: 0,
         };
         std::fs::File::create(dir.join(format::row_file(0)))?.sync_all()?;
+        sync_dir(dir)?;
         write_manifest(dir, &header, &RoaringBitmap::new())?;
         Self::open_with(dir, LoadPath::Buffered)
     }
@@ -211,16 +211,12 @@ impl FlatIndex {
         let old_path = self.dir.join(format::row_file(self.header.generation));
         let bytes = self.rows.as_slice();
         let mut buf = Vec::with_capacity(self.header.live as usize * self.layout.row_bytes);
-        let mut rows_by_id = vec![NONE; self.rows_by_id.len()];
-        let mut next = 0u32;
-        for (id, &r) in self.rows_by_id.iter().enumerate() {
-            if r != NONE {
-                let r = r as usize;
-                let row: Vec<f32> = self.layout.row_at(bytes, r).collect();
-                format::encode_row(&mut buf, id as u32, self.layout.norm_at(bytes, r), &row);
-                rows_by_id[id] = next;
-                next += 1;
-            }
+        let mut rows_by_id = BTreeMap::new();
+        for (next, (&id, &r)) in self.rows_by_id.iter().enumerate() {
+            let r = r as usize;
+            let row: Vec<f32> = self.layout.row_at(bytes, r).collect();
+            format::encode_row(&mut buf, id, self.layout.norm_at(bytes, r), &row);
+            rows_by_id.insert(id, next as u32);
         }
         let layout = Rows::new(self.header.live as usize, self.header.dim);
         let new_path = self.dir.join(format::row_file(generation));
@@ -237,6 +233,8 @@ impl FlatIndex {
             let mut file = std::fs::File::create(&new_path)?;
             file.write_all(&buf)?;
             file.sync_all()?;
+            // The new generation's directory entry must be durable before a manifest names it.
+            sync_dir(&self.dir)?;
             let rows = if layout.count == 0 {
                 Bytes::Owned(Vec::new())
             } else {
@@ -258,6 +256,8 @@ impl FlatIndex {
         self.layout = layout;
         self.rows_by_id = rows_by_id;
         self.ascending = true;
+        // The manifest rename is durable (`write_manifest` syncs the directory), so the old
+        // generation can go; its removal need not be durable — a survivor is swept at open.
         let _ = std::fs::remove_file(old_path);
         Ok(())
     }
@@ -272,10 +272,7 @@ impl FlatIndex {
     }
 
     fn live_row(&self, id: DocId) -> Option<usize> {
-        match self.rows_by_id.get(id.0 as usize) {
-            Some(&r) if r != NONE => Some(r as usize),
-            _ => None,
-        }
+        self.rows_by_id.get(&id.0).map(|&r| r as usize)
     }
 
     fn open_with(dir: &Path, load_path: LoadPath) -> Result<Self> {
@@ -294,7 +291,7 @@ impl FlatIndex {
             rows: Bytes::Owned(Vec::new()),
             layout: Rows::new(0, 1),
             dead,
-            rows_by_id: Vec::new(),
+            rows_by_id: BTreeMap::new(),
             ascending: true,
             pending: BTreeMap::new(),
             compaction_threshold: None,
@@ -350,7 +347,7 @@ impl FlatIndex {
             bytes::read_prefix(&path, self.load_path, layout.len_bytes())?
         };
         let bytes = rows.as_slice();
-        let mut rows_by_id: Vec<u32> = Vec::new();
+        let mut rows_by_id: BTreeMap<u32, u32> = BTreeMap::new();
         let mut ascending = true;
         let mut last: Option<u32> = None;
         for r in 0..layout.count {
@@ -362,20 +359,13 @@ impl FlatIndex {
             if self.dead.contains(r as u32) {
                 continue;
             }
-            let at = id as usize;
-            if rows_by_id.len() <= at {
-                rows_by_id.resize(at + 1, NONE);
-            }
-            // One live row per id: a second one is a corrupt file, not a silent overwrite
-            // (review round 1 #2).
-            if rows_by_id[at] != NONE {
+            // One live row per id: a second one is a corrupt file, not a silent overwrite.
+            if let Some(first) = rows_by_id.insert(id, r as u32) {
                 return Err(corrupt(format!(
-                    "{} has two live rows for id {id} (rows {} and {r})",
-                    path.display(),
-                    rows_by_id[at]
+                    "{} has two live rows for id {id} (rows {first} and {r})",
+                    path.display()
                 )));
             }
-            rows_by_id[at] = r as u32;
         }
         self.rows = rows;
         self.layout = layout;
@@ -543,6 +533,9 @@ impl VectorIndex for FlatIndex {
             },
         };
         if let Err(e) = write_manifest(&self.dir, &header, &dead) {
+            // The temporary mapping covers the appended bytes: it must be gone before they are
+            // cut (the invariant in `bytes::map_readonly`).
+            drop(remapped);
             if let Some(v) = self.rows.owned_mut() {
                 v.truncate(committed_len as usize);
             }
@@ -562,16 +555,10 @@ impl VectorIndex for FlatIndex {
         self.ascending = ascending;
         self.pending.clear();
         for &id in &deleted {
-            if let Some(slot) = self.rows_by_id.get_mut(id as usize) {
-                *slot = NONE;
-            }
+            self.rows_by_id.remove(&id);
         }
         for &(id, r) in &appended {
-            let at = id as usize;
-            if self.rows_by_id.len() <= at {
-                self.rows_by_id.resize(at + 1, NONE);
-            }
-            self.rows_by_id[at] = r;
+            self.rows_by_id.insert(id, r);
         }
         // 5. The configured dead-row share, if any.
         if let Some(t) = self.compaction_threshold
@@ -642,6 +629,21 @@ fn write_manifest(dir: &Path, header: &Header, dead: &RoaringBitmap) -> Result<(
         file.sync_all()?;
     }
     std::fs::rename(&tmp, dir.join(MANIFEST))?;
+    sync_dir(dir)
+}
+
+/// Make the directory's entries durable (a rename, a new file, a removal): on POSIX the
+/// entry lives in the directory, which is synced like any file. Without it a power loss can
+/// keep a renamed manifest that names a row file whose entry never reached disk.
+fn sync_dir(dir: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::File::open(dir)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+    }
     Ok(())
 }
 

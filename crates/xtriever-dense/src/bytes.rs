@@ -62,8 +62,19 @@ pub(crate) fn read_prefix(path: &Path, load_path: LoadPath, len: usize) -> Resul
     }
     match load_path {
         LoadPath::Buffered => {
-            let mut v = std::fs::read(path)?;
-            v.truncate(len);
+            // Exactly `len` bytes: a crashed tail beyond them is never read, let alone kept.
+            use std::io::Read;
+            let mut v = Vec::with_capacity(len);
+            std::fs::File::open(path)?
+                .take(len as u64)
+                .read_to_end(&mut v)?;
+            if v.len() != len {
+                return Err(crate::error::corrupt(format!(
+                    "{} yielded {} bytes of the {len} committed",
+                    path.display(),
+                    v.len()
+                )));
+            }
             Ok(Bytes::Owned(v))
         }
         #[cfg(feature = "mmap")]

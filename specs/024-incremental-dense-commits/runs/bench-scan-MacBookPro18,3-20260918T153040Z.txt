@@ -12,3 +12,10 @@ commit_10_rows/v1_rewrite
                         time:   [167.87 ms 175.64 ms 183.22 ms]
 v2_append: ~15440 bytes written per 10-row commit (dense/ grew by 9881600 over 6400 rows)
 v1_rewrite: 154400101 bytes written per commit
+# commit group, re-run after review round 4 (directory fsyncs at the ordering points — three fsyncs per commit):
+commit_10_rows/v2_append
+                        time:   [17.092 ms 17.505 ms 17.948 ms]
+commit_10_rows/v1_rewrite
+                        time:   [173.61 ms 175.91 ms 178.25 ms]
+v2_append: ~15440 bytes written per 10-row commit (dense/ grew by 8183200 over 5300 rows)
+v1_rewrite: 154400101 bytes written per commit

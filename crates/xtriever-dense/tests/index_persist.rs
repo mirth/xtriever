@@ -3,6 +3,8 @@
 
 mod support;
 
+use std::os::unix::fs::PermissionsExt;
+
 use xtriever_core::{DocId, Metric, VectorIndex};
 use xtriever_dense::FlatIndex;
 
@@ -238,6 +240,54 @@ fn a_mapping_covers_only_the_committed_rows() {
     // The open cut the tail (best effort, writable here); the mapping was the committed range.
     assert_eq!(std::fs::metadata(&rows).unwrap().len(), committed);
     assert!(mapped.is_mapped());
+}
+
+#[test]
+fn a_sparse_id_costs_one_entry_not_a_table() {
+    // `add` accepts any id (review round 4 #1): the live-row table is keyed by id, so
+    // committing `u32::MAX` and reopening cost one entry each, not a four-billion-slot table.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(u32::MAX), &[1.0, 0.0]).unwrap();
+    index.add(DocId(0), &[0.0, 1.0]).unwrap();
+    index.commit().unwrap();
+    assert_eq!(index.vector(DocId(u32::MAX)), Some(vec![1.0, 0.0]));
+    assert_eq!(
+        index.search(&[1.0, 0.0], None, 1).unwrap()[0].id,
+        DocId(u32::MAX)
+    );
+    drop(index);
+    let mut reopened = FlatIndex::open(tmp.path()).unwrap();
+    assert_eq!(reopened.len(), 2);
+    reopened.delete(&[DocId(0)]).unwrap();
+    reopened.compact().unwrap();
+    assert_eq!(reopened.vector(DocId(u32::MAX)), Some(vec![1.0, 0.0]));
+    assert_eq!(reopened.len(), 1);
+}
+
+#[test]
+fn a_buffered_open_reads_only_the_committed_bytes() {
+    // A crashed tail is never read into memory (review round 4 #4): make the tail far larger
+    // than the committed rows and check the open neither fails nor reads it.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    index.commit().unwrap();
+    drop(index);
+    let rows = tmp.path().join("vectors.0.bin");
+    let committed = std::fs::read(&rows).unwrap();
+    let file = std::fs::OpenOptions::new().write(true).open(&rows).unwrap();
+    file.set_len(committed.len() as u64 + 64 * 1024 * 1024)
+        .unwrap(); // a sparse 64 MB tail
+    drop(file);
+    // Read-only: the tail stays (nothing writable is done) and only the committed rows are read.
+    let ro = std::fs::Permissions::from_mode(0o500);
+    std::fs::set_permissions(tmp.path(), ro).unwrap();
+    let opened = FlatIndex::open(tmp.path());
+    std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let opened = opened.unwrap();
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened.vector(DocId(1)), Some(vec![1.0, 0.0]));
 }
 
 #[test]
