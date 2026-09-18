@@ -16,11 +16,18 @@ import sys
 import time
 from pathlib import Path
 
-#: The chunker block the identity names (Feature 021): the chonky splitter and its pinned
-#: revision (`reference/models/manifest-chonky.json`). The shipped artefact, built by the Rust
-#: CLI with the 008 contract chunker, carries `{"version": 1, "budget": …, "cost": …}`
-#: instead — a demo-built index is never the shipped one.
-CHUNKER = {
+#: The two chunker blocks the identity can name (Feature 023: `build --chunker`).
+#: `CONTRACT_CHUNKER` is the shipped `corpus.json`'s literal strings — the block the Rust CLI
+#: writes for the 008 contract chunker — so a default build of the same articles has the
+#: Rust build's identity. `CHONKY_CHUNKER` names the chonky splitter and its pinned revision
+#: (`reference/models/manifest-chonky.json`, Feature 021); a chonky-built index is never the
+#: shipped one.
+CONTRACT_CHUNKER = {
+    "version": 1,
+    "budget": "256 - token_count(title)",
+    "cost": "MiniLmEmbedder::token_count(unit) - 2",
+}
+CHONKY_CHUNKER = {
     "name": "chonky",
     "model": "mirth/chonky_distilbert_base_uncased_1",
     "revision": "01d8aae08726368a1b1645de2a7086610f2e86a5",

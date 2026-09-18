@@ -1,13 +1,14 @@
 """Shared paths, skips and helpers for the demo's suite (Feature 019; the Feature 011 pattern).
 
-Tests marked ``models`` need the two pinned engine models, the chonky splitter model
-(Feature 021) and the 007 fixture index on disk (``scripts/fetch-model.sh``, also with
-``--manifest reference/models/manifest-chonky.json``; ``cargo run --release -p xtriever-ffi --example fixture_index --
-swift/Xtriever/Tests/Fixtures``). Without them they are skipped with the missing path in the
-reason — never silently green. The Wikipedia artefact (``target/xt-wiki``) is optional: the
+Tests marked ``models`` need the two pinned engine models and the 007 fixture index on
+disk (``scripts/fetch-model.sh``; ``cargo run --release -p xtriever-ffi --example fixture_index --
+swift/Xtriever/Tests/Fixtures``); tests marked ``chonky`` need the demo's ``chonky`` extra
+installed and its pinned model on disk (Feature 023: ``--chunker chonky`` is optional).
+Without them they are skipped with the missing piece in the reason — never silently green. The Wikipedia artefact (``target/xt-wiki``) is optional: the
 tests that can use it fall back to the fixture and say so.
 """
 
+import importlib.util
 import io
 import json
 import os
@@ -39,7 +40,6 @@ def missing_for_models():
     for path in (
         EMBEDDER / "model.safetensors",
         RERANKER / "model.safetensors",
-        CHONKY / "model.safetensors",
         FIXTURE_INDEX / "xtriever-pipeline.json",
         FIXTURE_GOLDENS,
     ):
@@ -48,14 +48,27 @@ def missing_for_models():
     return None
 
 
+CHONKY_INSTALL = "uv pip install --python apps/python-wiki-demo/.venv/bin/python -e 'apps/python-wiki-demo[chonky]'"
+CHONKY_FETCH = "scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json"
+
+
+def missing_for_chonky():
+    """Why a ``chonky`` test cannot run: the extra is not installed, or its model is absent; or None."""
+    if importlib.util.find_spec("chonky") is None:
+        return f"the chonky extra is not installed: {CHONKY_INSTALL}"
+    if not (CHONKY / "model.safetensors").exists():
+        return f"chonky model not on disk: {CHONKY / 'model.safetensors'} ({CHONKY_FETCH})"
+    return None
+
+
 def pytest_collection_modifyitems(config, items):
     missing = missing_for_models()
-    if missing is None:
-        return
-    skip = pytest.mark.skip(reason=f"models/fixture not on disk: {missing}")
+    missing_chonky = missing_for_chonky()
     for item in items:
-        if "models" in item.keywords:
-            item.add_marker(skip)
+        if missing is not None and "models" in item.keywords:
+            item.add_marker(pytest.mark.skip(reason=f"models/fixture not on disk: {missing}"))
+        if missing_chonky is not None and "chonky" in item.keywords:
+            item.add_marker(pytest.mark.skip(reason=missing_chonky))
 
 
 def f64_bits(x):

@@ -4,8 +4,10 @@ name that is a hardware model — never a hostname."""
 
 import platform
 
+from wikidemo import record
 from wikidemo.record import (
-    CHUNKER,
+    CHONKY_CHUNKER,
+    CONTRACT_CHUNKER,
     attribution_text,
     canonical_json,
     corpus_identity,
@@ -37,11 +39,7 @@ def test_canonical_json_matches_the_rust_rule():
     assert canonical_json({"b": 1, "a": "é", "c": [True, None, 1.5]}) == '{"a":"é","b":1,"c":[true,null,1.5]}'
 
 
-SHIPPED_CHUNKER = {
-    "version": 1,
-    "budget": "256 - token_count(title)",
-    "cost": "MiniLmEmbedder::token_count(unit) - 2",
-}
+SHIPPED_CHUNKER = CONTRACT_CHUNKER  # the default build's block is the shipped artefact's (Feature 023)
 
 
 def test_identity_of_the_shipped_corpus():
@@ -52,14 +50,20 @@ def test_identity_of_the_shipped_corpus():
     assert partial != SHIPPED_IDENTITY and len(partial) == 64
 
 
-def test_chunker_block_is_chonky():
-    assert CHUNKER == {
+def test_the_two_chunker_blocks():
+    assert CONTRACT_CHUNKER == {
+        "version": 1,
+        "budget": "256 - token_count(title)",
+        "cost": "MiniLmEmbedder::token_count(unit) - 2",
+    }
+    assert CHONKY_CHUNKER == {
         "name": "chonky",
         "model": "mirth/chonky_distilbert_base_uncased_1",
         "revision": "01d8aae08726368a1b1645de2a7086610f2e86a5",
     }
     # Different passages, different identity — a chonky-built index is never the shipped one.
-    assert corpus_identity(SNAPSHOT, EXCLUSIONS, CHUNKER, FINGERPRINT) != SHIPPED_IDENTITY
+    assert corpus_identity(SNAPSHOT, EXCLUSIONS, CHONKY_CHUNKER, FINGERPRINT) != SHIPPED_IDENTITY
+    assert not hasattr(record, "CHUNKER")  # one name per chunker now
 
 
 def test_attribution_text_shape():

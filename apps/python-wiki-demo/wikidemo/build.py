@@ -2,13 +2,15 @@
 the Feature 008 recipe, through the package alone (research D7–D10; spec FR-010–FR-013):
 
     verify the snapshot against its manifest → read the articles → drop the ones the
-    manifest's rules exclude → split each with the chonky splitter (Feature 021) →
-    add the passages (the engine embeds) → commit → merge → write the sidecars → rename.
+    manifest's rules exclude → split each with the chosen chunker (the 008 contract
+    chunker by default, chonky with `--chunker chonky` — Feature 023) → add the passages
+    (the engine embeds) → commit → merge → write the sidecars → rename.
 
 The result has the shipped artefact's layout — `<out>/index/` with `corpus.json` inside,
 `<out>/ATTRIBUTION.txt`, `<out>/wiki-build.json` — so `search`, `about` and `measure` work on
-it unchanged. Its passages are the splitter's, not the 008 contract chunker's the Rust
-build uses, so a demo-built index is not the shipped one (its corpus identity says so).
+it unchanged. A default build's passages are the Rust build's, so a demo-built slice is the
+shipped recipe and `measure --against` a Rust-built slice of the same articles is PASS; a
+chonky build's passages are the splitter's, and its corpus identity says so.
 """
 
 from __future__ import annotations
@@ -25,10 +27,10 @@ from pathlib import Path
 
 import xtriever
 
-from .chunking import WINDOW, BuildError, Splitter, Window, documents_for
+from .chunking import DEFAULT_CHUNKER, WINDOW, BuildError, Window, make_chunker
 from .hits import wikipedia_url
 from .inputs import Paths
-from .record import CHUNKER, attribution_text, corpus_identity, dir_bytes, now_rfc3339, threads, write_json
+from .record import attribution_text, corpus_identity, dir_bytes, now_rfc3339, threads, write_json
 from .rules import excluded_by, parse_rules, rule_name
 
 #: Passages per `add` call — the Rust build's cache shard / ingest batch.
@@ -85,14 +87,18 @@ def run_build(args, paths: Paths) -> int:
     if not out.is_absolute():
         out = Path.cwd() / out
     try:
-        build(paths, out, args.limit)
+        if args.chunker == "chonky":
+            from .chonky_chunker import ensure_extra  # the module itself imports no torch
+
+            ensure_extra()  # refused here, before the snapshot is hashed
+        build(paths, out, args.limit, args.chunker)
     except BuildError as e:
         print(f"wikidemo: {e}", file=sys.stderr)
         return 1
     return 0
 
 
-def build(paths: Paths, out: Path, limit: int | None) -> Path:
+def build(paths: Paths, out: Path, limit: int | None, chunker_name: str = DEFAULT_CHUNKER) -> Path:
     if out.exists():
         raise BuildError(f"{out} already exists; choose another --out (nothing is overwritten)")
     manifest = json.loads(paths.manifest.read_text(encoding="utf-8"))
@@ -117,9 +123,9 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
     handle = xtriever.IndexHandle.create(str(index_dir), wiki_config(), str(paths.embedder), str(paths.reranker), xtriever.LoadPath.MMAP)
     info = handle.info()
     t = time.perf_counter()
-    splitter = Splitter(paths.chonky)
-    phases["load_splitter"] = _ms(t)
     window = Window(paths.embedder)
+    chunker = make_chunker(chunker_name, paths, window)
+    phases["load_splitter"] = _ms(t)
     tokens_all: list[int] = []
 
     counts = {
@@ -167,7 +173,7 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
             counts["selected"] += 1
             read_exclude_ms += _ms(t)
             t = time.perf_counter()
-            docs, tokens = documents_for(article, splitter, window)
+            docs, tokens = chunker.documents_for(article)
             chunk_ms += _ms(t)
             counts["passages"] += len(docs)
             counts["passages_over_window"] += sum(n > WINDOW for n in tokens)
@@ -194,13 +200,13 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
         "parquet_sha256": manifest["parquet"]["sha256"],
         "jsonl_sha256": manifest["jsonl"]["sha256"],
     }
-    identity = corpus_identity(snapshot, manifest["exclusions"], CHUNKER, info.embedder_fingerprint, partial=limit)
+    identity = corpus_identity(snapshot, manifest["exclusions"], chunker.block, info.embedder_fingerprint, partial=limit)
     sidecar = {
         "schema_version": 1,
         "corpus_identity": identity,
         "snapshot": snapshot,
         "exclusions": manifest["exclusions"],
-        "chunker": CHUNKER,
+        "chunker": chunker.block,
         "embedder_fingerprint": info.embedder_fingerprint,
     }
     if limit is not None:
@@ -251,7 +257,7 @@ def build(paths: Paths, out: Path, limit: int | None) -> Path:
         print(f"excluded {name}: {n:,}")
     share = 100 * counts["passages_over_window"] / counts["passages"] if counts["passages"] else 0.0
     print(f"passages over the embedder window: {counts['passages_over_window']:,} ({share:.1f} %)")
-    print(f"chunker: chonky ({CHUNKER['model']}, revision {CHUNKER['revision'][:7]}…)")
+    print(f"chunker: {chunker.label}")
     print("phases: " + " · ".join(f"{k} {v:,} ms" for k, v in phases.items()))
     print(f"corpus identity: {identity}" + (f" (partial: first {limit:,} articles)" if limit is not None else ""))
     print(f"wrote {out}")
