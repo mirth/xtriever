@@ -543,9 +543,11 @@ def decide(rows: dict[tuple[str, str], dict]) -> dict:
             "recommended": recommended,
         }
     best = None
-    if variants:
-        # the best by the rule's own measure — the mean gain — ties to the non-neural chunker
-        order = sorted(variants, key=lambda v: (-round(variants[v]["delta_mean"], 9), v != "contract", v))
+    recommended = [v for v in variants if variants[v]["recommended"]]
+    if recommended:
+        # among the recommended, the largest mean gain; ties to the non-neural chunker. Means
+        # of different scopes are not compared: only recommended variants compete.
+        order = sorted(recommended, key=lambda v: (-round(variants[v]["delta_mean"], 9), v != "contract", v))
         best = order[0]
     return {
         "variants": variants,

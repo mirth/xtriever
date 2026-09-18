@@ -67,3 +67,10 @@ def test_decision_keys():
     assert set(d) == {"variants", "best_chunker", "constants", "rule"}
     assert set(d["variants"]["contract"]) == {"datasets", "scope", "mean_ndcg_10", "whole_mean_ndcg_10", "delta_mean", "deltas", "delta_recall", "recommended"}
     assert d["constants"] == {"mean_gain": 0.005, "max_drop": 0.005, "recall_drop": 0.005, "min_positions": 16, "window": 256}
+
+
+def test_no_best_when_none_is_recommended():
+    rows = _rows(WHOLE, {"contract": {"scifact": (0.70, 0.95), "nfcorpus": (0.36, 0.30), "fiqa": (0.39, 0.70)}, "chonky": {"scifact": (0.72, 0.95), "nfcorpus": (0.35, 0.30)}})
+    d = cs.decide(rows)
+    assert not any(v["recommended"] for v in d["variants"].values())
+    assert d["best_chunker"] is None

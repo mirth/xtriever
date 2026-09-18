@@ -27,6 +27,20 @@
     "embed_s": 1420.0,
     "total_s": 1428.2
   },
+  "chonky.fiqa": {
+    "variant": "chonky",
+    "dataset": "fiqa",
+    "limit": null,
+    "documents": 57638,
+    "passages": 160592,
+    "passages_per_doc_median": 3.0,
+    "over_window": 2052,
+    "under_16": 0,
+    "title_fills_window": 0,
+    "split_s": 1714.0,
+    "embed_s": 16209.4,
+    "total_s": 17925.7
+  },
   "chonky.nfcorpus": {
     "variant": "chonky",
     "dataset": "nfcorpus",
@@ -82,6 +96,20 @@
     "split_s": 8.4,
     "embed_s": 1000.1,
     "total_s": 1009.0
+  },
+  "whole.fiqa": {
+    "variant": "whole",
+    "dataset": "fiqa",
+    "limit": null,
+    "documents": 57638,
+    "passages": 57638,
+    "passages_per_doc_median": 1.0,
+    "over_window": 11040,
+    "under_16": 0,
+    "title_fills_window": 0,
+    "split_s": 12.5,
+    "embed_s": 5868.7,
+    "total_s": 5882.4
   },
   "whole.nfcorpus": {
     "variant": "whole",

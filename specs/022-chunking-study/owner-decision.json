@@ -1,0 +1,63 @@
+{
+  "variants": {
+    "contract": {
+      "datasets": [
+        "nfcorpus",
+        "scifact"
+      ],
+      "scope": "two-way",
+      "mean_ndcg_10": 0.5464878123476928,
+      "whole_mean_ndcg_10": 0.5420522206730595,
+      "delta_mean": 0.004435591674633366,
+      "deltas": {
+        "nfcorpus": 0.0005498764923350663,
+        "scifact": 0.008321306856931665
+      },
+      "delta_recall": -0.0054229160792735875,
+      "recommended": false
+    },
+    "chonky": {
+      "datasets": [
+        "fiqa",
+        "nfcorpus",
+        "scifact"
+      ],
+      "scope": "three-way",
+      "mean_ndcg_10": 0.47643940673979557,
+      "whole_mean_ndcg_10": 0.49124381707708703,
+      "delta_mean": -0.014804410337291463,
+      "deltas": {
+        "fiqa": -0.07129775301112645,
+        "nfcorpus": -0.0024135515874944002,
+        "scifact": 0.02929807358674652
+      },
+      "delta_recall": -0.02007624575278799,
+      "recommended": false
+    },
+    "chonky-bounded": {
+      "datasets": [
+        "nfcorpus",
+        "scifact"
+      ],
+      "scope": "two-way",
+      "mean_ndcg_10": 0.5528028033460488,
+      "whole_mean_ndcg_10": 0.5420522206730595,
+      "delta_mean": 0.01075058267298934,
+      "deltas": {
+        "nfcorpus": -0.0033786364197513352,
+        "scifact": 0.024879801765730014
+      },
+      "delta_recall": -0.006915596830790793,
+      "recommended": false
+    }
+  },
+  "best_chunker": null,
+  "constants": {
+    "mean_gain": 0.005,
+    "max_drop": 0.005,
+    "recall_drop": 0.005,
+    "min_positions": 16,
+    "window": 256
+  },
+  "rule": "recommended iff re-ranked mean nDCG@10 \u2265 whole + mean_gain over the datasets run, no dataset > max_drop below whole, mean Recall@100 \u2265 whole \u2212 recall_drop; best chunker by mean gain, ties to contract"
+}
