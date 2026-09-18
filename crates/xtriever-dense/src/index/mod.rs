@@ -87,7 +87,7 @@ impl FlatIndex {
         };
         std::fs::File::create(dir.join(format::row_file(0)))?.sync_all()?;
         sync_dir(dir)?;
-        write_manifest(dir, &header, &RoaringBitmap::new())?;
+        write_manifest(dir, &header, &RoaringBitmap::new()).map_err(ManifestFailure::into_error)?;
         Self::open_with(dir, LoadPath::Buffered)
     }
 
@@ -185,9 +185,10 @@ impl FlatIndex {
         Ok(())
     }
 
-    /// Commit pending changes, then rewrite the row file with the live rows only, in ascending
-    /// id order, under the next generation — the manifest switches to it by `rename` and the
-    /// old row file is removed. A no-op when nothing is dead and the rows already ascend.
+    /// Rewrite the row file with the live rows only — the pending changes folded in — in
+    /// ascending id order, under the next generation: the manifest switches to it by one
+    /// `rename` and the old row file is removed. A no-op when nothing is pending, nothing is
+    /// dead and the rows already ascend.
     ///
     /// `FlatIndex` has no read-only mode: the pipeline refuses `merge` on a read-only open
     /// before reaching this; on a directory that cannot be written the underlying `Error::Io`
@@ -195,13 +196,23 @@ impl FlatIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Io`; a failure before the manifest is renamed leaves the previous state (the
-    /// partial new file is removed, or swept at the next open).
+    /// `Error::Io`; `Error::Corrupt` if the generation counter cannot advance. A failure before
+    /// the manifest is renamed leaves the previous state on disk and in this handle, pending
+    /// changes included (the partial new file is removed, or swept at the next open). A failure
+    /// *after* the rename — only the directory sync — leaves the switched state, adopted by
+    /// this handle, and names itself as such.
     pub fn compact(&mut self) -> Result<()> {
-        self.commit()?;
-        if self.dead.is_empty() && self.ascending {
+        if self.pending.is_empty() && self.dead.is_empty() && self.ascending {
             return Ok(());
         }
+        self.rewrite()
+    }
+
+    /// The rewrite protocol: committed live rows ⊕ pending, ascending by id, into a new
+    /// generation; one manifest rename; nothing in memory changes before it. Used by `compact`
+    /// and by `commit` when the configured dead-row share would be exceeded — so a commit is
+    /// always one protocol, never a durable append followed by a separate compaction.
+    fn rewrite(&mut self) -> Result<()> {
         let generation = self.header.generation.checked_add(1).ok_or_else(|| {
             corrupt(format!(
                 "generation {} cannot advance; the row file's generation counter is exhausted",
@@ -212,54 +223,97 @@ impl FlatIndex {
         let bytes = self.rows.as_slice();
         let mut buf = Vec::with_capacity(self.header.live as usize * self.layout.row_bytes);
         let mut rows_by_id = BTreeMap::new();
-        for (next, (&id, &r)) in self.rows_by_id.iter().enumerate() {
-            let r = r as usize;
-            let row: Vec<f32> = self.layout.row_at(bytes, r).collect();
-            format::encode_row(&mut buf, id, self.layout.norm_at(bytes, r), &row);
-            rows_by_id.insert(id, next as u32);
+        let mut committed = self.rows_by_id.iter().peekable();
+        let mut pending = self.pending.iter().peekable();
+        let mut next = 0u32;
+        let mut push = |id: u32, norm: f32, row: &[f32], rows_by_id: &mut BTreeMap<u32, u32>| {
+            format::encode_row(&mut buf, id, norm, row);
+            rows_by_id.insert(id, next);
+            next += 1;
+        };
+        loop {
+            let next_committed = committed.peek().map(|(id, r)| (**id, **r));
+            let next_pending = pending.peek().map(|(id, change)| (id.0, change.as_ref()));
+            match (next_committed, next_pending) {
+                (None, None) => break,
+                // A committed row with no pending change: kept.
+                (Some((id, r)), np) if np.is_none_or(|(pid, _)| pid > id) => {
+                    let r = r as usize;
+                    let row: Vec<f32> = self.layout.row_at(bytes, r).collect();
+                    push(id, self.layout.norm_at(bytes, r), &row, &mut rows_by_id);
+                    committed.next();
+                }
+                // A pending change (a replacement, an insert, or a delete): the change wins.
+                (nc, Some((pid, change))) => {
+                    if let Some(v) = change {
+                        push(
+                            pid,
+                            search::norm_f64(v.iter().copied()) as f32,
+                            v,
+                            &mut rows_by_id,
+                        );
+                    }
+                    if nc.is_some_and(|(id, _)| id == pid) {
+                        committed.next();
+                    }
+                    pending.next();
+                }
+                (Some(_), None) => unreachable!("covered by the first arm"),
+            }
         }
-        let layout = Rows::new(self.header.live as usize, self.header.dim);
+        let count = u64::from(next);
+        let layout = Rows::new(next as usize, self.header.dim);
         let new_path = self.dir.join(format::row_file(generation));
         let header = Header {
             generation,
-            rows: self.header.live,
-            live: self.header.live,
+            rows: count,
+            live: count,
             ..self.header.clone()
         };
-        // Write the new generation, bring it into memory, and only then switch the manifest:
-        // every fallible step precedes the rename, so a failure leaves the previous state on
-        // disk and in this handle alike (review round 2 #2).
-        let switched = (|| -> Result<Bytes> {
+        // Write the new generation, make its entry durable, bring it into memory; every
+        // fallible step precedes the rename.
+        let prepared = (|| -> Result<Bytes> {
             let mut file = std::fs::File::create(&new_path)?;
             file.write_all(&buf)?;
             file.sync_all()?;
-            // The new generation's directory entry must be durable before a manifest names it.
             sync_dir(&self.dir)?;
-            let rows = if layout.count == 0 {
-                Bytes::Owned(Vec::new())
+            if layout.count == 0 {
+                Ok(Bytes::Owned(Vec::new()))
             } else {
-                bytes::read_prefix(&new_path, self.load_path, layout.len_bytes())?
-            };
-            write_manifest(&self.dir, &header, &RoaringBitmap::new())?;
-            Ok(rows)
+                bytes::read_prefix(&new_path, self.load_path, layout.len_bytes())
+            }
         })();
-        let rows = match switched {
+        let rows = match prepared {
             Ok(rows) => rows,
             Err(e) => {
                 let _ = std::fs::remove_file(&new_path);
                 return Err(e);
             }
         };
+        let switched = write_manifest(&self.dir, &header, &RoaringBitmap::new());
+        if let Err(ManifestFailure::BeforeSwitch(e)) = switched {
+            let _ = std::fs::remove_file(&new_path);
+            return Err(e);
+        }
         self.header = header;
         self.dead = RoaringBitmap::new();
         self.rows = rows;
         self.layout = layout;
         self.rows_by_id = rows_by_id;
         self.ascending = true;
-        // The manifest rename is durable (`write_manifest` syncs the directory), so the old
-        // generation can go; its removal need not be durable — a survivor is swept at open.
-        let _ = std::fs::remove_file(old_path);
-        Ok(())
+        self.pending.clear();
+        match switched {
+            Ok(()) => {
+                // The rename is durable, so the old generation can go; its removal need not
+                // be durable — a survivor is swept at open.
+                let _ = std::fs::remove_file(old_path);
+                Ok(())
+            }
+            // The manifest is switched but its entry's durability is unconfirmed: keep the
+            // old generation (harmless; swept at open) and say what happened.
+            Err(ManifestFailure::AfterSwitch(e)) => Err(e),
+            Err(ManifestFailure::BeforeSwitch(_)) => unreachable!("handled above"),
+        }
     }
 
     /// Whether the committed rows are currently a memory map (feature `mmap`). An empty index
@@ -454,6 +508,23 @@ impl VectorIndex for FlatIndex {
         if self.pending.is_empty() {
             return Ok(());
         }
+        // 0. The dead-row share this commit would leave. Over the configured threshold, the
+        //    commit *is* a rewrite — one protocol, one rename — never an append followed by a
+        //    separate compaction that could fail after the append is durable.
+        let adds = self.pending.values().filter(|c| c.is_some()).count();
+        let superseded = self
+            .pending
+            .keys()
+            .filter(|id| self.live_row(**id).is_some())
+            .count();
+        let rows_after = self.layout.count + adds;
+        let dead_after = self.dead.len() + superseded as u64;
+        if let Some(t) = self.compaction_threshold
+            && rows_after > 0
+            && (dead_after as f64 / rows_after as f64) > f64::from(t)
+        {
+            return self.rewrite();
+        }
         // 1. Resolve the pending changes against the committed state, on copies: nothing in
         //    memory changes until the manifest is renamed, so a failed commit keeps every staged
         //    change for a retry.
@@ -461,7 +532,6 @@ impl VectorIndex for FlatIndex {
         let mut buf = Vec::new();
         let mut appended: Vec<(u32, u32)> = Vec::new(); // (id, row)
         let mut deleted: Vec<u32> = Vec::new();
-        let adds = self.pending.values().filter(|c| c.is_some()).count();
         let mut next_row = row_space(self.layout.count, adds)?;
         let last_id = (self.layout.count > 0).then(|| {
             self.layout
@@ -498,9 +568,9 @@ impl VectorIndex for FlatIndex {
                 return Err(e.into());
             }
         }
-        // 3. Bring the appended rows into memory *before* the manifest switches (review round 2
-        //    #2): a buffer grows in place (undone by a truncate on failure), a mapping is made
-        //    anew (nothing is read). Then the manifest — the truth — replaced atomically.
+        // 3. Bring the appended rows into memory *before* the manifest switches: a buffer grows
+        //    in place (undone by a truncate on failure), a mapping is made anew (nothing is
+        //    read). Then the manifest — the truth — replaced atomically.
         let rows = u64::from(next_row);
         let header = Header {
             rows,
@@ -532,7 +602,8 @@ impl VectorIndex for FlatIndex {
                 }
             },
         };
-        if let Err(e) = write_manifest(&self.dir, &header, &dead) {
+        let switched = write_manifest(&self.dir, &header, &dead);
+        if let Err(ManifestFailure::BeforeSwitch(e)) = switched {
             // The temporary mapping covers the appended bytes: it must be gone before they are
             // cut (the invariant in `bytes::map_readonly`).
             drop(remapped);
@@ -544,7 +615,7 @@ impl VectorIndex for FlatIndex {
             }
             return Err(e);
         }
-        // 4. Only now: the in-memory state follows the manifest — nothing below can fail.
+        // 4. The manifest is switched: the in-memory state follows it — nothing here can fail.
         if let Some(b) = remapped {
             self.rows = b;
         }
@@ -560,14 +631,11 @@ impl VectorIndex for FlatIndex {
         for &(id, r) in &appended {
             self.rows_by_id.insert(id, r);
         }
-        // 5. The configured dead-row share, if any.
-        if let Some(t) = self.compaction_threshold
-            && self.header.rows > 0
-            && (self.dead.len() as f64 / self.header.rows as f64) > f64::from(t)
-        {
-            self.compact()?;
+        match switched {
+            Ok(()) => Ok(()),
+            Err(ManifestFailure::AfterSwitch(e)) => Err(e),
+            Err(ManifestFailure::BeforeSwitch(_)) => unreachable!("handled above"),
         }
-        Ok(())
     }
 
     fn search(&self, query: &[f32], allowed: Option<&DocSet>, k: usize) -> Result<Vec<Hit>> {
@@ -620,16 +688,46 @@ fn row_space(committed: usize, adds: usize) -> Result<u32> {
 }
 
 /// Write a manifest to `manifest.bin.tmp`, sync, and `rename` it over `manifest.bin`.
-fn write_manifest(dir: &Path, header: &Header, dead: &RoaringBitmap) -> Result<()> {
-    let encoded = format::encode_manifest(header, dead)?;
+///
+/// The rename is the switch. A failure before it leaves the previous manifest; a failure after
+/// it — the directory sync — leaves the new manifest in place with its entry's durability
+/// unconfirmed. Callers roll back on the first and adopt the switched state on the second.
+fn write_manifest(
+    dir: &Path,
+    header: &Header,
+    dead: &RoaringBitmap,
+) -> std::result::Result<(), ManifestFailure> {
+    let before = |e: Error| ManifestFailure::BeforeSwitch(e);
+    let encoded = format::encode_manifest(header, dead).map_err(before)?;
     let tmp = dir.join(MANIFEST_TMP);
-    {
+    (|| -> std::io::Result<()> {
         let mut file = std::fs::File::create(&tmp)?;
         file.write_all(&encoded)?;
         file.sync_all()?;
+        std::fs::rename(&tmp, dir.join(MANIFEST))
+    })()
+    .map_err(|e| before(e.into()))?;
+    sync_dir(dir).map_err(|e| {
+        ManifestFailure::AfterSwitch(Error::Io(std::io::Error::other(format!(
+            "the manifest is switched but the directory sync failed, so its entry's durability \
+             is unconfirmed; the index state is the new one and coherent: {e}"
+        ))))
+    })
+}
+
+/// How a manifest write failed: before the rename (nothing on disk changed) or after it (the
+/// manifest is the new one; only the directory sync failed).
+enum ManifestFailure {
+    BeforeSwitch(Error),
+    AfterSwitch(Error),
+}
+
+impl ManifestFailure {
+    fn into_error(self) -> Error {
+        match self {
+            Self::BeforeSwitch(e) | Self::AfterSwitch(e) => e,
+        }
     }
-    std::fs::rename(&tmp, dir.join(MANIFEST))?;
-    sync_dir(dir)
 }
 
 /// Make the directory's entries durable (a rename, a new file): on POSIX the entry lives in

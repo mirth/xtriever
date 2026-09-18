@@ -48,10 +48,17 @@ dense/
   manifest with `rows += appended` and the tombstones of the rows the changes superseded or
   deleted. No committed byte is modified. Cost: O(change) plus the manifest (tens of KB at
   most — the bitmap is compressed).
-- **`compact`** (inherent on `FlatIndex`) writes the live rows in ascending id order to
-  `vectors.<g+1>.bin`, replaces the manifest (`generation g+1`, no tombstones), and removes
-  the old file. The pipeline's `merge` calls it; `commit` calls it when the configured
-  dead-row share (`HybridConfig::dense_compact_dead_share`, default `None`) is exceeded.
+- **`compact`** (inherent on `FlatIndex`) writes the live rows — pending changes folded in —
+  in ascending id order to `vectors.<g+1>.bin`, replaces the manifest (`generation g+1`, no
+  tombstones), and removes the old file. The pipeline's `merge` calls it. When the configured
+  dead-row share (`HybridConfig::dense_compact_dead_share`, default `None`) would be exceeded,
+  `commit` *is* this rewrite rather than an append: one protocol with one rename, so a commit
+  fails whole or succeeds whole — never a durable append followed by a compaction that fails
+  on its own.
+- **Manifest failures are two kinds**: before the rename nothing on disk changed and the
+  handle rolls back (the appended rows cut, or the new generation removed; pending kept);
+  after it — only the directory sync — the manifest is the new one, the handle adopts that
+  state and the error names it as a durability-unconfirmed success.
 - **Crash safety**: a crash before the manifest rename leaves the previous manifest, so the
   previous state (any byte boundary — the test enumerates them). On the Unix targets the
   engine ships to (macOS, iOS, Android, Linux) the directory is also fsynced after a new row

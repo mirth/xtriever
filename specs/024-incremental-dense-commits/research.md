@@ -55,13 +55,16 @@ mappable, appendable f32 matrix. What is reused: `roaring` (the tombstones), `me
    tombstone set; write `manifest.bin.tmp`, `sync_all`, rename over `manifest.bin`.
 4. Re-read the committed state (the row file re-mapped or re-read at its new committed
    length; the bitmap; `rows_by_id` updated incrementally), clear pending.
-5. If a compaction threshold is set and `dead.len() / rows > threshold` (rows > 0): compact.
+5. (Decided *before* step 1.) If a compaction threshold is set and the share this commit
+   would leave — `(dead + superseded) / (rows + adds)` — exceeds it, the commit is the rewrite
+   protocol below with the pending changes folded in, not the append: one rename, so it
+   cannot leave a durable append behind a failed compaction.
 
 A crash before step 3's rename leaves the old manifest: the appended tail is beyond `rows`
 and is ignored (and truncated at the next writable open, D4). A crash after it is a
 complete commit. Nothing in steps 1–3 modifies a byte a reader could have mapped.
 
-**compact** (inherent `FlatIndex::compact`; a no-op when `dead` is empty *and* ids are
+**compact** (inherent `FlatIndex::compact`; a no-op when nothing is pending, `dead` is empty *and* ids are
 already ascending — i.e. the file was produced by a compaction and only appended to with
 fresh, higher ids, which is the common build case): write the live rows in ascending id
 order to `vectors.<g+1>.bin` (`sync_all`), write the manifest with `generation g+1`,
@@ -162,8 +165,9 @@ PR and committed under `runs/`.
 version unchanged, as `rerank_mode` in Feature 015); passed to `FlatIndex` at create /
 writable open (`FlatIndex::set_compaction_threshold(Option<f32>)`); the FFI `IndexConfig`
 gains the same field with `#[uniffi(default = None)]` — uniffi regenerates the Python and
-Swift records, so no hand-written binding changes. Semantics: after a commit's manifest
-rename, `dead / rows > threshold` → `compact()` in the same call. A read-only open ignores it.
+Swift records, so no hand-written binding changes. Semantics: a commit whose resulting
+`dead / rows` would exceed the threshold is performed as the rewrite (one rename) instead of
+the append. A read-only open ignores it.
 
 ## Alternatives considered
 

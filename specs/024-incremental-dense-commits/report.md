@@ -97,7 +97,7 @@ plan's split: PR A is the format with its oracle and tests, PR B the pipeline an
    `rows × row_bytes`), so the invariant no longer depends on the best-effort truncation at
    open: a crashed tail is never mapped, and the truncations touch only bytes beyond the
    committed length. ADR-0013's amendment, research D4 and the SAFETY comment restated;
-   `index_persist::a_mapping_covers_only_the_committed_rows`.
+   `index_persist::a_mapping_covers_only_the_committed_rows` (the row file made read-only so the crashed tail survives the open — round 6).
 2. Row-space exhaustion (`u32` row indices) is checked before any I/O (`row_space`, unit
    tests) — an `Error::Io` naming the limit and the remedy (compact).
 3. The generation error names the value and the condition; no review reference.
@@ -135,3 +135,20 @@ The commit bench re-run after the directory syncs: **17.5 ms** per 10-row commit
 3–6. ADR-0013's consequences, the data model, research D6 and task T011 now record the
    `BTreeMap<u32, u32>` live-row map (memory follows rows; ascending order for compaction)
    instead of the superseded `Vec<u32>` table.
+
+### Review round 6 (Copilot, three suppressed comments — all applied)
+
+1. A commit over the compaction threshold is now *one* protocol: decided before any I/O, it
+   is performed as the rewrite (live rows with the pending changes folded in, one manifest
+   rename) instead of an append followed by a separate `compact()`. It fails whole — pending
+   kept, nothing on disk — or succeeds whole. `compact()` itself folds pending in the same
+   way (no separate commit first). `index_compact::a_threshold_commit_is_one_protocol_that_fails_whole`
+   (at the last generation the rewrite refuses; the same pending changes then commit as an
+   append with the threshold off).
+2. `write_manifest` reports *where* it failed: before the rename (callers roll back — rows
+   cut or the new generation removed, pending kept) or after it (only the directory sync;
+   the manifest is switched, the handle adopts the new state, and the returned `Error::Io`
+   says the state is the new one with its entry's durability unconfirmed).
+3. The crashed-tail tests make the row file read-only (`0o400`) so the open cannot cut the
+   tail: the file is asserted to stay extended and the mapped (and buffered) index exposes
+   exactly the committed rows.

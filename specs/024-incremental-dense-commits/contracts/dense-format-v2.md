@@ -20,8 +20,10 @@ New:
   mapped handle may append): the pipeline refuses `merge` on a read-only open before calling
   it; on a directory that cannot be written the underlying `Error::Io` surfaces.
 - `set_compaction_threshold(&mut self, share: Option<f32>) -> Result<()>`: `Error::Schema`
-  unless `share` is `None` or in `0.0..=1.0`; when set, `commit` compacts after a commit whose
-  `dead / rows` exceeds it.
+  unless `share` is `None` or in `0.0..=1.0`; when set, a `commit` whose resulting
+  `dead / rows` would exceed it is performed *as a rewrite* (the live rows with the pending
+  changes folded in, one manifest rename) instead of an append — one protocol, so it fails
+  whole or succeeds whole, never as a durable append followed by a separate compaction.
 - `stats(&self) -> DenseStats { rows, live, dead, generation }` for tests and records.
 
 Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other version →
@@ -36,7 +38,9 @@ Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other versi
 2. Search results are bit-identical to what version 1 returned for the same committed
    content, filtered or not, all metrics; before and after `compact`.
 3. A crash at any byte boundary of `commit` or `compact` reopens to the previous committed
-   state. On Unix targets (the engine's shipping targets) the directory is fsynced at the
+   state. An error from either leaves the handle coherent with the disk: before the manifest
+   rename nothing changed and the pending changes are kept for a retry; after it (only the
+   directory sync can fail there) the new state is adopted and the error says so. On Unix targets (the engine's shipping targets) the directory is fsynced at the
    protocol's ordering points, so a power loss keeps the manifest and the row file it names
    consistent; on other targets that ordering is the filesystem's.
 4. A mapped byte is never modified or truncated by this crate; the row file is only extended

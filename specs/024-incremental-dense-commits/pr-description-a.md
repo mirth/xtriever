@@ -41,6 +41,8 @@ exactly the committed bytes.
 
 **Review round 5** (six comments, applied): the Unix-only test gated for the Windows CI leg, the power-loss ordering guarantee scoped to Unix targets, and the ADR, data model, research and tasks brought in line with the `BTreeMap` live-row map.
 
+**Review round 6** (three comments, applied): a commit over the compaction threshold is one rewrite protocol (fails whole or succeeds whole), manifest failures before and after the rename are distinguished (roll back vs adopt), and the crashed-tail tests keep the tail by making the row file read-only.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

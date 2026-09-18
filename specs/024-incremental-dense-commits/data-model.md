@@ -49,7 +49,7 @@ newest row for an id is live unless the id was deleted.
 |---|---|---|---|
 | `add` / `delete` | — | — | — (pending only) |
 | `commit` | append k rows | + superseded + deleted | rows += k; live; rename |
-| `commit` crossing the threshold | as above, then as `compact` | | |
+| `commit` crossing the threshold | performed as `compact` with the pending changes folded in — one rename | cleared | generation g+1, rows = live |
 | `compact` | new file `g+1`, live rows ascending by id | cleared | generation g+1, rows = live; rename; old file removed |
 | writable `open` | truncated to `rows × row_bytes` if longer; stale files swept | loaded | read |
 | read-only `open` | longer tolerated; shorter → `Corrupt` | loaded | read |

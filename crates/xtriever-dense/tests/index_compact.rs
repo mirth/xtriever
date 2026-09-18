@@ -244,3 +244,53 @@ fn threshold_edges() {
     assert_eq!(index.stats().generation, 1);
     assert_eq!(index.len(), 0);
 }
+
+#[test]
+fn a_threshold_commit_is_one_protocol_that_fails_whole() {
+    // A commit over the threshold is performed as a rewrite — one rename — never as a durable
+    // append followed by a compaction that could fail on its own. At the last generation the
+    // rewrite cannot advance: the commit fails before anything is written, the pending changes
+    // survive, and with the threshold off the same commit goes through as an append.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), DIM, Metric::Dot, "fp").unwrap();
+    for i in 0..10 {
+        index.add(DocId(i), &vec_for(i)).unwrap();
+    }
+    index.commit().unwrap();
+    drop(index);
+    // Put the manifest at the last generation (its header is JSON after magic + length).
+    let manifest = tmp.path().join("manifest.bin");
+    let bytes = std::fs::read(&manifest).unwrap();
+    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
+    let header = std::str::from_utf8(&bytes[16..16 + hdr_len]).unwrap();
+    let edited = header.replace("\"generation\":0", &format!("\"generation\":{}", u64::MAX));
+    let mut out = bytes[..8].to_vec();
+    out.extend_from_slice(&(edited.len() as u64).to_le_bytes());
+    out.extend_from_slice(edited.as_bytes());
+    out.extend_from_slice(&bytes[16 + hdr_len..]);
+    std::fs::write(&manifest, out).unwrap();
+    std::fs::rename(
+        tmp.path().join("vectors.0.bin"),
+        tmp.path().join(format!("vectors.{}.bin", u64::MAX)),
+    )
+    .unwrap();
+    let mut index = FlatIndex::open(tmp.path()).unwrap();
+    index.set_compaction_threshold(Some(0.0)).unwrap();
+    let before = std::fs::read(&manifest).unwrap();
+    index.delete(&[DocId(1)]).unwrap();
+    index.add(DocId(20), &vec_for(20)).unwrap();
+    assert!(matches!(index.commit().unwrap_err(), Error::Corrupt(_)));
+    assert_eq!(
+        std::fs::read(&manifest).unwrap(),
+        before,
+        "nothing reached disk"
+    );
+    assert_eq!(index.len(), 10, "the handle is unchanged");
+    assert_eq!(index.vector(DocId(20)), None, "the add is still pending");
+    index.set_compaction_threshold(None).unwrap();
+    index.commit().unwrap(); // the append protocol, same pending changes
+    assert_eq!(index.len(), 10);
+    assert_eq!(index.vector(DocId(20)), Some(vec_for(20)));
+    assert_eq!(index.vector(DocId(1)), None);
+    assert_eq!(index.stats().dead, 1);
+}

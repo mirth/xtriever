@@ -216,12 +216,14 @@ fn a_mapped_handle_maps_after_its_first_append_and_after_compacting_to_empty() {
     assert_eq!(mapped.vector(DocId(3)), Some(vec![1.0, 1.0]));
 }
 
-#[cfg(feature = "mmap")]
+#[cfg(all(feature = "mmap", unix))]
 #[test]
 fn a_mapping_covers_only_the_committed_rows() {
-    // A crashed tail beyond the committed rows is never mapped (review round 3 #1): a
-    // read-only open of a directory with such a tail maps the committed range only, so a
-    // later truncation of the tail cannot touch a mapped byte.
+    // A crashed tail beyond the committed rows is never mapped: the row file is made read-only
+    // so the open cannot cut the tail, the file stays extended, and the mapping still exposes
+    // exactly the committed rows — the invariant `bytes::map_readonly` relies on.
+    use std::os::unix::fs::PermissionsExt;
+
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
     index.add(DocId(1), &[1.0, 0.0]).unwrap();
@@ -232,12 +234,19 @@ fn a_mapping_covers_only_the_committed_rows() {
     let mut with_tail = std::fs::read(&rows).unwrap();
     with_tail.extend_from_slice(&[0xAB; 40]);
     std::fs::write(&rows, &with_tail).unwrap();
+    std::fs::set_permissions(&rows, std::fs::Permissions::from_mode(0o400)).unwrap();
     let mapped = FlatIndex::open_mapped(tmp.path()).unwrap();
+    assert_eq!(
+        std::fs::metadata(&rows).unwrap().len(),
+        committed + 40,
+        "the tail survived the open"
+    );
+    assert!(mapped.is_mapped());
     assert_eq!(mapped.len(), 1);
     assert_eq!(mapped.vector(DocId(1)), Some(vec![1.0, 0.0]));
-    // The open cut the tail (best effort, writable here); the mapping was the committed range.
-    assert_eq!(std::fs::metadata(&rows).unwrap().len(), committed);
-    assert!(mapped.is_mapped());
+    assert_eq!(mapped.search(&[1.0, 0.0], None, 5).unwrap().len(), 1);
+    drop(mapped);
+    std::fs::set_permissions(&rows, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
 
 #[test]
@@ -263,7 +272,7 @@ fn a_sparse_id_costs_one_entry_not_a_table() {
     assert_eq!(reopened.len(), 1);
 }
 
-#[cfg(unix)] // directory permissions as the read-only setup
+#[cfg(unix)] // file permissions as the read-only setup
 #[test]
 fn a_buffered_open_reads_only_the_committed_bytes() {
     use std::os::unix::fs::PermissionsExt;
@@ -281,14 +290,17 @@ fn a_buffered_open_reads_only_the_committed_bytes() {
     file.set_len(committed.len() as u64 + 64 * 1024 * 1024)
         .unwrap(); // a sparse 64 MB tail
     drop(file);
-    // Read-only: the tail stays (nothing writable is done) and only the committed rows are read.
-    let ro = std::fs::Permissions::from_mode(0o500);
-    std::fs::set_permissions(tmp.path(), ro).unwrap();
-    let opened = FlatIndex::open(tmp.path());
-    std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    let opened = opened.unwrap();
+    // The row file read-only: the tail survives the open and only the committed rows are read.
+    std::fs::set_permissions(&rows, std::fs::Permissions::from_mode(0o400)).unwrap();
+    let opened = FlatIndex::open(tmp.path()).unwrap();
+    assert_eq!(
+        std::fs::metadata(&rows).unwrap().len(),
+        committed.len() as u64 + 64 * 1024 * 1024
+    );
     assert_eq!(opened.len(), 1);
     assert_eq!(opened.vector(DocId(1)), Some(vec![1.0, 0.0]));
+    drop(opened);
+    std::fs::set_permissions(&rows, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
 
 #[test]
