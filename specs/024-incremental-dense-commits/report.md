@@ -90,3 +90,18 @@ plan's split: PR A is the format with its oracle and tests, PR B the pipeline an
    writes the new generation, brings it into memory, then renames, then swaps — a failure
    anywhere leaves disk and handle on the previous state (the partial file removed). The
    `absorb`/`reload`-after-rename paths are gone; `reload` is used at open only.
+
+### Review round 3 (Copilot, four comments — all applied)
+
+1. A mapping now covers exactly the committed rows (`bytes::read_prefix` maps
+   `rows × row_bytes`), so the invariant no longer depends on the best-effort truncation at
+   open: a crashed tail is never mapped, and the truncations touch only bytes beyond the
+   committed length. ADR-0013's amendment, research D4 and the SAFETY comment restated;
+   `index_persist::a_mapping_covers_only_the_committed_rows`.
+2. Row-space exhaustion (`u32` row indices) is checked before any I/O (`row_space`, unit
+   tests) — an `Error::Io` naming the limit and the remedy (compact).
+3. The generation error names the value and the condition; no review reference.
+4. The append path is selected by `load_path`, not by the current buffer variant: an
+   `open_mapped` handle maps after its first append and after compacting to zero rows and
+   back (`is_mapped()` probe, feature `mmap`;
+   `index_persist::a_mapped_handle_maps_after_its_first_append_and_after_compacting_to_empty`).

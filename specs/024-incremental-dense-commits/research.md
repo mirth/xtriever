@@ -79,11 +79,12 @@ file is tolerated (only `rows` are read); a shorter one is `Corrupt`.
 ## D4 — The mmap SAFETY argument, amended not weakened
 
 ADR-0007 condition 2 says the crate never writes `index.bin` in place, only replaces it.
-Version 2 **extends** the row file past every live mapping's end and never modifies a mapped
-byte: a mapping covers `[0, len at map time)`; appends write beyond that; the truncation of
-a crashed tail happens at writable open *before* this handle maps anything, and the
-single-writer precondition (documented on `LoadPath::Mmap`, unchanged) excludes another
-writer. Compaction replaces by rename as before. The SAFETY comment in `bytes.rs` and
+Version 2 **extends** the row file past the committed length and never modifies a mapped
+byte: a mapping covers exactly the committed rows (`bytes::read_prefix` maps
+`rows × row_bytes`, never the file's length); appends write beyond that; the truncation of a
+crashed tail — at open (best effort) or before an append — touches only bytes beyond the
+committed length, which no mapping covers; and the single-writer precondition (documented on
+`LoadPath::Mmap`, unchanged) excludes another writer. Compaction replaces by rename as before. The SAFETY comment in `bytes.rs` and
 ADR-0013 state the new invariant: *a mapped byte is never modified or truncated; the file is
 only extended beyond every mapping or replaced by rename*. The writer's own mapping is
 refreshed after each commit (as `read_generation` does today).

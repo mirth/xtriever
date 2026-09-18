@@ -204,7 +204,7 @@ impl FlatIndex {
         }
         let generation = self.header.generation.checked_add(1).ok_or_else(|| {
             corrupt(format!(
-                "generation {} cannot advance (review round 2 #1)",
+                "generation {} cannot advance; the row file's generation counter is exhausted",
                 self.header.generation
             ))
         })?;
@@ -240,7 +240,7 @@ impl FlatIndex {
             let rows = if layout.count == 0 {
                 Bytes::Owned(Vec::new())
             } else {
-                bytes::read(&new_path, self.load_path)?
+                bytes::read_prefix(&new_path, self.load_path, layout.len_bytes())?
             };
             write_manifest(&self.dir, &header, &RoaringBitmap::new())?;
             Ok(rows)
@@ -260,6 +260,15 @@ impl FlatIndex {
         self.ascending = true;
         let _ = std::fs::remove_file(old_path);
         Ok(())
+    }
+
+    /// Whether the committed rows are currently a memory map (feature `mmap`). An empty index
+    /// is a heap buffer whatever the load path — a zero-length mapping does not exist — and the
+    /// mapping is (re)made by the first commit that appends and by every compaction.
+    #[cfg(feature = "mmap")]
+    #[must_use]
+    pub fn is_mapped(&self) -> bool {
+        matches!(self.rows, Bytes::Mapped(_))
     }
 
     fn live_row(&self, id: DocId) -> Option<usize> {
@@ -338,17 +347,8 @@ impl FlatIndex {
         let rows = if layout.count == 0 {
             Bytes::Owned(Vec::new())
         } else {
-            bytes::read(&path, self.load_path)?
+            bytes::read_prefix(&path, self.load_path, layout.len_bytes())?
         };
-        if rows.as_slice().len() < layout.len_bytes() {
-            return Err(corrupt(format!(
-                "{} is {} bytes, shorter than the {} bytes of {} committed rows",
-                path.display(),
-                rows.as_slice().len(),
-                layout.len_bytes(),
-                layout.count
-            )));
-        }
         let bytes = rows.as_slice();
         let mut rows_by_id: Vec<u32> = Vec::new();
         let mut ascending = true;
@@ -471,7 +471,8 @@ impl VectorIndex for FlatIndex {
         let mut buf = Vec::new();
         let mut appended: Vec<(u32, u32)> = Vec::new(); // (id, row)
         let mut deleted: Vec<u32> = Vec::new();
-        let mut next_row = self.layout.count as u32;
+        let adds = self.pending.values().filter(|c| c.is_some()).count();
+        let mut next_row = row_space(self.layout.count, adds)?;
         let last_id = (self.layout.count > 0).then(|| {
             self.layout
                 .id_at(self.rows.as_slice(), self.layout.count - 1)
@@ -522,20 +523,24 @@ impl VectorIndex for FlatIndex {
                 let _ = file.set_len(committed_len);
             }
         };
-        let remapped: Option<Bytes> = if let Some(v) = self.rows.owned_mut() {
-            v.truncate(committed_len as usize);
-            v.extend_from_slice(&buf);
-            None
-        } else if buf.is_empty() {
-            None
-        } else {
-            match bytes::read(&path, self.load_path) {
+        let remapped: Option<Bytes> = match self.load_path {
+            LoadPath::Buffered => {
+                if let Some(v) = self.rows.owned_mut() {
+                    v.truncate(committed_len as usize);
+                    v.extend_from_slice(&buf);
+                }
+                None
+            }
+            #[cfg(feature = "mmap")]
+            LoadPath::Mmap if buf.is_empty() => None,
+            #[cfg(feature = "mmap")]
+            LoadPath::Mmap => match bytes::read_prefix(&path, self.load_path, layout.len_bytes()) {
                 Ok(b) => Some(b),
                 Err(e) => {
                     undo_file(&path);
                     return Err(e);
                 }
-            }
+            },
         };
         if let Err(e) = write_manifest(&self.dir, &header, &dead) {
             if let Some(v) = self.rows.owned_mut() {
@@ -613,6 +618,20 @@ impl VectorIndex for FlatIndex {
     }
 }
 
+/// The first row index of a commit that appends `adds` rows to `committed` — or the row-space
+/// exhaustion error, before any I/O: row indices are `u32` (the tombstone set's domain).
+fn row_space(committed: usize, adds: usize) -> Result<u32> {
+    let first = u32::try_from(committed).ok();
+    let last = first.and_then(|f| f.checked_add(u32::try_from(adds).ok()?));
+    match (first, last) {
+        (Some(first), Some(_)) => Ok(first),
+        _ => Err(Error::Io(std::io::Error::other(format!(
+            "dense row space exhausted: {committed} committed rows plus {adds} would exceed {} — compact the index first",
+            u32::MAX
+        )))),
+    }
+}
+
 /// Write a manifest to `manifest.bin.tmp`, sync, and `rename` it over `manifest.bin`.
 fn write_manifest(dir: &Path, header: &Header, dead: &RoaringBitmap) -> Result<()> {
     let encoded = format::encode_manifest(header, dead)?;
@@ -624,4 +643,23 @@ fn write_manifest(dir: &Path, header: &Header, dead: &RoaringBitmap) -> Result<(
     }
     std::fs::rename(&tmp, dir.join(MANIFEST))?;
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn row_space_is_checked_before_any_io() {
+        assert_eq!(row_space(0, 10).unwrap(), 0);
+        assert_eq!(row_space(100, 0).unwrap(), 100);
+        assert_eq!(row_space(u32::MAX as usize - 1, 1).unwrap(), u32::MAX - 1);
+        assert!(matches!(row_space(u32::MAX as usize, 1), Err(Error::Io(_))));
+        assert!(matches!(
+            row_space(u32::MAX as usize - 1, 2),
+            Err(Error::Io(_))
+        ));
+        assert!(matches!(row_space(usize::MAX, 0), Err(Error::Io(_))));
+    }
 }

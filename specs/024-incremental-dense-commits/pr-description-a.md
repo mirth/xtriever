@@ -29,6 +29,11 @@ provenance line had changed).
 arithmetic (`Corrupt` at `u64::MAX`), and both `commit` and `compact` do every fallible step
 before the manifest rename, so a failure never leaves the handle disagreeing with disk.
 
+**Review round 3** (four comments, applied): mappings cover exactly the committed rows (a
+crashed tail is never mapped), row-space exhaustion is refused before any I/O, the
+generation error is plain, and a mapped handle keeps mapping after its first append and
+after a compaction to zero rows.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

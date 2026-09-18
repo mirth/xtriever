@@ -185,6 +185,61 @@ fn a_mapped_handle_survives_a_commit_by_another_handle() {
     );
 }
 
+#[cfg(feature = "mmap")]
+#[test]
+fn a_mapped_handle_maps_after_its_first_append_and_after_compacting_to_empty() {
+    // An empty index is a heap buffer (a zero-length mapping does not exist); the first
+    // commit that appends must map, and a compaction to zero rows returns to the buffer
+    // (review round 3 #4, spec FR-008).
+    let tmp = tempfile::tempdir().unwrap();
+    drop(FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap());
+    let mut mapped = FlatIndex::open_mapped(tmp.path()).unwrap();
+    assert!(!mapped.is_mapped(), "an empty index is not a mapping");
+    mapped.add(DocId(1), &[1.0, 0.0]).unwrap();
+    mapped.commit().unwrap();
+    assert!(
+        mapped.is_mapped(),
+        "the first append maps the committed rows"
+    );
+    mapped.add(DocId(2), &[0.0, 1.0]).unwrap();
+    mapped.commit().unwrap();
+    assert!(mapped.is_mapped());
+    assert_eq!(mapped.len(), 2);
+    assert_eq!(mapped.search(&[0.0, 1.0], None, 1).unwrap()[0].id, DocId(2));
+    mapped.delete(&[DocId(1), DocId(2)]).unwrap();
+    mapped.compact().unwrap();
+    assert!(!mapped.is_mapped(), "compacted to no rows: a buffer again");
+    assert_eq!(mapped.len(), 0);
+    mapped.add(DocId(3), &[1.0, 1.0]).unwrap();
+    mapped.commit().unwrap();
+    assert!(mapped.is_mapped());
+    assert_eq!(mapped.vector(DocId(3)), Some(vec![1.0, 1.0]));
+}
+
+#[cfg(feature = "mmap")]
+#[test]
+fn a_mapping_covers_only_the_committed_rows() {
+    // A crashed tail beyond the committed rows is never mapped (review round 3 #1): a
+    // read-only open of a directory with such a tail maps the committed range only, so a
+    // later truncation of the tail cannot touch a mapped byte.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    index.commit().unwrap();
+    drop(index);
+    let rows = tmp.path().join("vectors.0.bin");
+    let committed = std::fs::metadata(&rows).unwrap().len();
+    let mut with_tail = std::fs::read(&rows).unwrap();
+    with_tail.extend_from_slice(&[0xAB; 40]);
+    std::fs::write(&rows, &with_tail).unwrap();
+    let mapped = FlatIndex::open_mapped(tmp.path()).unwrap();
+    assert_eq!(mapped.len(), 1);
+    assert_eq!(mapped.vector(DocId(1)), Some(vec![1.0, 0.0]));
+    // The open cut the tail (best effort, writable here); the mapping was the committed range.
+    assert_eq!(std::fs::metadata(&rows).unwrap().len(), committed);
+    assert!(mapped.is_mapped());
+}
+
 #[test]
 fn vector_returns_committed_rows_exactly_as_added() {
     let set = set384();

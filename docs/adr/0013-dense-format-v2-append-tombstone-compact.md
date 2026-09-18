@@ -72,11 +72,12 @@ dense/
 ADR-0007 condition 2 read: the crate never writes `index.bin` in place, it only replaces it
 by `rename`. Version 2 extends that sentence rather than weakening the guarantee:
 
-> A mapped byte is never modified or truncated by this crate. The row file is only
-> **extended** beyond every live mapping's end (`commit`) or **replaced** by `rename`
-> (`compact`). The one truncation the crate performs — cutting a crashed append's tail —
-> happens at open, before the opening handle maps anything, and only on bytes beyond every
-> manifest's committed length.
+> A mapped byte is never modified or truncated by this crate. A row file is mapped over
+> exactly its committed rows (the manifest's `rows × row_bytes`, never the file's length), and
+> the crate only ever **extends** it past that committed length (`commit`) or **replaces** it
+> by `rename` (`compact`). The truncations it performs — cutting a crashed append's tail at
+> open or before an append — touch only bytes beyond the committed length, which no mapping
+> covers.
 
 The `SAFETY` comment in `bytes::map_readonly` and the docs of `LoadPath::Mmap` state this;
 the single-writer precondition the caller owns is unchanged.
