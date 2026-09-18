@@ -1,0 +1,137 @@
+# Tasks: Incremental Dense Commits — an Append/Tombstone/Compact Vector File
+
+**Input**: Design documents from `/specs/024-incremental-dense-commits/`
+
+**Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md)
+(D1–D10), [data-model.md](./data-model.md), [contracts/dense-format-v2.md](./contracts/dense-format-v2.md),
+[quickstart.md](./quickstart.md); on disk: the two engine models, the shipped artefact
+`target/xt-wiki` (version 1), the Python venvs (`python/.venv`, `apps/python-wiki-demo/.venv`).
+All commands from the repository root with `unset SDKROOT`.
+
+**Tests**: **Mandatory** (Principle II; spec FR-010): the oracle is minted from version 1
+*before* the format changes, then the red tests are committed before the code. Two PRs
+(Rule 3): **PR A** = `xtriever-dense` (Phases 1–5), **PR B** = the pipeline, the FFI, the
+artefacts (Phase 6). Checkpoints the **owner commits** (the agent runs no git command that
+changes state): **C1** = Phases 1–2 (the oracle + red), **C2** = Phases 3–5 (PR A green,
+bench, ADR, fixture) → the owner opens and merges PR A, then branches for PR B; **C3** =
+Phase 6 (PR B).
+
+**Organization**: Setup (dependencies, the oracle) → Foundational (the red tests) → US1
+(append-only commit) → US2 (compaction) → US3 (crash safety, one format, the bench, the ADR,
+the fixture) → US4 (the threshold through the pipeline and the FFI; the Wikipedia artefact)
+→ Polish.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: parallelizable (different files, no dependency on an incomplete task)
+- **[Story]**: US1–US4 from spec.md. **Rule 6 stop-points are marked ⛔.**
+
+## Path Conventions
+
+`crates/xtriever-dense/{Cargo.toml,src/lib.rs,src/bytes.rs,src/index/{format,mod,search}.rs,benches/scan.rs,tests/*.rs,tests/support/}`;
+`crates/xtriever-pipeline/src/{types,descriptor,index}.rs` and `tests/`;
+`crates/xtriever-ffi/src/ffi/types.rs`; `docs/adr/0013-dense-format-v2-append-tombstone-compact.md`;
+`reference/convert_dense_v1_to_v2.py`; `specs/024-incremental-dense-commits/{runs/,report.md,pr-description-a.md,pr-description-b.md}`.
+
+---
+
+## Phase 1: Setup
+
+- [ ] T001 `cargo add roaring -p xtriever-dense` (the workspace's version, 0.10 — check `Cargo.toml` shows `roaring = { workspace = true }` or the same version as `xtriever-core`), `cargo add --dev criterion -p xtriever-dense`, and in `crates/xtriever-dense/Cargo.toml` a `[[bench]] name = "scan" harness = false`; `cargo check -p xtriever-dense` clean; `mkdir -p specs/024-incremental-dense-commits/runs`
+- [ ] T002 Mint the version-1 oracle (research D8, D9; quickstart Step 0) **on the unchanged crate**: write `crates/xtriever-dense/tests/index_oracle.rs` with (a) a deterministic generator (`support::` helper, fixed seed via a small LCG — no new dependency) of sequences for each metric (`Cosine`, `Dot`, `Euclidean`) at dim 8: 300 steps mixing `Add` (fresh id, ascending), `Replace` (an existing id), `Delete` (an existing or an unknown id), `Commit`, `Reopen`, and after every commit 5 queries (2 with an `allowed` set, `k` in {1, 5, 13}); (b) `#[test] #[ignore] fn mint()` that runs the sequences on `FlatIndex` and writes `crates/xtriever-dense/tests/support/v1_oracle.json` — per sequence the steps and, per query, the expected `[(id, score_bits as u32 hex)]`; (c) `#[test] fn replay()` that loads the file and asserts every query's hits bit for bit (`f32::to_bits`) and `len()` after every commit; run `cargo test -p xtriever-dense --test index_oracle -- --ignored mint` once, then `cargo test -p xtriever-dense --test index_oracle` → `replay` passes on version 1 (**⛔** a non-deterministic mint — run it twice, the file must be identical — is stop-and-report)
+
+---
+
+## Phase 2: Foundational — the red tests (PR A)
+
+- [ ] T003 [P] `crates/xtriever-dense/tests/index_errors.rs`: `a_future_format_version_is_rejected_naming_both_versions` rewritten for `manifest.bin` (bump the JSON header's `"format_version":2` to `3` → `Corrupt` naming `3` and `FORMAT_VERSION`); new `a_version_1_directory_is_refused_naming_both_versions`: a directory holding only a hand-built version-1 `index.bin` (magic `XTDENSE1`, a header with `"format_version":1`) → `Corrupt` mentioning `1` and `2`; `bad_magic_and_truncation_are_corrupt` re-pointed at `manifest.bin` (bad magic; header cut short; a row file shorter than `rows × row_bytes` → `Corrupt`); `a_failed_commit_keeps_the_staged_changes_for_a_retry` kept (make the directory unwritable as now)
+- [ ] T004 [P] Write `crates/xtriever-dense/tests/index_append.rs` (spec US1; contract guarantee 1): `commit_appends_only_the_new_rows`: create dim 4, add 100 rows, commit → `vectors.0.bin` is exactly `100 × 24` bytes; snapshot its bytes; add 10 more, commit → the file is `110 × 24` bytes and its first `100 × 24` bytes are unchanged; `manifest.bin` exists and `index.bin` does not; `stats()` = `{rows: 110, live: 110, dead: 0, generation: 0}`; `replace_and_delete_never_touch_committed_bytes`: replace id 7 and delete id 3, commit → the file grew by one row; the earlier bytes unchanged; `stats() == {rows: 111, live: 109, dead: 2, generation: 0}`; `vector(DocId(7))` is the new vector, `vector(DocId(3))` is `None`; search for a query equal to the old row 7 does not return the old score, and never returns id 3; `len() == 109`; `a_delete_only_commit_appends_nothing`: rows unchanged, dead + 1, the manifest rewritten (its mtime or bytes differ); `bytes_written_are_proportional` (SC-001 at test scale): 1,000 rows dim 32 committed, then 10 rows → the total bytes of `dense/` grew by exactly `10 × row_bytes + (new manifest − old manifest)` and the manifest is under 1 KB
+- [ ] T005 [P] Write `crates/xtriever-dense/tests/index_compact.rs` (spec US2, US4): `compact_drops_dead_rows_and_keeps_every_bit`: a sequence with replaces and deletes; results for 20 queries before; `compact()`; `stats() == {rows: live, live, dead: 0, generation: 1}`; `vectors.1.bin` exists, `vectors.0.bin` does not; the row ids in the file are strictly ascending (read the file: id at every `row_bytes` offset); the 20 queries bit-identical after; reopen → still identical; `compact_is_a_no_op_when_nothing_is_dead_and_ids_ascend`: after fresh ascending adds and a commit, `compact()` leaves `generation` and the file's mtime/bytes unchanged; `compact_on_a_read_only_handle_is_refused` (feature `mmap`: `open_mapped` then `compact()` → `Error::Io` "read-only"; without the feature, a read-only `open` variant if one exists — else the test is `#[cfg(feature = "mmap")]`); `threshold_compacts_on_the_crossing_commit`: `set_compaction_threshold(Some(0.25))`; 100 rows committed; delete 20 + commit → `dead 20 / rows 100 = 0.20` → no compaction (generation 0); delete 10 more + commit → `30/100 > 0.25` → compacted in that commit (generation 1, rows 70, dead 0); with `None` the same sequence never compacts; `set_compaction_threshold(Some(1.5))` and `Some(-0.1)` → `Error::Schema`; `Some(0.0)` compacts on any commit with a dead row; `Some(1.0)` never
+- [ ] T006 [P] Write `crates/xtriever-dense/tests/index_crash.rs` (spec US3; contract guarantee 3): a helper that copies a directory's files into a `Vec<(name, bytes)>` and restores them; `every_truncation_of_a_commit_reopens_to_the_previous_state`: dim 4 (24-byte rows); state S0 = 50 rows committed; record S0's files; perform a commit of 5 adds + 2 replaces + 1 delete → S1's files; then for every length `L` from `S0 rows × 24` to `S1 rows × 24` inclusive: restore S0's `manifest.bin`, write `vectors.0.bin` as S1's file truncated to `L`, `open` → `stats()` and 5 query results equal S0's (and a *writable* open truncates the file to `S0 rows × 24`; a read-only open leaves it); then S1's manifest with the full file → equals S1; `every_truncation_of_a_compact_reopens_to_the_previous_state`: from a state with dead rows, run `compact()` → S2; for every length of `vectors.1.bin` from 0 to its full size with S1's manifest present (and `vectors.0.bin` intact) → equals S1, and a writable open removes the stale `vectors.1.bin`; with S2's manifest and both files → equals S2 (and the writable open removes `vectors.0.bin`); `a_manifest_tmp_left_behind_is_ignored_and_replaced` (the old `index.bin.tmp` test, re-pointed)
+- [ ] T007 [P] Update `crates/xtriever-dense/tests/index_persist.rs`, `index_mutation.rs`, `index_golden.rs`, `index_prop.rs`: file-name assertions → `manifest.bin` / `vectors.0.bin` (`create_writes_an_empty_generation_that_opens`: both files exist, the row file is 0 bytes); `a_leftover_tmp_file_is_ignored_and_replaced` → `manifest.bin.tmp`; `a_mapped_handle_survives_a_commit_by_another_handle` kept **and** extended: the mapped handle's results are unchanged after the other handle appends *and* after it compacts (the old inode lives until dropped); `index_prop.rs`: a new property `compact_and_reopen_preserve_every_bit` (random add/replace/delete/commit sequences at dim ≤ 8, ≤ 200 steps: results before `compact()` == after == after reopen, bit for bit; `len()` equals the reference model's live count, where the reference model is a `BTreeMap<u32, Vec<f32>>` maintained by the test) and `dead_rows_never_surface` (every hit id is live in the reference model); `index_mutation.rs` and `index_golden.rs` unchanged in substance (they drive the public API) — confirm they still compile
+- [ ] T008 [P] Write `crates/xtriever-dense/benches/scan.rs` (research D8): `criterion::{criterion_group, criterion_main, BenchmarkId, Criterion}`; a fixed-seed LCG generator of 100,000 rows × 384 dims; **(a)** `scan/v1_shape`: a bench-local columnar layout (`ids: Vec<u32>`, `norms: Vec<f32>`, `vectors: Vec<f32>`) scored with the same `f64` accumulation and top-k as the crate (a copy of the loop in the bench, documented as the version-1 shape kept for comparison) vs `scan/v2`: `FlatIndex` (buffered) `search` with `k = 10`, and `scan/v2_filtered` with an `allowed` set of every other id; **(b)** `commit/v2_10_rows`: an index of 100,000 rows committed once (built once in setup; the timed loop appends 10 fresh ids per iteration into the same index — the file grows, the cost per commit is what is measured; bytes written per commit reported from the file sizes) vs `commit/v1_rewrite_10_rows`: the bench-local encoder writing the full columnar file once per iteration; `cargo bench -p xtriever-dense --bench scan -- --warm-up-time 2 --measurement-time 5` compiles (the numbers come in T017)
+- [ ] T009 Quickstart Step 1: `cargo nextest run -p xtriever-dense 2>&1 | tail -25` → `index_append`, `index_compact`, `index_crash` fail to compile (`stats`, `compact`, `set_compaction_threshold`, `DenseStats` absent) or on the file names; `index_errors` fails on the version-1 refusal and the manifest tests; `index_persist` on the file names; `index_oracle::replay` **passes** (it is the oracle); record in `specs/024-incremental-dense-commits/report.md` ("Red checkpoint"). **⛔ Checkpoint C1 — the owner commits** `Cargo.toml`/`Cargo.lock`, the oracle file, the tests, the bench, the report stub
+
+---
+
+## Phase 3: User Story 1 — A commit writes only what changed (Priority: P1)
+
+**Goal**: format version 2 in `format.rs`; `FlatIndex` opens, creates, appends, searches.
+
+**Independent Test**: `index_append`, `index_oracle::replay`, `index_golden`, `index_mutation`, `index_persist` green.
+
+- [ ] T010 [US1] Rewrite `crates/xtriever-dense/src/index/format.rs` for version 2 (data-model; contract): module docs with the two layouts; `MAGIC = b"XTDENSE2"`; `MANIFEST = "manifest.bin"`, `MANIFEST_TMP = "manifest.bin.tmp"`, `fn row_file(generation) -> String` (`vectors.<g>.bin`); `Header { format_version, dim, metric, fingerprint, generation: u64, rows: u64, live: u64, tombstones_len: u64 }` (serde, key order = on-disk order); `fn row_bytes(dim) -> usize` (`8 + dim × 4`); `fn encode_manifest(header, dead: &RoaringBitmap) -> Result<Vec<u8>>` (magic · `hdr_len` · JSON · `dead.serialize_into`); `fn decode_manifest(bytes) -> Result<(Header, RoaringBitmap)>` (the existing checks — magic, header length, JSON, version naming both — plus `tombstones_len` bounds and `RoaringBitmap::deserialize_from` → `Corrupt` on error; `rows ≤ u32::MAX`, `live == rows − dead.len()`); `fn encode_row(out: &mut Vec<u8>, id, norm, vector)`; `struct Rows { dim, row_bytes, count }` with `id_at(bytes, r)`, `norm_at(bytes, r)`, `row_at(bytes, r)` over `from_le_bytes` as now; a version-1 directory (no `manifest.bin` but an `index.bin` whose header parses with `format_version` 1) → `Corrupt("dense index is format version 1 (index.bin); this build reads 2 (manifest.bin)…")` naming both; `crates/xtriever-dense/src/lib.rs`: `FORMAT_VERSION = 2`, the crate docs' format paragraph
+- [ ] T011 [US1] Rewrite `crates/xtriever-dense/src/index/mod.rs` (research D3, D6, D7): `struct Committed { rows: Bytes, layout: Rows }`; `FlatIndex { dir, header, load_path, committed, dead: RoaringBitmap, rows_by_id: Vec<u32>, pending, compaction_threshold: Option<f32>, read_only: bool }`; `create` writes an empty row file `vectors.0.bin` and a manifest (`rows 0`, `live 0`, empty bitmap); `open_with(dir, load_path, writable)`: decode the manifest; the row file's length vs `rows × row_bytes`: shorter → `Corrupt`; longer and writable → `File::set_len` to the committed length **before** reading/mapping (D4); longer and read-only → tolerated (only `rows` are read — `bytes::read` then slice to the committed length); writable: sweep `vectors.*.bin` not named by the manifest and `manifest.bin.tmp`; read or map the row file; build `rows_by_id` (one pass, later rows win, dead skipped); `open` / `open_mapped` (read-only: `read_only = true` for the mapped path as the contract has it today — check how `is_read_only` is decided for the dense stage in the pipeline's `open_with` and keep that behaviour); `vector(id)` via `rows_by_id`; `len()` = `header.live`; `pub struct DenseStats { rows, live, dead, generation }` + `stats()`; `add` / `delete` unchanged (pending); `commit`: step 1 — for each pending id with a live row, `dead.insert(row)` and `rows_by_id[id] = MAX`; step 2 — encode the `Some` rows in id order, `OpenOptions::new().append(true).open(row_file)`, `write_all`, `sync_all`; step 3 — the new header (`rows += appended`, `live = rows − dead.len()`), `encode_manifest`, write `manifest.bin.tmp`, `sync_all`, `rename`; step 4 — re-read the committed rows (buffered: read the file; mapped: re-map — the old `Bytes` dropped after), update `rows_by_id` for the appended rows, `pending.clear()`; a failure before the rename keeps `pending` and the in-memory `dead` as they were (compute the new bitmap on a clone, swap in only after the rename); step 5 — the threshold check (T014); `search`: the current loop over `0..rows` with `if self.dead.contains(r) { continue }`, the id read from the row; `set_compaction_threshold` (validation `0.0..=1.0`, `Error::Schema`); `crates/xtriever-dense/src/bytes.rs`: the SAFETY comment amended to the D4 invariant (a mapped byte is never modified or truncated; the row file is only extended beyond every mapping — the truncation of a crashed tail happens at writable open before this handle maps — or replaced by rename), citing ADR-0013
+- [ ] T012 [US1] `cargo nextest run -p xtriever-dense` and `cargo test -p xtriever-dense --features mmap` → everything green except `index_compact` and the compact half of `index_crash` (T014); `index_oracle::replay` green on version 2 — bit for bit against version 1 (**⛔** any differing bit is stop-and-report); `cargo clippy -p xtriever-dense --all-targets --all-features` clean
+
+---
+
+## Phase 4: User Story 2 — `merge` compacts the dense file (Priority: P1)
+
+**Goal**: `compact()`; the threshold hook in `commit`.
+
+**Independent Test**: `index_compact`, `index_crash` (compact half), `index_prop::compact_and_reopen_preserve_every_bit` green.
+
+- [ ] T013 [US2] `crates/xtriever-dense/src/index/mod.rs`: `pub fn compact(&mut self) -> Result<()>`: read-only → `Error::Io` "read-only index"; commit pending first; no-op when `dead.is_empty()` and the ids are strictly ascending (track `ascending: bool` in memory — true after create/compact, cleared by a commit whose first appended id is not above the last row's id); else: encode the live rows in ascending id order (walk `rows_by_id`) into `vectors.<g+1>.bin` (write, `sync_all`), the manifest with `generation g+1`, `rows = live`, `live`, an empty bitmap (tmp + rename), `remove_file(vectors.<g>.bin)` (errors ignored — the sweep at open cleans up), re-read; `commit` step 5: `if let Some(t) = self.compaction_threshold { if rows > 0 && (dead as f64 / rows as f64) > t as f64 { self.compact()? } }`
+- [ ] T014 [US2] `cargo nextest run -p xtriever-dense && cargo test -p xtriever-dense --features mmap` → all green including `index_prop` (default cases; then once with `PROPTEST_CASES=1000`); **⛔** a bit difference before/after compaction is stop-and-report
+
+---
+
+## Phase 5: User Story 3 — Crash safety, one format, and the proofs (Priority: P1)
+
+**Goal**: the crash tests green; the bench numbers; ADR-0013; the fixture regenerated with its goldens reproducing.
+
+**Independent Test**: quickstart Steps 2 and 5.
+
+- [ ] T015 [US3] `cargo nextest run -p xtriever-dense --test index_crash` green (the truncate-guard and the sweep from T011/T013 are what it exercises); if a truncation point fails, fix the protocol, never the test (**⛔**)
+- [ ] T016 [P] [US3] Write `docs/adr/0013-dense-format-v2-append-tombstone-compact.md` (the ADR-0008 shape): Status Accepted (owner decisions Q1 = C, Q2 = C, 2026-09-18); Context (version 1 columnar → O(index) commit; the survey D1 incl. `vecstore`); Decision (the two files, the protocols, `compact`, the threshold; version 1 not read; every artefact regenerated); Consequences (commit cost O(change); dead rows until `compact`; the mmap invariant amended — quote the new SAFETY sentence and state that it supersedes the "only ever replaced" sentence of ADR-0007 condition 2; the pipeline format version unchanged; the descriptor's new optional field); Alternatives (segments, convert-on-first-commit, automatic-only compaction, a separate tombstone file); add the cross-reference line to `docs/adr/0007-unsafe-readonly-mmap-in-dense.md` ("Condition 2 amended by ADR-0013")
+- [ ] T017 [P] [US3] Quickstart Step 2 bench: `cargo bench -p xtriever-dense --bench scan 2>&1 | tee specs/024-incremental-dense-commits/runs/bench-scan-$(sysctl -n hw.model)-<UTC stamp>.txt`; the scan v2 within 5 % of v1_shape (SC-004; **⛔** over budget is stop-and-report — investigate `contains` cost first, D5's fallback is a word bitset), the filtered scan reported; the 10-row commit under 50 ms and under 100 KB (SC-001) vs the rewrite (~150 MB); no hostname in the file (grep)
+- [ ] T018 [US3] Regenerate the fixture (research D9): `cargo run --release -p xtriever-ffi --example fixture_index -- swift/Xtriever/Tests/Fixtures` → `git diff --stat swift/Xtriever/Tests/Fixtures/expected.json` **empty** (**⛔** otherwise); `ls swift/Xtriever/Tests/Fixtures/index/dense` shows `manifest.bin`, `vectors.0.bin`; if `swift/Xtriever/Sources/Xtriever/XtrieverData/fixtures/index` is a copy, regenerate it the same way (check how it is produced — `grep -rn XtrieverData/fixtures scripts/ swift/ --include=*.sh --include=*.md`); `cargo nextest run --workspace` green (the FFI, pipeline and eval suites over the new fixture); `(cd python && .venv/bin/maturin build --release) && uv pip install --python python/.venv/bin/python --force-reinstall target/wheels/xtriever-*.whl && python/.venv/bin/pytest python/tests -q` green
+- [ ] T019 [US3] PR A gate and record: `cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo nextest run --workspace && cargo deny check`; the three cross-target `cargo check`s; `git diff --stat main -- crates/xtriever-core deny.toml apps/ specs/*/baselines` empty; `grep -rn "$(hostname -s)\|$USER" specs/024-incremental-dense-commits docs/adr/0013-*.md crates/xtriever-dense` → nothing; write `specs/024-incremental-dense-commits/report.md` (PR A section: the red checkpoint, the oracle, the bench table, the fixture proof, SC-001–SC-004 so far) and `pr-description-a.md` (what changed, the bench numbers, the ADR, "version 1 is refused — regenerate indexes", the attribution line). **⛔ Checkpoint C2 — the owner commits**, pushes, opens and merges PR A, then creates the PR B branch (`git switch main && git pull && git switch -c 024-incremental-dense-commits-b`) — the untracked `specs/024-…` docs for PR B carry over
+
+---
+
+## Phase 6: User Story 4 — The threshold through the pipeline and the FFI; the artefacts (PR B, Priority: P2)
+
+**Goal**: `merge` compacts; `dense_compact_dead_share` end to end; the Wikipedia artefact regenerated and proven.
+
+**Independent Test**: quickstart Steps 3–4.
+
+- [ ] T020 [US4] Red tests: `crates/xtriever-pipeline/tests/open_with.rs::merge_leaves_one_segment_and_identical_results` extended — after deletes and replaces, `merge()` → the dense directory holds one `vectors.<g>.bin` whose row count equals `live_docs`, results bit-identical (assert via `HybridIndex`'s public surface plus the file: read `dense/manifest.bin`'s header JSON for `rows == live`, `tombstones_len` bitmap empty); new `crates/xtriever-pipeline/tests/compact_threshold.rs`: `HybridConfig { dense_compact_dead_share: Some(0.25), .. }` — a sequence of deletes crossing 25 % compacts on that commit (the manifest's `generation` advances) and not before; `None` never; `Some(1.5)` → `Error::Schema` at `create`; the descriptor round-trips the field (`open` after `create` reports it; an index written without the field reads as `None` — hand-edit `xtriever-pipeline.json` to remove the key); `crates/xtriever-ffi` tests: `IndexConfig` accepts the field and the default is `None` (a Python test in `python/tests/` constructing `IndexConfig(...)` without it and with `dense_compact_dead_share=0.5`, `info()` unchanged); run → red
+- [ ] T021 [US4] Implement: `crates/xtriever-pipeline/src/types.rs` `HybridConfig.dense_compact_dead_share: Option<f32>` (docs: "compact the dense file within a commit whose dead-row share exceeds this; `None` (default) = only on `merge`"; `new` sets `None`; `validate` refuses outside `0.0..=1.0` with `Error::Schema`); `descriptor.rs` `#[serde(default)] dense_compact_dead_share: Option<f32>`; `index.rs`: `create` and writable `open` call `dense.set_compaction_threshold(config.dense_compact_dead_share)?`, the descriptor carries it, `config` is rebuilt from it on open; `merge`: `self.commit()?; self.dense.compact()?; self.lexical.merge()`; `crates/xtriever-ffi/src/ffi/types.rs` `IndexConfig.dense_compact_dead_share: Option<f32>` with `#[uniffi(default = None)]` and the `From` mapping; `cargo nextest run -p xtriever-pipeline -p xtriever-ffi` green; rebuild the wheel and `python/tests` green
+- [ ] T022 [US4] Write `reference/convert_dense_v1_to_v2.py` (research D9; the throwaway kept under `reference/` as the record of how the artefact was regenerated): reads `dense/index.bin` (version 1: magic `XTDENSE1`, `hdr_len`, JSON header, `ids`, `norms`, `vectors`), writes `dense/vectors.0.bin` (rows in file order — ascending ids) and `dense/manifest.bin` (magic `XTDENSE2`, the header with `generation 0`, `rows = live = count`, an empty roaring bitmap — the exact bytes `RoaringBitmap::new().serialize_into` produces, obtained once from a Rust test and pasted as a constant with its source noted), then removes `index.bin`; `--dry-run` prints the counts; a pytest in `reference/tests_024/test_convert.py` on a synthetic version-1 file (built by the test) checks every row's bytes and the manifest header; run it on a copy: `cp -R target/xt-wiki target/xt-wiki-v2 && python3 reference/convert_dense_v1_to_v2.py target/xt-wiki-v2/index` (**⛔** a count mismatch is stop-and-report)
+- [ ] T023 [US4] The proofs (quickstart Step 4): `XTRIEVER_WIKI_ARTEFACT=target/xt-wiki-v2 apps/python-wiki-demo/.venv/bin/wikidemo measure --out specs/024-incremental-dense-commits/runs/measure-$(sysctl -n hw.model)-<UTC stamp>-mmap-threadsdefault.json` → parity **PASS**, 800/800 bits, peak RSS beside the 019 record (1,029 MB); `wikidemo about` shows the same identity; the SciFact hybrid check: the exact `xtriever-eval` command from `specs/013-lexical-quality/quickstart.md` → `hybrid-baseline-v2.scifact` reproduced to 1e-6 (write the run under `runs/`); then replace the artefact: `mv target/xt-wiki target/xt-wiki-v1 && mv target/xt-wiki-v2 target/xt-wiki` (the owner may delete `target/xt-wiki-v1` later); the iOS device rule is not re-run here (no device job) — noted in the report
+- [ ] T024 [US4] Docs: `crates/xtriever-pipeline/src/index.rs` and `lib.rs` docs on `merge` ("compacts the dense file and merges the lexical segments") and on the threshold; `crates/xtriever-dense/src/lib.rs` crate docs (the two files, the protocols, `compact`); `specs/008-wiki-corpus/contracts/artefact.md`'s tree (`dense/manifest.bin`, `dense/vectors.<g>.bin`) with a "since Feature 024" note; `apps/python-wiki-demo/README.md` and the minimal demo's comment where `merge` is explained ("compacts the dense file and the lexical segments"); `CLAUDE.md` unchanged
+
+---
+
+## Phase 7: Polish
+
+- [ ] T025 PR B gate: the full local gate (fmt, clippy, nextest, deny, the three cross-target checks, the wheel + `python/tests`, `apps/python-wiki-demo` tests with the models); `git diff --stat main -- crates/xtriever-core deny.toml apps/ specs/*/baselines` empty (apps/ README edits from T024 are docs only — if they exist, state them); `grep -rn "$(hostname -s)\|$USER" specs/024-incremental-dense-commits reference/convert_dense_v1_to_v2.py reference/tests_024` → nothing
+- [ ] T026 Finish `specs/024-incremental-dense-commits/report.md` (verdict; both PRs; the bench table; the fixture and Wikipedia proofs with the RSS; SC-001–SC-006; "Deliberately not done": no automatic compaction by default, no multi-writer, no device re-measurement, the converter is a record not a product) and `pr-description-b.md`. **⛔ Checkpoint C3 — the owner commits**, pushes and opens PR B
+
+---
+
+## Dependencies & Execution Order
+
+T001 → T002 → (T003 ‖ T004 ‖ T005 ‖ T006 ‖ T007 ‖ T008) → T009 (C1) → T010 → T011 → T012 →
+T013 → T014 → T015 → (T016 ‖ T017) → T018 → T019 (C2, PR A merged) → T020 → T021 → T022 →
+T023 → T024 → T025 → T026 (C3).
+
+### User story completion order
+
+US1 (append commit) → US2 (compaction) → US3 (crash tests, bench, ADR, fixture) → US4
+(pipeline, FFI, artefacts).
+
+### Parallel opportunities
+
+The six red test files (T003–T008); T016 ‖ T017; T022 can be written while T021's tests run;
+T023's `measure` (~8 min) and the SciFact eval (~10 min) can overlap with T024.
+
+## Implementation Strategy
+
+**MVP** = PR A (Phases 1–5): the format, bit-identical results, the crash guarantee, the
+bench. **Rule 6 stop-points**: T002 (a non-deterministic oracle), T012 / T014 (a differing
+bit), T015 (a truncation point that does not recover), T017 (over budget), T018 (the fixture
+goldens do not reproduce), T022/T023 (the Wikipedia conversion or its goldens). Never the
+goldens, never the truncation enumeration, never the budget.
