@@ -43,6 +43,8 @@ exactly the committed bytes.
 
 **Review round 6** (three comments, applied): a commit over the compaction threshold is one rewrite protocol (fails whole or succeeds whole), manifest failures before and after the rename are distinguished (roll back vs adopt), and the crashed-tail tests keep the tail by making the row file read-only.
 
+**Review round 7** (one comment, applied): read-only opens (`open_read_only*`, used by the pipeline's `OpenOptions { read_only }`) neither truncate nor sweep and refuse mutations — the one pipeline change in this PR.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

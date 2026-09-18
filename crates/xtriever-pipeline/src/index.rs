@@ -223,7 +223,11 @@ impl HybridIndex {
         let dense = if mapped {
             #[cfg(feature = "mmap")]
             {
-                FlatIndex::open_mapped_for(&dense_dir, embedder.as_ref())?
+                if read_only {
+                    FlatIndex::open_mapped_read_only_for(&dense_dir, embedder.as_ref())?
+                } else {
+                    FlatIndex::open_mapped_for(&dense_dir, embedder.as_ref())?
+                }
             }
             #[cfg(not(feature = "mmap"))]
             {
@@ -231,6 +235,8 @@ impl HybridIndex {
                     "mapped open needs the `mmap` feature of xtriever-pipeline".into(),
                 ));
             }
+        } else if read_only {
+            FlatIndex::open_read_only_for(&dense_dir, embedder.as_ref())?
         } else {
             FlatIndex::open_for(&dense_dir, embedder.as_ref())?
         };

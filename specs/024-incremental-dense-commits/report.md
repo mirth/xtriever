@@ -152,3 +152,16 @@ The commit bench re-run after the directory syncs: **17.5 ms** per 10-row commit
 3. The crashed-tail tests make the row file read-only (`0o400`) so the open cannot cut the
    tail: the file is asserted to stay extended and the mapped (and buffered) index exposes
    exactly the committed rows.
+
+### Review round 7 (Copilot, one comment — applied)
+
+`FlatIndex` gains a read-only mode after all: `open_read_only[_for]` and, under `mmap`,
+`open_mapped_read_only[_for]` skip the truncation and the sweep (`settle`) — a logical
+read-only open holds no writer's role and may share the directory with a writer preparing a
+generation or a manifest — read exactly the committed rows, and refuse `commit` / `compact`
+with the lexical stage's "read-only index" `Error::Io`. The pipeline's `open_with(...,
+read_only: true)` now uses them (a four-line change in `crates/xtriever-pipeline/src/index.rs`,
+pulled into PR A because the reachable path is the pipeline's). The round-1 "no read-only
+mode" wording in the contract is superseded. Tests: a read-only open leaves a crashed tail, a
+manifest temporary and a stale generation in place and refuses mutations; a mapped read-only
+open exposes the committed rows only; the next writable open cleans up.

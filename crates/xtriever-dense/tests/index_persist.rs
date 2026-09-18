@@ -250,6 +250,76 @@ fn a_mapping_covers_only_the_committed_rows() {
 }
 
 #[test]
+fn a_read_only_open_touches_nothing_and_refuses_mutations() {
+    // A logical read-only open holds no writer's role: a crashed tail, a manifest temporary and
+    // a stale generation all survive it (a concurrent writer may be preparing them), and
+    // `commit` / `compact` are refused — the state is still the committed one.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    index.commit().unwrap();
+    drop(index);
+    let rows = tmp.path().join("vectors.0.bin");
+    let committed = std::fs::metadata(&rows).unwrap().len();
+    let mut with_tail = std::fs::read(&rows).unwrap();
+    with_tail.extend_from_slice(&[0xCD; 24]);
+    std::fs::write(&rows, &with_tail).unwrap();
+    std::fs::write(tmp.path().join("manifest.bin.tmp"), b"in flight").unwrap();
+    std::fs::write(
+        tmp.path().join("vectors.9.bin"),
+        b"a generation being prepared",
+    )
+    .unwrap();
+    let mut ro = FlatIndex::open_read_only(tmp.path()).unwrap();
+    assert!(ro.is_read_only());
+    assert_eq!(std::fs::metadata(&rows).unwrap().len(), committed + 24);
+    assert!(tmp.path().join("manifest.bin.tmp").exists());
+    assert!(tmp.path().join("vectors.9.bin").exists());
+    assert_eq!(ro.len(), 1);
+    assert_eq!(ro.vector(DocId(1)), Some(vec![1.0, 0.0]));
+    ro.add(DocId(2), &[0.0, 1.0]).unwrap(); // staging is allowed; committing is not
+    for err in [ro.commit().unwrap_err(), ro.compact().unwrap_err()] {
+        match err {
+            xtriever_core::Error::Io(e) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);
+                assert!(e.to_string().contains("read-only"), "{e}");
+            }
+            other => panic!("expected Io, got {other:?}"),
+        }
+    }
+    assert_eq!(ro.len(), 1);
+    drop(ro);
+    // A writable open then does the cleanup.
+    let rw = FlatIndex::open(tmp.path()).unwrap();
+    assert!(!rw.is_read_only());
+    assert_eq!(std::fs::metadata(&rows).unwrap().len(), committed);
+    assert!(!tmp.path().join("manifest.bin.tmp").exists());
+    assert!(!tmp.path().join("vectors.9.bin").exists());
+}
+
+#[cfg(feature = "mmap")]
+#[test]
+fn a_mapped_read_only_open_exposes_the_committed_rows_only() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    index.commit().unwrap();
+    drop(index);
+    let rows = tmp.path().join("vectors.0.bin");
+    let mut with_tail = std::fs::read(&rows).unwrap();
+    with_tail.extend_from_slice(&[0xCD; 24]);
+    std::fs::write(&rows, &with_tail).unwrap();
+    let ro = FlatIndex::open_mapped_read_only(tmp.path()).unwrap();
+    assert!(ro.is_read_only() && ro.is_mapped());
+    assert_eq!(
+        std::fs::metadata(&rows).unwrap().len(),
+        with_tail.len() as u64
+    );
+    assert_eq!(ro.len(), 1);
+    assert_eq!(ro.search(&[1.0, 0.0], None, 5).unwrap().len(), 1);
+}
+
+#[test]
 fn a_sparse_id_costs_one_entry_not_a_table() {
     // `add` accepts any id (review round 4 #1): the live-row table is keyed by id, so
     // committing `u32::MAX` and reopening cost one entry each, not a four-billion-slot table.

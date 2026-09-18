@@ -14,11 +14,17 @@ Unchanged signatures: `create(dir, dim, metric, fingerprint)`, `open(dir)`,
 
 New:
 
+- `open_read_only(dir)`, `open_read_only_for(dir, embedder)` and, under `mmap`,
+  `open_mapped_read_only(dir)`, `open_mapped_read_only_for(dir, embedder)`: a read-only open
+  touches nothing in the directory — no crashed tail is cut, no stale generation or manifest
+  temporary swept (a concurrent writer may be preparing them) — reads exactly the committed
+  rows, and refuses `commit` / `compact` with `Error::Io` (permission denied, "read-only
+  index"). `is_read_only()` tells. The pipeline uses these for `OpenOptions { read_only: true }`.
 - `compact(&mut self) -> Result<()>`: commits pending changes, then rewrites the row file
   with live rows only in ascending id order under a new generation; a no-op when there is
-  nothing dead and the rows are already ascending. `FlatIndex` has no read-only mode (a
-  mapped handle may append): the pipeline refuses `merge` on a read-only open before calling
-  it; on a directory that cannot be written the underlying `Error::Io` surfaces.
+  nothing dead and the rows are already ascending. On a read-only handle → `Error::Io`
+  "read-only index" (the pipeline refuses `merge` on a read-only open even earlier); on a
+  directory that cannot be written the underlying `Error::Io` surfaces.
 - `set_compaction_threshold(&mut self, share: Option<f32>) -> Result<()>`: `Error::Schema`
   unless `share` is `None` or in `0.0..=1.0`; when set, a `commit` whose resulting
   `dead / rows` would exceed it is performed *as a rewrite* (the live rows with the pending

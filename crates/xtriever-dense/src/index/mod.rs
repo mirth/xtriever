@@ -59,6 +59,8 @@ pub struct FlatIndex {
     pending: BTreeMap<DocId, Option<Vec<f32>>>,
     /// `commit` compacts when `dead / rows` exceeds this (`None` = only on `compact`).
     compaction_threshold: Option<f32>,
+    /// A read-only open: no truncation or sweep at open, every mutation refused.
+    read_only: bool,
 }
 
 impl FlatIndex {
@@ -88,7 +90,7 @@ impl FlatIndex {
         std::fs::File::create(dir.join(format::row_file(0)))?.sync_all()?;
         sync_dir(dir)?;
         write_manifest(dir, &header, &RoaringBitmap::new()).map_err(ManifestFailure::into_error)?;
-        Self::open_with(dir, LoadPath::Buffered)
+        Self::open_with(dir, LoadPath::Buffered, false)
     }
 
     /// Open, reading the committed rows into memory.
@@ -98,7 +100,31 @@ impl FlatIndex {
     /// `Error::Io` if a file cannot be read; `Error::Corrupt` if it is not a version-2 index
     /// (a version-1 `index.bin` is named as such).
     pub fn open(dir: &Path) -> Result<Self> {
-        Self::open_with(dir, LoadPath::Buffered)
+        Self::open_with(dir, LoadPath::Buffered, false)
+    }
+
+    /// Open read-only, reading the committed rows into memory: nothing in the directory is
+    /// touched — no crashed tail is cut, no stale generation swept — and `commit` / `compact`
+    /// are refused. For a directory another handle may be writing to, or one that is
+    /// read-only by construction (an app bundle).
+    ///
+    /// # Errors
+    ///
+    /// As [`open`](Self::open).
+    pub fn open_read_only(dir: &Path) -> Result<Self> {
+        Self::open_with(dir, LoadPath::Buffered, true)
+    }
+
+    /// [`open_read_only`](Self::open_read_only) plus the agreement checks of
+    /// [`open_for`](Self::open_for).
+    ///
+    /// # Errors
+    ///
+    /// As [`open_for`](Self::open_for).
+    pub fn open_read_only_for(dir: &Path, embedder: &dyn Embedder) -> Result<Self> {
+        let index = Self::open_read_only(dir)?;
+        index.check_agreement(embedder)?;
+        Ok(index)
     }
 
     /// Open, mapping the committed rows read-only (feature `mmap`, ADR-0007 as amended by
@@ -115,7 +141,31 @@ impl FlatIndex {
     /// As [`open`](Self::open).
     #[cfg(feature = "mmap")]
     pub fn open_mapped(dir: &Path) -> Result<Self> {
-        Self::open_with(dir, LoadPath::Mmap)
+        Self::open_with(dir, LoadPath::Mmap, false)
+    }
+
+    /// [`open_mapped`](Self::open_mapped) as a read-only open (see
+    /// [`open_read_only`](Self::open_read_only)).
+    ///
+    /// # Errors
+    ///
+    /// As [`open`](Self::open).
+    #[cfg(feature = "mmap")]
+    pub fn open_mapped_read_only(dir: &Path) -> Result<Self> {
+        Self::open_with(dir, LoadPath::Mmap, true)
+    }
+
+    /// [`open_mapped_read_only`](Self::open_mapped_read_only) plus the agreement checks of
+    /// [`open_for`](Self::open_for).
+    ///
+    /// # Errors
+    ///
+    /// As [`open_for`](Self::open_for).
+    #[cfg(feature = "mmap")]
+    pub fn open_mapped_read_only_for(dir: &Path, embedder: &dyn Embedder) -> Result<Self> {
+        let index = Self::open_mapped_read_only(dir)?;
+        index.check_agreement(embedder)?;
+        Ok(index)
     }
 
     /// [`open`](Self::open) plus fingerprint / dim / metric agreement with `embedder` (FR-015).
@@ -156,6 +206,13 @@ impl FlatIndex {
         Some(self.layout.row_at(self.rows.as_slice(), r).collect())
     }
 
+    /// Whether this handle was opened read-only (`open_read_only*`): mutations are refused and
+    /// the directory is never touched.
+    #[must_use]
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
     /// What the manifest says: rows, live, dead, generation.
     #[must_use]
     pub fn stats(&self) -> DenseStats {
@@ -190,9 +247,8 @@ impl FlatIndex {
     /// `rename` and the old row file is removed. A no-op when nothing is pending, nothing is
     /// dead and the rows already ascend.
     ///
-    /// `FlatIndex` has no read-only mode: the pipeline refuses `merge` on a read-only open
-    /// before reaching this; on a directory that cannot be written the underlying `Error::Io`
-    /// surfaces.
+    /// On a handle from `open_read_only*` this is `Error::Io` (permission denied, "read-only
+    /// index"); on a directory that cannot be written the underlying `Error::Io` surfaces.
     ///
     /// # Errors
     ///
@@ -202,6 +258,9 @@ impl FlatIndex {
     /// *after* the rename — only the directory sync — leaves the switched state, adopted by
     /// this handle, and names itself as such.
     pub fn compact(&mut self) -> Result<()> {
+        if self.read_only {
+            return Err(read_only());
+        }
         if self.pending.is_empty() && self.dead.is_empty() && self.ascending {
             return Ok(());
         }
@@ -329,7 +388,7 @@ impl FlatIndex {
         self.rows_by_id.get(&id.0).map(|&r| r as usize)
     }
 
-    fn open_with(dir: &Path, load_path: LoadPath) -> Result<Self> {
+    fn open_with(dir: &Path, load_path: LoadPath, read_only: bool) -> Result<Self> {
         let manifest = match std::fs::read(dir.join(MANIFEST)) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && dir.join(V1_FILE).is_file() => {
@@ -349,16 +408,20 @@ impl FlatIndex {
             ascending: true,
             pending: BTreeMap::new(),
             compaction_threshold: None,
+            read_only,
         };
-        index.settle()?;
+        if !read_only {
+            index.settle()?;
+        }
         index.reload()?;
         Ok(index)
     }
 
-    /// At open: a crashed append leaves a tail beyond the committed rows — cut it (best effort:
-    /// a read-only directory keeps it, and only the committed rows are ever read); stale
-    /// generations and a manifest temporary are swept the same way. Nothing here touches a
-    /// committed byte, and nothing is mapped yet.
+    /// At a writable open only: a crashed append leaves a tail beyond the committed rows — cut
+    /// it (best effort: a read-only file keeps it, and only the committed rows are ever read);
+    /// stale generations and a manifest temporary are swept the same way. Nothing here touches
+    /// a committed byte, and nothing is mapped yet. A read-only open skips this entirely: it
+    /// holds no writer's role and may share the directory with one.
     fn settle(&self) -> Result<()> {
         let layout = Rows::new(self.header.rows as usize, self.header.dim);
         let path = self.dir.join(format::row_file(self.header.generation));
@@ -505,6 +568,9 @@ impl VectorIndex for FlatIndex {
     }
 
     fn commit(&mut self) -> Result<()> {
+        if self.read_only {
+            return Err(read_only());
+        }
         if self.pending.is_empty() {
             return Ok(());
         }
@@ -671,6 +737,14 @@ impl VectorIndex for FlatIndex {
     fn len(&self) -> u64 {
         self.header.live
     }
+}
+
+/// The refusal of a mutation on a read-only handle: the same shape the lexical stage uses.
+fn read_only() -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "read-only index: opened with open_read_only, mutations are refused",
+    ))
 }
 
 /// The first row index of a commit that appends `adds` rows to `committed` — or the row-space

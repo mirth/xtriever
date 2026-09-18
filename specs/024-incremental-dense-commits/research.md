@@ -76,8 +76,10 @@ before the lexical merge.
 any other version, naming both); if `vectors.<g>.bin` is longer than `rows × row_bytes`,
 `set_len` it to that (a crashed append — before anything is mapped); if shorter →
 `Corrupt`; sweep stale `vectors.*.bin`; read or map the row file; build `rows_by_id`.
-**open** (read-only / mapped): the same without the truncation and the sweep — a longer
-file is tolerated (only `rows` are read); a shorter one is `Corrupt`.
+**open** (read-only — `open_read_only*`, what the pipeline's `OpenOptions { read_only }`
+uses; mapped or buffered): the same without the truncation and the sweep — the handle holds
+no writer's role and may share the directory with one — a longer file is tolerated (only
+`rows` are read); a shorter one is `Corrupt`; `commit` / `compact` refused.
 
 ## D4 — The mmap SAFETY argument, amended not weakened
 
