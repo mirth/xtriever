@@ -55,6 +55,18 @@ def test_the_four_subcommands_are_offered():
     assert code == 2 and "--out" in err  # required
 
 
+def test_build_chunker_option_defaults_to_the_contract():
+    args = cli.build_parser().parse_args(["build", "--out", "x"])
+    assert args.chunker == "contract"
+    assert cli.needs_for(args) == ["embedder", "reranker", "snapshot", "manifest"]
+    args = cli.build_parser().parse_args(["build", "--out", "x", "--chunker", "chonky"])
+    assert cli.needs_for(args) == ["embedder", "reranker", "snapshot", "manifest", "chonky"]
+    code, out, err = run_cli(["build", "--out", "x", "--chunker", "whole"])
+    assert code == 2 and "invalid choice" in err and "'contract'" in err and "'chonky'" in err
+    code, out, err = run_cli(["build", "--help"])
+    assert code == 0 and "--chunker {contract,chonky}" in out and "(default)" in out
+
+
 def test_build_refuses_a_missing_splitter_model_before_loading_torch(tmp_path):
     import sys
     import time
@@ -64,7 +76,7 @@ def test_build_refuses_a_missing_splitter_model_before_loading_torch(tmp_path):
     had_torch = "torch" in sys.modules
     t = time.perf_counter()
     code, out, err = run_cli(
-        ["build", "--out", str(tmp_path / "out"), "--limit", "1", "--chonky", "/nonexistent",
+        ["build", "--out", str(tmp_path / "out"), "--limit", "1", "--chunker", "chonky", "--chonky", "/nonexistent",
          "--snapshot", str(REPO / "reference/datasets/wiki/simple.jsonl"), "--manifest", str(REPO / "reference/datasets/wiki-manifest.json")],
         {"XTRIEVER_MODEL_DIR": str(EMBEDDER), "XTRIEVER_RERANK_MODEL_DIR": str(RERANKER)},
     )
