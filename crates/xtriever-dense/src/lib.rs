@@ -11,11 +11,15 @@
 //!   asserts the model's shape from its files, and embeds **one text at a time at a fixed 256
 //!   tokens** with attention-mask-weighted mean pooling and L2 normalisation. 384 dimensions,
 //!   [`Metric::Cosine`](xtriever_core::Metric::Cosine).
-//! - [`FlatIndex`] stores `(DocId, vector)` rows in one `index.bin` per generation
-//!   ([`FORMAT_VERSION`] 1) and searches them exactly: scores accumulate in `f64` and are rounded
-//!   once; results are ordered `(score DESC, DocId ASC)`, including at the `k`-th rank. `commit`
-//!   writes a whole new file and `rename`s it over the old one, so a handle (or a mapping) of
-//!   the previous generation is never disturbed.
+//! - [`FlatIndex`] stores `(DocId, norm, vector)` rows in an append-only `vectors.<g>.bin`
+//!   described by an atomically replaced `manifest.bin` ([`FORMAT_VERSION`] 2, Feature 024,
+//!   ADR-0013) and searches them exactly: scores accumulate in `f64` and are rounded once;
+//!   results are ordered `(score DESC, DocId ASC)`, including at the `k`-th rank. `commit`
+//!   appends the new rows and marks deleted or replaced rows dead in the manifest's tombstone
+//!   set — it never modifies a committed byte; `compact` (also run by the pipeline's `merge`,
+//!   and by `commit` when a dead-row share is configured) rewrites the live rows under a new
+//!   generation and switches the manifest by rename. A handle (or a mapping) of the previous
+//!   state is never disturbed by either.
 //! - **Fingerprint** ([`model::FINGERPRINT`]): `repo@revision;weights=sha256:…;dim=384;
 //!   pool=mean-mask;norm=l2;max_tokens=256;dtype=f32;prefix=none;engine=candle-0.9.2` — every
 //!   input whose change would change the vectors, including the inference engine version. An
@@ -39,7 +43,7 @@ mod index;
 pub mod model;
 
 pub use embedder::MiniLmEmbedder;
-pub use index::FlatIndex;
+pub use index::{DenseStats, FlatIndex};
 
 /// How the weight file (and the vector index file) are brought into memory (spec FR-008).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,14 +52,15 @@ pub enum LoadPath {
     Buffered,
     /// Read-only memory map (feature `mmap`, ADR-0007).
     ///
-    /// **Precondition the caller owns**: the mapped file (the weights, or an index's
-    /// `index.bin`) must not be modified or truncated by any other process while the mapping
-    /// lives. This crate never writes either file in place, but no code can defend a mapping
-    /// against an external writer — that is the inherent contract of memory mapping and the
-    /// reason this path is opt-in rather than the default.
+    /// **Precondition the caller owns**: the mapped file (the weights, or an index's row file
+    /// `vectors.<g>.bin`) must not be modified or truncated by any other process while the
+    /// mapping lives. This crate never modifies a mapped byte — a row file is only extended
+    /// beyond every mapping's end or replaced by rename (ADR-0013) — but no code can defend a
+    /// mapping against an external writer; that is the inherent contract of memory mapping and
+    /// the reason this path is opt-in rather than the default.
     #[cfg(feature = "mmap")]
     Mmap,
 }
 
-/// On-disk vector index format version this build reads and writes (data-model "On disk").
-pub const FORMAT_VERSION: u32 = 1;
+/// On-disk vector index format version this build reads and writes (Feature 024, ADR-0013).
+pub const FORMAT_VERSION: u32 = 2;

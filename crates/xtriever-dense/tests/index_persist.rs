@@ -59,7 +59,10 @@ fn create_writes_an_empty_generation_that_opens() {
     let dir = tmp.path().join("idx");
     let index = FlatIndex::create(&dir, 4, Metric::Dot, "fp").unwrap();
     assert!(dir.join("manifest.bin").is_file());
-    assert_eq!(std::fs::metadata(dir.join("vectors.0.bin")).unwrap().len(), 0);
+    assert_eq!(
+        std::fs::metadata(dir.join("vectors.0.bin")).unwrap().len(),
+        0
+    );
     assert!(!dir.join("index.bin").exists());
     drop(index);
     let opened = FlatIndex::open(&dir).unwrap();

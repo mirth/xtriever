@@ -19,7 +19,9 @@ fn vec_for(i: u32) -> Vec<f32> {
 }
 
 fn queries() -> Vec<Vec<f32>> {
-    (0..20).map(|i| vec![1.0, (i as f32).sin(), (i as f32 * 0.5).cos(), 0.25]).collect()
+    (0..20)
+        .map(|i| vec![1.0, (i as f32).sin(), (i as f32 * 0.5).cos(), 0.25])
+        .collect()
 }
 
 fn results(index: &FlatIndex) -> Vec<Vec<(u32, u32)>> {
@@ -114,7 +116,10 @@ fn compact_is_a_no_op_when_nothing_is_dead_and_ids_ascend() {
     let manifest = std::fs::read(tmp.path().join("manifest.bin")).unwrap();
     index.compact().unwrap();
     assert_eq!(index.stats().generation, 0);
-    assert_eq!(std::fs::read(tmp.path().join("manifest.bin")).unwrap(), manifest);
+    assert_eq!(
+        std::fs::read(tmp.path().join("manifest.bin")).unwrap(),
+        manifest
+    );
     assert!(tmp.path().join("vectors.0.bin").is_file());
 }
 

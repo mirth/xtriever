@@ -1,24 +1,59 @@
-//! `index.bin`, format version 1 (data-model "On disk", research D8):
+//! Dense format version 2 (Feature 024, ADR-0013; data-model "Dense directory"):
 //!
 //! ```text
-//! magic      8 bytes  b"XTDENSE1"
-//! hdr_len    8 bytes  u64 LE
-//! header     JSON     {"format_version":1,"dim":..,"metric":"..","fingerprint":"..","count":n}
-//! ids        n × u32 LE, strictly ascending
-//! norms      n × f32 LE   (Euclidean norm of the row; used by Cosine, written for every metric)
-//! vectors    n × dim × f32 LE, row i belongs to ids[i]
+//! manifest.bin
+//!   magic          8 bytes  b"XTDENSE2"
+//!   hdr_len        8 bytes  u64 LE
+//!   header         JSON     {"format_version":2,"dim":..,"metric":"..","fingerprint":"..",
+//!                            "generation":g,"rows":n,"live":m,"tombstones_len":t}
+//!   tombstones     t bytes  a `roaring` bitmap of dead row indices (portable serialisation)
+//!
+//! vectors.<g>.bin          n rows in commit order, each
+//!   id             4 bytes  u32 LE
+//!   norm           4 bytes  f32 LE   (Euclidean norm of the row; used by Cosine, written always)
+//!   vector         dim × 4  f32 LE
 //! ```
 //!
-//! Decoding is `from_le_bytes` over `chunks_exact(4)` — no transmute, no alignment requirement —
-//! so the same code reads a heap buffer and a memory map.
+//! The manifest is the truth: it is replaced atomically (written to `manifest.bin.tmp`, synced,
+//! renamed) and its `rows` is the committed length of the row file — bytes beyond it are not
+//! part of the index. Rows are only ever appended; a compaction writes a new generation and
+//! the manifest switches to it. Decoding is `from_le_bytes` over `chunks_exact(4)` — no
+//! transmute, no alignment requirement — so the same code reads a heap buffer and a memory map.
+//!
+//! Version 1 (`index.bin`, columnar: ids, norms, vectors) is not read; it is refused at open
+//! naming both versions.
 
+use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use xtriever_core::{Metric, Result};
 
 use crate::FORMAT_VERSION;
 use crate::error::corrupt;
 
-const MAGIC: &[u8; 8] = b"XTDENSE1";
+const MAGIC: &[u8; 8] = b"XTDENSE2";
+const V1_MAGIC: &[u8; 8] = b"XTDENSE1";
+
+pub(crate) const MANIFEST: &str = "manifest.bin";
+pub(crate) const MANIFEST_TMP: &str = "manifest.bin.tmp";
+pub(crate) const V1_FILE: &str = "index.bin";
+
+/// The row file of generation `g`.
+pub(crate) fn row_file(generation: u64) -> String {
+    format!("vectors.{generation}.bin")
+}
+
+/// The generation a row-file name carries, if it is one (`vectors.<g>.bin`).
+pub(crate) fn row_file_generation(name: &str) -> Option<u64> {
+    name.strip_prefix("vectors.")?
+        .strip_suffix(".bin")?
+        .parse()
+        .ok()
+}
+
+/// Bytes per row: id, norm, vector.
+pub(crate) fn row_bytes(dim: usize) -> usize {
+    8 + dim * 4
+}
 
 /// The JSON header. Field order is the on-disk key order.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -27,7 +62,10 @@ pub(crate) struct Header {
     pub dim: usize,
     pub metric: MetricName,
     pub fingerprint: String,
-    pub count: u64,
+    pub generation: u64,
+    pub rows: u64,
+    pub live: u64,
+    pub tombstones_len: u64,
 }
 
 /// `Metric` as it is spelled in the header.
@@ -59,29 +97,38 @@ impl From<MetricName> for Metric {
     }
 }
 
-/// Byte offsets of the three sections inside a decoded file.
+/// The committed rows of a row file: how many, and how to read one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Layout {
+pub(crate) struct Rows {
     pub count: usize,
     pub dim: usize,
-    pub ids_at: usize,
-    pub norms_at: usize,
-    pub vectors_at: usize,
+    pub row_bytes: usize,
 }
 
-impl Layout {
-    pub fn id_at(&self, bytes: &[u8], i: usize) -> u32 {
-        let at = self.ids_at + i * 4;
-        u32::from_le_bytes(four(bytes, at))
+impl Rows {
+    pub fn new(count: usize, dim: usize) -> Self {
+        Self {
+            count,
+            dim,
+            row_bytes: row_bytes(dim),
+        }
     }
 
-    pub fn norm_at(&self, bytes: &[u8], i: usize) -> f32 {
-        let at = self.norms_at + i * 4;
-        f32::from_le_bytes(four(bytes, at))
+    /// The committed length in bytes.
+    pub fn len_bytes(&self) -> usize {
+        self.count * self.row_bytes
     }
 
-    pub fn row_at<'a>(&self, bytes: &'a [u8], i: usize) -> impl Iterator<Item = f32> + 'a {
-        let at = self.vectors_at + i * self.dim * 4;
+    pub fn id_at(&self, bytes: &[u8], r: usize) -> u32 {
+        u32::from_le_bytes(four(bytes, r * self.row_bytes))
+    }
+
+    pub fn norm_at(&self, bytes: &[u8], r: usize) -> f32 {
+        f32::from_le_bytes(four(bytes, r * self.row_bytes + 4))
+    }
+
+    pub fn row_at<'a>(&self, bytes: &'a [u8], r: usize) -> impl Iterator<Item = f32> + 'a {
+        let at = r * self.row_bytes + 8;
         bytes[at..at + self.dim * 4]
             .chunks_exact(4)
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
@@ -92,116 +139,144 @@ fn four(bytes: &[u8], at: usize) -> [u8; 4] {
     [bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]
 }
 
-/// Encode a generation. `ids` must be strictly ascending, `rows.len() == ids.len() * dim`.
-pub(crate) fn encode(header: &Header, ids: &[u32], norms: &[f32], rows: &[f32]) -> Result<Vec<u8>> {
+/// Append one row to `out`.
+pub(crate) fn encode_row(out: &mut Vec<u8>, id: u32, norm: f32, vector: &[f32]) {
+    out.extend_from_slice(&id.to_le_bytes());
+    out.extend_from_slice(&norm.to_le_bytes());
+    for x in vector {
+        out.extend_from_slice(&x.to_le_bytes());
+    }
+}
+
+/// Encode a manifest: the header (with `tombstones_len` set here) and the tombstone set.
+pub(crate) fn encode_manifest(header: &Header, dead: &RoaringBitmap) -> Result<Vec<u8>> {
+    let mut tombstones = Vec::with_capacity(dead.serialized_size());
+    dead.serialize_into(&mut tombstones)
+        .map_err(|e| corrupt(format!("cannot encode tombstones: {e}")))?;
+    let header = Header {
+        tombstones_len: tombstones.len() as u64,
+        ..header.clone()
+    };
     let json =
-        serde_json::to_vec(header).map_err(|e| corrupt(format!("cannot encode header: {e}")))?;
-    let mut out = Vec::with_capacity(16 + json.len() + ids.len() * 8 + rows.len() * 4);
+        serde_json::to_vec(&header).map_err(|e| corrupt(format!("cannot encode header: {e}")))?;
+    let mut out = Vec::with_capacity(16 + json.len() + tombstones.len());
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&(json.len() as u64).to_le_bytes());
     out.extend_from_slice(&json);
-    for id in ids {
-        out.extend_from_slice(&id.to_le_bytes());
-    }
-    for n in norms {
-        out.extend_from_slice(&n.to_le_bytes());
-    }
-    for x in rows {
-        out.extend_from_slice(&x.to_le_bytes());
-    }
+    out.extend_from_slice(&tombstones);
     Ok(out)
 }
 
-/// Validate a file's bytes and return its header and section layout (`Corrupt` on any problem).
-pub(crate) fn decode(bytes: &[u8]) -> Result<(Header, Layout)> {
+/// Validate a manifest's bytes and return its header and tombstone set (`Corrupt` on any
+/// problem, naming both versions when the version is not this build's).
+pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, RoaringBitmap)> {
     let Some(magic) = bytes.get(..8) else {
         return Err(corrupt(format!(
-            "index.bin is {} bytes, shorter than the magic",
+            "{MANIFEST} is {} bytes, shorter than the magic",
             bytes.len()
         )));
     };
+    if magic == V1_MAGIC {
+        return Err(version_1_error());
+    }
     if magic != MAGIC {
         return Err(corrupt(format!(
-            "index.bin magic is {magic:?}, expected {MAGIC:?}"
+            "{MANIFEST} magic is {magic:?}, expected {MAGIC:?}"
         )));
     }
     let Some(len_bytes) = bytes.get(8..16) else {
-        return Err(corrupt("index.bin has no header length"));
+        return Err(corrupt(format!("{MANIFEST} has no header length")));
     };
-    let hdr_len = usize::try_from(u64::from_le_bytes(
-        len_bytes
-            .try_into()
-            .map_err(|_| corrupt("index.bin header length is unreadable"))?,
-    ))
-    .map_err(|_| corrupt("index.bin header length does not fit this platform"))?;
+    let hdr_len =
+        usize::try_from(u64::from_le_bytes(len_bytes.try_into().map_err(|_| {
+            corrupt(format!("{MANIFEST} header length is unreadable"))
+        })?))
+        .map_err(|_| {
+            corrupt(format!(
+                "{MANIFEST} header length does not fit this platform"
+            ))
+        })?;
     let Some(json) = 16usize
         .checked_add(hdr_len)
         .and_then(|end| bytes.get(16..end))
     else {
         return Err(corrupt(format!(
-            "index.bin header length {hdr_len} exceeds the file ({} bytes)",
+            "{MANIFEST} header length {hdr_len} exceeds the file ({} bytes)",
             bytes.len()
         )));
     };
     let header: Header =
-        serde_json::from_slice(json).map_err(|e| corrupt(format!("index.bin header: {e}")))?;
+        serde_json::from_slice(json).map_err(|e| corrupt(format!("{MANIFEST} header: {e}")))?;
     if header.format_version != FORMAT_VERSION {
         return Err(corrupt(format!(
-            "index.bin is format version {}, this build reads {FORMAT_VERSION}",
+            "dense index is format version {}, this build reads {FORMAT_VERSION}",
             header.format_version
         )));
     }
-    let count = usize::try_from(header.count).map_err(|_| {
-        corrupt(format!(
-            "index.bin count {} does not fit this platform",
-            header.count
-        ))
-    })?;
     if header.dim == 0 {
-        return Err(corrupt("index.bin dim is 0"));
+        return Err(corrupt(format!("{MANIFEST} dim is 0")));
     }
-    // Every offset comes from the untrusted header: checked arithmetic, so an absurd `count` or
-    // `dim` is `Corrupt`, never an overflow.
-    let too_large = || {
-        corrupt(format!(
-            "index.bin count {count} × dim {} does not fit this platform",
-            header.dim
-        ))
-    };
-    let column = count.checked_mul(4).ok_or_else(too_large)?;
-    let ids_at = 16 + hdr_len; // bounded by `bytes.len()` above
-    let norms_at = ids_at.checked_add(column).ok_or_else(too_large)?;
-    let vectors_at = norms_at.checked_add(column).ok_or_else(too_large)?;
-    let rows = count
-        .checked_mul(header.dim)
-        .and_then(|n| n.checked_mul(4))
-        .ok_or_else(too_large)?;
-    let expected_len = vectors_at.checked_add(rows).ok_or_else(too_large)?;
-    if bytes.len() != expected_len {
+    if header.rows > u64::from(u32::MAX) {
         return Err(corrupt(format!(
-            "index.bin is {} bytes, expected {expected_len} for count {count} × dim {}",
-            bytes.len(),
-            header.dim
+            "{MANIFEST} rows {} exceeds the row-index range",
+            header.rows
         )));
     }
-    let layout = Layout {
-        count,
-        dim: header.dim,
-        ids_at,
-        norms_at,
-        vectors_at,
+    let tombstones_at = 16 + hdr_len;
+    let tombstones_len = usize::try_from(header.tombstones_len).map_err(|_| {
+        corrupt(format!(
+            "{MANIFEST} tombstones length does not fit this platform"
+        ))
+    })?;
+    let Some(tombstones) = tombstones_at
+        .checked_add(tombstones_len)
+        .and_then(|end| bytes.get(tombstones_at..end))
+    else {
+        return Err(corrupt(format!(
+            "{MANIFEST} tombstones length {tombstones_len} exceeds the file ({} bytes)",
+            bytes.len()
+        )));
     };
-    let mut prev: Option<u32> = None;
-    for i in 0..count {
-        let id = layout.id_at(bytes, i);
-        if prev.is_some_and(|p| p >= id) {
-            return Err(corrupt(format!(
-                "index.bin ids are not strictly ascending at row {i}"
-            )));
-        }
-        prev = Some(id);
+    if bytes.len() != tombstones_at + tombstones_len {
+        return Err(corrupt(format!(
+            "{MANIFEST} has {} trailing bytes",
+            bytes.len() - tombstones_at - tombstones_len
+        )));
     }
-    Ok((header, layout))
+    let dead = RoaringBitmap::deserialize_from(tombstones)
+        .map_err(|e| corrupt(format!("{MANIFEST} tombstones: {e}")))?;
+    if dead.len() > header.rows {
+        return Err(corrupt(format!(
+            "{MANIFEST} has {} tombstones for {} rows",
+            dead.len(),
+            header.rows
+        )));
+    }
+    if let Some(max) = dead.max()
+        && u64::from(max) >= header.rows
+    {
+        return Err(corrupt(format!(
+            "{MANIFEST} tombstone {max} is beyond the {} committed rows",
+            header.rows
+        )));
+    }
+    if header.live != header.rows - dead.len() {
+        return Err(corrupt(format!(
+            "{MANIFEST} live {} is not rows {} minus {} tombstones",
+            header.live,
+            header.rows,
+            dead.len()
+        )));
+    }
+    Ok((header, dead))
+}
+
+/// The refusal of a version-1 directory (`index.bin`, Feature 004–023).
+pub(crate) fn version_1_error() -> xtriever_core::Error {
+    corrupt(format!(
+        "dense index is format version 1 ({V1_FILE}); this build reads {FORMAT_VERSION} \
+         ({MANIFEST}) — rebuild the index (Feature 024, ADR-0013)"
+    ))
 }
 
 #[cfg(test)]
@@ -209,66 +284,91 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<(Header, Layout)> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn round_trip() {
-        let header = Header {
+    fn header(rows: u64, live: u64) -> Header {
+        Header {
             format_version: FORMAT_VERSION,
             dim: 2,
             metric: MetricName::Dot,
             fingerprint: "fp".into(),
-            count: 2,
-        };
-        let bytes = encode(&header, &[3, 9], &[1.0, 2.0], &[1.0, 0.0, 0.0, 2.0]).unwrap();
-        let (h, layout) = decode(&bytes).unwrap();
-        assert_eq!(h, header);
-        assert_eq!(layout.id_at(&bytes, 1), 9);
-        assert_eq!(layout.norm_at(&bytes, 1), 2.0);
-        assert_eq!(layout.row_at(&bytes, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
-        assert_eq!(
-            serde_json::to_string(&header).unwrap(),
-            "{\"format_version\":1,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"count\":2}"
-        );
+            generation: 3,
+            rows,
+            live,
+            tombstones_len: 0,
+        }
     }
 
     #[test]
-    fn absurd_count_or_dim_is_corrupt_not_a_panic() {
-        for (count, dim) in [
-            (u64::MAX, 1usize),
-            (1 << 40, usize::MAX),
-            (usize::MAX as u64, 4),
-        ] {
-            let header = Header {
-                format_version: FORMAT_VERSION,
-                dim,
-                metric: MetricName::Dot,
-                fingerprint: String::new(),
-                count,
-            };
-            let bytes = encode(&header, &[], &[], &[]).unwrap();
-            assert!(
-                matches!(decode(&bytes), Err(xtriever_core::Error::Corrupt(_))),
-                "{count} × {dim}"
-            );
-        }
-        // A header length past the end of the file, including one that would overflow `16 + len`.
-        let mut bytes = b"XTDENSE1".to_vec();
-        bytes.extend_from_slice(&u64::MAX.to_le_bytes());
+    fn manifest_round_trip() {
+        let mut dead = RoaringBitmap::new();
+        dead.insert(1);
+        let bytes = encode_manifest(&header(3, 2), &dead).unwrap();
+        let (h, d) = decode_manifest(&bytes).unwrap();
+        assert_eq!(h.rows, 3);
+        assert_eq!(h.live, 2);
+        assert_eq!(h.generation, 3);
+        assert_eq!(h.tombstones_len as usize, dead.serialized_size());
+        assert_eq!(d, dead);
+        let json = serde_json::to_string(&h).unwrap();
+        assert!(json.starts_with("{\"format_version\":2,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"generation\":3,\"rows\":3,\"live\":2,\"tombstones_len\":"), "{json}");
+    }
+
+    #[test]
+    fn rows_read_back_what_encode_row_wrote() {
+        let mut out = Vec::new();
+        encode_row(&mut out, 3, 1.0, &[1.0, 0.0]);
+        encode_row(&mut out, 9, 2.0, &[0.0, 2.0]);
+        let rows = Rows::new(2, 2);
+        assert_eq!(rows.len_bytes(), out.len());
+        assert_eq!(rows.id_at(&out, 1), 9);
+        assert_eq!(rows.norm_at(&out, 1), 2.0);
+        assert_eq!(rows.row_at(&out, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        assert_eq!(row_file(7), "vectors.7.bin");
+        assert_eq!(row_file_generation("vectors.7.bin"), Some(7));
+        assert_eq!(row_file_generation("vectors.x.bin"), None);
+        assert_eq!(row_file_generation("manifest.bin"), None);
+    }
+
+    #[test]
+    fn inconsistent_manifests_are_corrupt_not_a_panic() {
+        let dead = RoaringBitmap::new();
+        // live ≠ rows − dead
+        let bytes = encode_manifest(&header(3, 1), &dead).unwrap();
         assert!(matches!(
-            decode(&bytes),
+            decode_manifest(&bytes),
             Err(xtriever_core::Error::Corrupt(_))
         ));
-    }
-
-    #[test]
-    fn unordered_ids_are_corrupt() {
-        let header = Header {
-            format_version: FORMAT_VERSION,
-            dim: 1,
-            metric: MetricName::Dot,
-            fingerprint: String::new(),
-            count: 2,
+        // a tombstone beyond the rows
+        let mut far = RoaringBitmap::new();
+        far.insert(10);
+        let bytes = encode_manifest(&header(3, 2), &far).unwrap();
+        assert!(matches!(
+            decode_manifest(&bytes),
+            Err(xtriever_core::Error::Corrupt(_))
+        ));
+        // a header length past the end of the file, including one that would overflow `16 + len`.
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend_from_slice(&u64::MAX.to_le_bytes());
+        assert!(matches!(
+            decode_manifest(&bytes),
+            Err(xtriever_core::Error::Corrupt(_))
+        ));
+        // rows beyond u32
+        let bytes = encode_manifest(
+            &header(u64::from(u32::MAX) + 1, u64::from(u32::MAX) + 1),
+            &dead,
+        )
+        .unwrap();
+        assert!(matches!(
+            decode_manifest(&bytes),
+            Err(xtriever_core::Error::Corrupt(_))
+        ));
+        // version 1 magic
+        let mut v1 = V1_MAGIC.to_vec();
+        v1.extend_from_slice(&0u64.to_le_bytes());
+        let msg = match decode_manifest(&v1).unwrap_err() {
+            xtriever_core::Error::Corrupt(m) => m,
+            other => panic!("{other:?}"),
         };
-        let bytes = encode(&header, &[5, 5], &[1.0, 1.0], &[1.0, 1.0]).unwrap();
-        assert!(decode(&bytes).is_err());
+        assert!(msg.contains("version 1") && msg.contains('2'), "{msg}");
     }
 }

@@ -23,13 +23,24 @@ const KS: [usize; 3] = [1, 5, 13];
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "op", rename_all = "lowercase")]
 enum Step {
-    Add { id: u32, vector: Vec<f32> },
-    Replace { id: u32, vector: Vec<f32> },
-    Delete { ids: Vec<u32> },
+    Add {
+        id: u32,
+        vector: Vec<f32>,
+    },
+    Replace {
+        id: u32,
+        vector: Vec<f32>,
+    },
+    Delete {
+        ids: Vec<u32>,
+    },
     Commit,
     Reopen,
     /// After a commit: `len()` and the queries' hits as `(id, score bits)`.
-    Expect { len: u64, queries: Vec<Query> },
+    Expect {
+        len: u64,
+        queries: Vec<Query>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -183,10 +194,7 @@ fn drive(seq: &Sequence, dim: usize, fingerprint: &str, mint: bool, rng: &mut Lc
                             hits: Vec::new(),
                         });
                     }
-                    Step::Expect {
-                        len: 0,
-                        queries,
-                    }
+                    Step::Expect { len: 0, queries }
                 } else {
                     steps.next().cloned().expect("an Expect after every Commit")
                 };
@@ -203,13 +211,21 @@ fn drive(seq: &Sequence, dim: usize, fingerprint: &str, mint: bool, rng: &mut Lc
                         .map(|h| (h.id.0, h.score.to_bits()))
                         .collect();
                     if !mint {
-                        assert_eq!(hits, q.hits, "{} seed {}: hits differ", seq.metric, seq.seed);
+                        assert_eq!(
+                            hits, q.hits,
+                            "{} seed {}: hits differ",
+                            seq.metric, seq.seed
+                        );
                     }
                     filled.push(Query { hits, ..q });
                 }
                 let got_len = index.len();
                 if !mint {
-                    assert_eq!(got_len, len, "{} seed {}: len differs", seq.metric, seq.seed);
+                    assert_eq!(
+                        got_len, len,
+                        "{} seed {}: len differs",
+                        seq.metric, seq.seed
+                    );
                 }
                 out.push(Step::Expect {
                     len: got_len,
@@ -229,7 +245,10 @@ fn drive(seq: &Sequence, dim: usize, fingerprint: &str, mint: bool, rng: &mut Lc
 fn mint() {
     let fingerprint = "oracle-fingerprint";
     let mut sequences = Vec::new();
-    for (i, metric) in [Metric::Cosine, Metric::Dot, Metric::Euclidean].iter().enumerate() {
+    for (i, metric) in [Metric::Cosine, Metric::Dot, Metric::Euclidean]
+        .iter()
+        .enumerate()
+    {
         let seed = 0x5EED_0024 + i as u64;
         let mut rng = Lcg(seed);
         let name = match metric {
@@ -261,7 +280,11 @@ fn replay() {
     assert_eq!(oracle.sequences.len(), 3);
     for seq in &oracle.sequences {
         let mut rng = Lcg(seq.seed); // unused on replay; the file carries everything
-        let commits = seq.steps.iter().filter(|s| matches!(s, Step::Commit)).count();
+        let commits = seq
+            .steps
+            .iter()
+            .filter(|s| matches!(s, Step::Commit))
+            .count();
         assert!(commits >= 20, "{}: only {commits} commits", seq.metric);
         let out = drive(seq, oracle.dim, &oracle.fingerprint, false, &mut rng);
         assert_eq!(out, seq.steps, "{}: the replayed steps differ", seq.metric);

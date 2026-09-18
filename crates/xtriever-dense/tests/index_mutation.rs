@@ -98,13 +98,13 @@ fn add_within_a_batch_replaces_and_commit_without_pending_is_a_no_op() {
     index.commit().unwrap();
     assert_eq!(index.len(), 1);
     assert_eq!(index.search(&[0.0, 1.0], None, 1).unwrap()[0].score, 1.0);
-    let before = std::fs::metadata(tmp.path().join("index.bin"))
+    let before = std::fs::metadata(tmp.path().join("manifest.bin"))
         .unwrap()
         .modified()
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(20));
     index.commit().unwrap(); // nothing pending
-    let after = std::fs::metadata(tmp.path().join("index.bin"))
+    let after = std::fs::metadata(tmp.path().join("manifest.bin"))
         .unwrap()
         .modified()
         .unwrap();

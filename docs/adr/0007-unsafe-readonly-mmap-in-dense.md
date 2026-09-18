@@ -5,6 +5,10 @@
 - **Deciders**: mirth (repository owner), 2026-09-12
 - **Spec**: [004-dense-stage](../../specs/004-dense-stage/spec.md) FR-008
 - **Blocks**: Principle VII gate in [plan.md](../../specs/004-dense-stage/plan.md)
+- **Amended by**: [ADR-0013](./0013-dense-format-v2-append-tombstone-compact.md) — condition 2's
+  "never modifies `index.bin` in place, only replaces it" became, for dense format version 2,
+  "never modifies a mapped byte: the row file is only extended beyond every mapping or replaced
+  by rename" (Feature 024)
 - **Supersedes in part**: [ADR-0002](./0002-unsafe-mmap-safetensors-measurement.md) condition 6
   ("if the production `xtriever-dense` later wants mmap'd weights, that needs its own ADR") — this
   is that ADR.

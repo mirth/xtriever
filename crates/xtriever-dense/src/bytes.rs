@@ -51,12 +51,17 @@ pub(crate) fn read(path: &Path, load_path: LoadPath) -> Result<Bytes> {
 #[cfg(feature = "mmap")]
 #[allow(unsafe_code)]
 pub(crate) fn map_readonly(file: &std::fs::File) -> std::io::Result<memmap2::Mmap> {
-    // SAFETY (ADR-0007 condition 2). Requirement: the mapped file is not modified or truncated
-    // for the lifetime of the map. What this crate guarantees: it never writes either file in
-    // place — the weights are opened read-only after `model::verify_files`, and `index.bin` is
-    // only ever *replaced* by `FlatIndex::commit` (`index.bin.tmp` written in full, then
-    // `rename`), so an inode that has been mapped keeps its bytes until the last reference is
-    // dropped. What this crate cannot guarantee and documents as the caller's precondition on
+    // SAFETY (ADR-0007 condition 2, as amended by ADR-0013). Requirement: the mapped bytes are
+    // not modified or truncated for the lifetime of the map. What this crate guarantees: it
+    // never modifies a mapped byte — the weights are opened read-only after
+    // `model::verify_files`; the row file `vectors.<g>.bin` is only ever *extended* by
+    // `FlatIndex::commit` (an append past every live mapping's end — a mapping covers the file's
+    // length at map time and nothing before that changes) or *replaced* by `FlatIndex::compact`
+    // (a new generation written in full, the manifest switched by `rename`), so an inode that
+    // has been mapped keeps its mapped bytes until the last reference is dropped. The one
+    // truncation this crate performs — cutting a crashed append's tail at open — happens before
+    // the opening handle maps anything and only on bytes beyond every manifest's committed
+    // length. What this crate cannot guarantee and documents as the caller's precondition on
     // `LoadPath::Mmap`, `FlatIndex::open_mapped` and `FlatIndex::open_mapped_for`: that no
     // *other* process modifies or truncates the file meanwhile. The handle is read-only, so
     // nothing through it can write.

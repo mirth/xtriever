@@ -111,7 +111,11 @@ fn every_truncation_of_a_commit_reopens_to_the_previous_state() {
         old_manifest.push(("vectors.0.bin".to_owned(), rows1[..len as usize].to_vec()));
         restore(dir, &old_manifest);
         let reopened = FlatIndex::open(dir).unwrap();
-        assert_eq!(observe(&reopened), o0, "old manifest, row file at {len} bytes");
+        assert_eq!(
+            observe(&reopened),
+            o0,
+            "old manifest, row file at {len} bytes"
+        );
         drop(reopened);
         assert_eq!(
             std::fs::metadata(dir.join("vectors.0.bin")).unwrap().len(),
@@ -158,7 +162,11 @@ fn every_truncation_of_a_compaction_reopens_to_the_previous_state() {
         files.push(("vectors.1.bin".to_owned(), rows2[..len].to_vec()));
         restore(dir, &files);
         let reopened = FlatIndex::open(dir).unwrap();
-        assert_eq!(observe(&reopened), o1, "old manifest, new row file at {len} bytes");
+        assert_eq!(
+            observe(&reopened),
+            o1,
+            "old manifest, new row file at {len} bytes"
+        );
         drop(reopened);
         assert!(
             !dir.join("vectors.1.bin").exists(),
@@ -167,7 +175,10 @@ fn every_truncation_of_a_compaction_reopens_to_the_previous_state() {
     }
     // The new manifest with both row files: the compaction completed; the old file is swept.
     let mut files = s2.clone();
-    files.push(("vectors.0.bin".to_owned(), get(&s1, "vectors.0.bin").to_vec()));
+    files.push((
+        "vectors.0.bin".to_owned(),
+        get(&s1, "vectors.0.bin").to_vec(),
+    ));
     restore(dir, &files);
     let reopened = FlatIndex::open(dir).unwrap();
     assert_eq!(observe(&reopened), o2);

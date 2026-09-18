@@ -141,7 +141,6 @@ proptest! {
         let tmp = tempfile::tempdir().unwrap();
         let mut index = FlatIndex::create(tmp.path(), 6, metric, "prop").unwrap();
         let mut model: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
-        let mut committed: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
         for o in &ops {
             match o {
                 Op::Add(id, v) => { index.add(DocId(*id), v).unwrap(); model.insert(*id, v.clone()); }
@@ -150,11 +149,11 @@ proptest! {
                     index.delete(&d).unwrap();
                     for i in ids { model.remove(i); }
                 }
-                Op::Commit => { index.commit().unwrap(); committed = model.clone(); }
+                Op::Commit => { index.commit().unwrap(); prop_assert_eq!(index.len(), model.len() as u64); }
             }
         }
         index.commit().unwrap();
-        committed = model.clone();
+        let committed = model;
         prop_assert_eq!(index.len(), committed.len() as u64);
         let before: Vec<Vec<(u32, u32)>> = queries.iter().map(|q| bits(&index.search(q, None, 64).unwrap())).collect();
         // Dead rows never surface, live rows always do, vectors are the model's.
@@ -163,7 +162,8 @@ proptest! {
             prop_assert_eq!(&ids, &committed.keys().copied().collect::<Vec<_>>());
         }
         for (id, v) in &committed {
-            prop_assert_eq!(index.vector(DocId(*id)).as_deref(), Some(v.as_slice()));
+            let got = index.vector(DocId(*id));
+            prop_assert_eq!(got.as_deref(), Some(v.as_slice()));
         }
         index.compact().unwrap();
         prop_assert_eq!(index.stats().dead, 0);

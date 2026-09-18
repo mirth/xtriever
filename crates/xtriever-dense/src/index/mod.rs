@@ -1,5 +1,6 @@
-//! `FlatIndex`: a flat, exact `VectorIndex` persisted as one `index.bin` per generation
-//! (spec FR-009–FR-017; research D7–D9).
+//! `FlatIndex`: a flat, exact `VectorIndex` over an append-only row file and an atomically
+//! replaced manifest (Feature 024, ADR-0013; research D3–D7). `commit` appends, `compact`
+//! rewrites under a new generation; a committed byte is never modified in place.
 
 mod format;
 mod search;
@@ -8,37 +9,57 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use roaring::RoaringBitmap;
 use xtriever_core::{DocId, DocSet, Embedder, Error, Hit, Metric, Result, VectorIndex};
 
 use crate::FORMAT_VERSION;
 use crate::LoadPath;
 use crate::bytes::{self, Bytes};
 use crate::error::{corrupt, dim_mismatch, schema_err};
-use format::{Header, Layout};
+use format::{Header, MANIFEST, MANIFEST_TMP, Rows, V1_FILE};
 
-const FILE: &str = "index.bin";
-const TMP: &str = "index.bin.tmp";
+/// No live row for this id (`rows_by_id`).
+const NONE: u32 = u32::MAX;
 
-/// The committed generation: the file's bytes (owned or mapped) plus its decoded layout.
-#[derive(Debug)]
-struct Generation {
-    bytes: Bytes,
-    layout: Layout,
+/// What the manifest says about the committed state — for tests, records and `about`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DenseStats {
+    /// Committed rows in the row file, dead ones included.
+    pub rows: u64,
+    /// Rows that search visits (`len()`).
+    pub live: u64,
+    /// Tombstoned rows: deleted, or superseded by a replacement.
+    pub dead: u64,
+    /// The row file's generation (`vectors.<generation>.bin`); `compact` advances it.
+    pub generation: u64,
 }
 
-/// A flat, exact vector index persisted as one `index.bin` per generation.
+/// A flat, exact vector index: `vectors.<g>.bin` (rows, append-only) + `manifest.bin`.
 ///
-/// `add` and `delete` stage changes in memory; `commit` writes a whole new file and replaces the
-/// old one by `rename`, so a reader (or a mapping) of the previous generation is never disturbed
-/// and a crash mid-commit leaves the previous generation intact.
+/// `add` and `delete` stage changes in memory; `commit` appends the new rows, marks superseded
+/// and deleted rows dead, and replaces the manifest by `rename`; `compact` writes the live rows
+/// under a new generation and switches the manifest the same way. A reader (or a mapping) of
+/// the previous state is never disturbed by either, and a crash at any point leaves the
+/// previous manifest and therefore the previous state.
 #[derive(Debug)]
 pub struct FlatIndex {
     dir: PathBuf,
     header: Header,
     load_path: LoadPath,
-    committed: Generation,
+    /// The row file at its committed length (possibly longer on disk after a crash: only
+    /// `layout.count` rows are ever read).
+    rows: Bytes,
+    layout: Rows,
+    dead: RoaringBitmap,
+    /// Indexed by `DocId`: the live row for that id, or `NONE`.
+    rows_by_id: Vec<u32>,
+    /// Whether the file's ids are strictly ascending (so a compaction with no dead rows would
+    /// write the same rows again — skipped).
+    ascending: bool,
     /// `Some(vector)` = add or replace, `None` = delete. Invisible until `commit`.
     pending: BTreeMap<DocId, Option<Vec<f32>>>,
+    /// `commit` compacts when `dead / rows` exceeds this (`None` = only on `compact`).
+    compaction_threshold: Option<f32>,
 }
 
 impl FlatIndex {
@@ -60,28 +81,34 @@ impl FlatIndex {
             dim,
             metric: metric.into(),
             fingerprint: fingerprint.to_owned(),
-            count: 0,
+            generation: 0,
+            rows: 0,
+            live: 0,
+            tombstones_len: 0,
         };
-        write_generation(dir, &header, &[], &[], &[])?;
+        std::fs::File::create(dir.join(format::row_file(0)))?.sync_all()?;
+        write_manifest(dir, &header, &RoaringBitmap::new())?;
         Self::open_with(dir, LoadPath::Buffered)
     }
 
-    /// Open, reading the current generation into memory.
+    /// Open, reading the committed rows into memory.
     ///
     /// # Errors
     ///
-    /// `Error::Io` if the file cannot be read; `Error::Corrupt` if it is not a version-1 index.
+    /// `Error::Io` if a file cannot be read; `Error::Corrupt` if it is not a version-2 index
+    /// (a version-1 `index.bin` is named as such).
     pub fn open(dir: &Path) -> Result<Self> {
         Self::open_with(dir, LoadPath::Buffered)
     }
 
-    /// Open, mapping the current generation read-only (feature `mmap`, ADR-0007).
+    /// Open, mapping the committed rows read-only (feature `mmap`, ADR-0007 as amended by
+    /// ADR-0013).
     ///
-    /// **Precondition the caller owns**: no other process may modify or truncate
-    /// `dir/index.bin` while this handle lives. This crate itself never does — `commit` only ever
-    /// replaces the file by `rename` — but a mapping cannot defend against external writers,
-    /// which is why this constructor exists only behind the opt-in feature. See
-    /// [`crate::LoadPath::Mmap`].
+    /// **Precondition the caller owns**: no other process may modify or truncate the row file
+    /// `dir/vectors.<g>.bin` while this handle lives. This crate itself never modifies a mapped
+    /// byte — `commit` only appends beyond every mapping's end and `compact` replaces the file
+    /// by `rename` — but a mapping cannot defend against external writers, which is why this
+    /// constructor exists only behind the opt-in feature. See [`crate::LoadPath::Mmap`].
     ///
     /// # Errors
     ///
@@ -121,35 +148,234 @@ impl FlatIndex {
         &self.dir
     }
 
-    /// The committed vector stored under `id`, exactly as it was added; `None` if `id` is not a
-    /// committed row (pending changes are not visible, as with `search`).
+    /// The committed vector stored under `id`, exactly as it was added; `None` if `id` has no
+    /// live row (pending changes are not visible, as with `search`).
     #[must_use]
     pub fn vector(&self, id: DocId) -> Option<Vec<f32>> {
-        let bytes = self.committed.bytes.as_slice();
-        let layout = self.committed.layout;
-        // ids are strictly ascending: binary search on the id column.
-        let (mut lo, mut hi) = (0usize, layout.count);
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            match layout.id_at(bytes, mid).cmp(&id.0) {
-                std::cmp::Ordering::Less => lo = mid + 1,
-                std::cmp::Ordering::Greater => hi = mid,
-                std::cmp::Ordering::Equal => return Some(layout.row_at(bytes, mid).collect()),
+        let r = self.live_row(id)?;
+        Some(self.layout.row_at(self.rows.as_slice(), r).collect())
+    }
+
+    /// What the manifest says: rows, live, dead, generation.
+    #[must_use]
+    pub fn stats(&self) -> DenseStats {
+        DenseStats {
+            rows: self.header.rows,
+            live: self.header.live,
+            dead: self.dead.len(),
+            generation: self.header.generation,
+        }
+    }
+
+    /// Make `commit` compact the row file when the dead-row share it leaves exceeds `share`
+    /// (`0.0..=1.0`; `None`, the default, compacts only on [`compact`](Self::compact)).
+    ///
+    /// # Errors
+    ///
+    /// `Error::Schema` for a share outside `0.0..=1.0` or not finite.
+    pub fn set_compaction_threshold(&mut self, share: Option<f32>) -> Result<()> {
+        if let Some(s) = share
+            && !(s.is_finite() && (0.0..=1.0).contains(&s))
+        {
+            return Err(schema_err(format!(
+                "compaction threshold {s} is not in 0.0..=1.0"
+            )));
+        }
+        self.compaction_threshold = share;
+        Ok(())
+    }
+
+    /// Commit pending changes, then rewrite the row file with the live rows only, in ascending
+    /// id order, under the next generation — the manifest switches to it by `rename` and the
+    /// old row file is removed. A no-op when nothing is dead and the rows already ascend.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Io`; a failure before the manifest is renamed leaves the previous state (the
+    /// partial new file is removed, or swept at the next open).
+    pub fn compact(&mut self) -> Result<()> {
+        self.commit()?;
+        if self.dead.is_empty() && self.ascending {
+            return Ok(());
+        }
+        let generation = self.header.generation + 1;
+        let bytes = self.rows.as_slice();
+        let mut buf = Vec::with_capacity(self.header.live as usize * self.layout.row_bytes);
+        for (id, &r) in self.rows_by_id.iter().enumerate() {
+            if r != NONE {
+                let r = r as usize;
+                let row: Vec<f32> = self.layout.row_at(bytes, r).collect();
+                format::encode_row(&mut buf, id as u32, self.layout.norm_at(bytes, r), &row);
             }
         }
-        None
+        let new_path = self.dir.join(format::row_file(generation));
+        let written = (|| -> Result<()> {
+            let mut file = std::fs::File::create(&new_path)?;
+            file.write_all(&buf)?;
+            file.sync_all()?;
+            let header = Header {
+                generation,
+                rows: self.header.live,
+                live: self.header.live,
+                ..self.header.clone()
+            };
+            write_manifest(&self.dir, &header, &RoaringBitmap::new())?;
+            self.header = header;
+            self.dead = RoaringBitmap::new();
+            Ok(())
+        })();
+        if let Err(e) = written {
+            let _ = std::fs::remove_file(&new_path);
+            return Err(e);
+        }
+        let _ = std::fs::remove_file(self.dir.join(format::row_file(generation - 1)));
+        self.reload()
+    }
+
+    fn live_row(&self, id: DocId) -> Option<usize> {
+        match self.rows_by_id.get(id.0 as usize) {
+            Some(&r) if r != NONE => Some(r as usize),
+            _ => None,
+        }
     }
 
     fn open_with(dir: &Path, load_path: LoadPath) -> Result<Self> {
-        let committed = read_generation(dir, load_path)?;
-        let (header, _) = format::decode(committed.bytes.as_slice())?;
-        Ok(Self {
+        let manifest = match std::fs::read(dir.join(MANIFEST)) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && dir.join(V1_FILE).is_file() => {
+                return Err(format::version_1_error());
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let (header, dead) = format::decode_manifest(&manifest)?;
+        let mut index = Self {
             dir: dir.to_path_buf(),
             header,
             load_path,
-            committed,
+            rows: Bytes::Owned(Vec::new()),
+            layout: Rows::new(0, 1),
+            dead,
+            rows_by_id: Vec::new(),
+            ascending: true,
             pending: BTreeMap::new(),
-        })
+            compaction_threshold: None,
+        };
+        index.settle()?;
+        index.reload()?;
+        Ok(index)
+    }
+
+    /// At open: a crashed append leaves a tail beyond the committed rows — cut it (best effort:
+    /// a read-only directory keeps it, and only the committed rows are ever read); stale
+    /// generations and a manifest temporary are swept the same way. Nothing here touches a
+    /// committed byte, and nothing is mapped yet.
+    fn settle(&self) -> Result<()> {
+        let layout = Rows::new(self.header.rows as usize, self.header.dim);
+        let path = self.dir.join(format::row_file(self.header.generation));
+        let len = std::fs::metadata(&path)?.len();
+        let committed = layout.len_bytes() as u64;
+        if len < committed {
+            return Err(corrupt(format!(
+                "{} is {len} bytes, shorter than the {committed} bytes of {} committed rows",
+                path.display(),
+                self.header.rows
+            )));
+        }
+        if len > committed
+            && let Ok(file) = std::fs::OpenOptions::new().write(true).open(&path)
+        {
+            let _ = file.set_len(committed);
+        }
+        if let Ok(entries) = std::fs::read_dir(&self.dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                let stale = name == MANIFEST_TMP
+                    || format::row_file_generation(&name)
+                        .is_some_and(|g| g != self.header.generation);
+                if stale {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// After an append: extend the in-memory rows by the bytes just written (a buffer grows in
+    /// place; a mapping is re-made — cheap, nothing is read) and update the id table for the
+    /// appended and deleted ids. O(change), not O(index).
+    fn absorb(&mut self, buf: &[u8], appended: &[(u32, u32)], deleted: &[u32]) -> Result<()> {
+        let layout = Rows::new(self.header.rows as usize, self.header.dim);
+        match &mut self.rows {
+            Bytes::Owned(v) => {
+                v.truncate(self.layout.len_bytes());
+                v.extend_from_slice(buf);
+            }
+            #[cfg(feature = "mmap")]
+            Bytes::Mapped(_) => {
+                let path = self.dir.join(format::row_file(self.header.generation));
+                self.rows = bytes::read(&path, self.load_path)?;
+            }
+        }
+        debug_assert!(self.rows.as_slice().len() >= layout.len_bytes());
+        self.layout = layout;
+        for &id in deleted {
+            if let Some(slot) = self.rows_by_id.get_mut(id as usize) {
+                *slot = NONE;
+            }
+        }
+        for &(id, r) in appended {
+            let at = id as usize;
+            if self.rows_by_id.len() <= at {
+                self.rows_by_id.resize(at + 1, NONE);
+            }
+            self.rows_by_id[at] = r;
+        }
+        Ok(())
+    }
+
+    /// (Re)read the committed rows from the manifest's generation and rebuild the id table.
+    fn reload(&mut self) -> Result<()> {
+        let layout = Rows::new(self.header.rows as usize, self.header.dim);
+        let path = self.dir.join(format::row_file(self.header.generation));
+        let rows = if layout.count == 0 {
+            Bytes::Owned(Vec::new())
+        } else {
+            bytes::read(&path, self.load_path)?
+        };
+        if rows.as_slice().len() < layout.len_bytes() {
+            return Err(corrupt(format!(
+                "{} is {} bytes, shorter than the {} bytes of {} committed rows",
+                path.display(),
+                rows.as_slice().len(),
+                layout.len_bytes(),
+                layout.count
+            )));
+        }
+        let bytes = rows.as_slice();
+        let mut rows_by_id: Vec<u32> = Vec::new();
+        let mut ascending = true;
+        let mut last: Option<u32> = None;
+        for r in 0..layout.count {
+            let id = layout.id_at(bytes, r);
+            if last.is_some_and(|l| l >= id) {
+                ascending = false;
+            }
+            last = Some(id);
+            if self.dead.contains(r as u32) {
+                continue;
+            }
+            let at = id as usize;
+            if rows_by_id.len() <= at {
+                rows_by_id.resize(at + 1, NONE);
+            }
+            rows_by_id[at] = r as u32;
+        }
+        self.rows = rows;
+        self.layout = layout;
+        self.rows_by_id = rows_by_id;
+        self.ascending = ascending;
+        Ok(())
     }
 
     fn check_agreement(&self, embedder: &dyn Embedder) -> Result<()> {
@@ -232,64 +458,77 @@ impl VectorIndex for FlatIndex {
         if self.pending.is_empty() {
             return Ok(());
         }
-        // Merge committed ⊕ pending in ascending id order into a new generation. `pending` is
-        // borrowed, not taken, so a failed commit keeps the staged changes (see the end).
-        let bytes = self.committed.bytes.as_slice();
-        let layout = self.committed.layout;
-        let dim = layout.dim;
-        let mut ids: Vec<u32> = Vec::with_capacity(layout.count + self.pending.len());
-        let mut norms: Vec<f32> = Vec::with_capacity(ids.capacity());
-        let mut rows: Vec<f32> = Vec::with_capacity(ids.capacity() * dim);
-        let mut push = |id: u32, row: &mut dyn Iterator<Item = f32>, norm: Option<f32>| {
-            let start = rows.len();
-            rows.extend(row);
-            let norm =
-                norm.unwrap_or_else(|| search::norm_f64(rows[start..].iter().copied()) as f32);
-            ids.push(id);
-            norms.push(norm);
-        };
-        let mut pending = self.pending.iter().peekable();
-        for i in 0..layout.count {
-            let id = layout.id_at(bytes, i);
-            // Emit every pending id below this committed id (pure inserts).
-            while let Some((pid, change)) = pending.peek() {
-                if pid.0 >= id {
-                    break;
-                }
-                if let Some(v) = change {
-                    push(pid.0, &mut v.iter().copied(), None);
-                }
-                pending.next();
+        // 1. Resolve the pending changes against the committed state, on copies: nothing in
+        //    memory changes until the manifest is renamed, so a failed commit keeps every staged
+        //    change for a retry.
+        let mut dead = self.dead.clone();
+        let mut buf = Vec::new();
+        let mut appended: Vec<(u32, u32)> = Vec::new(); // (id, row)
+        let mut deleted: Vec<u32> = Vec::new();
+        let mut next_row = self.layout.count as u32;
+        let last_id = (self.layout.count > 0).then(|| {
+            self.layout
+                .id_at(self.rows.as_slice(), self.layout.count - 1)
+        });
+        let mut ascending = self.ascending;
+        for (id, change) in &self.pending {
+            if let Some(r) = self.live_row(*id) {
+                dead.insert(r as u32);
             }
-            match pending.peek() {
-                Some((pid, change)) if pid.0 == id => {
-                    // Replaced or deleted: the pending entry wins.
-                    if let Some(v) = change {
-                        push(id, &mut v.iter().copied(), None);
+            match change {
+                Some(v) => {
+                    let norm = search::norm_f64(v.iter().copied()) as f32;
+                    format::encode_row(&mut buf, id.0, norm, v);
+                    if appended.is_empty() && last_id.is_some_and(|l| l >= id.0) {
+                        ascending = false;
                     }
-                    pending.next();
+                    appended.push((id.0, next_row));
+                    next_row += 1;
                 }
-                _ => push(
-                    id,
-                    &mut layout.row_at(bytes, i),
-                    Some(layout.norm_at(bytes, i)),
-                ),
+                None => deleted.push(id.0),
             }
         }
-        for (pid, change) in pending {
-            if let Some(v) = change {
-                push(pid.0, &mut v.iter().copied(), None);
+        // 2. Append the new rows — beyond every live mapping's end (ADR-0013) — and sync.
+        let path = self.dir.join(format::row_file(self.header.generation));
+        let committed_len = self.layout.len_bytes() as u64;
+        if !buf.is_empty() {
+            let mut file = std::fs::OpenOptions::new().append(true).open(&path)?;
+            // A tail beyond the committed rows (a failed earlier attempt) would shift the row
+            // offsets: cut it first. This handle's mapping, if any, ends at `committed_len`.
+            file.set_len(committed_len)?;
+            if let Err(e) = file.write_all(&buf).and_then(|()| file.sync_all()) {
+                let _ = file.set_len(committed_len);
+                return Err(e.into());
             }
         }
+        // 3. The manifest: the truth, replaced atomically.
+        let rows = u64::from(next_row);
         let header = Header {
-            count: ids.len() as u64,
+            rows,
+            live: rows - dead.len(),
             ..self.header.clone()
         };
-        write_generation(&self.dir, &header, &ids, &norms, &rows)?;
-        self.committed = read_generation(&self.dir, self.load_path)?;
+        if let Err(e) = write_manifest(&self.dir, &header, &dead) {
+            if !buf.is_empty()
+                && let Ok(file) = std::fs::OpenOptions::new().write(true).open(&path)
+            {
+                let _ = file.set_len(committed_len);
+            }
+            return Err(e);
+        }
+        // 4. Only now: the in-memory state follows the manifest.
         self.header = header;
-        // Only now: a failure above leaves every staged change in place for a retry.
+        self.dead = dead;
+        self.ascending = ascending;
         self.pending.clear();
+        self.absorb(&buf, &appended, &deleted)?;
+        // 5. The configured dead-row share, if any.
+        if let Some(t) = self.compaction_threshold
+            && self.header.rows > 0
+            && (self.dead.len() as f64 / self.header.rows as f64) > f64::from(t)
+        {
+            self.compact()?;
+        }
         Ok(())
     }
 
@@ -301,19 +540,22 @@ impl VectorIndex for FlatIndex {
         if k == 0 || allowed.is_some_and(DocSet::is_empty) {
             return Ok(Vec::new());
         }
-        let bytes = self.committed.bytes.as_slice();
-        let layout = self.committed.layout;
-        let mut scored: Vec<(f32, u32)> = Vec::with_capacity(layout.count);
-        for i in 0..layout.count {
-            let id = layout.id_at(bytes, i);
+        let bytes = self.rows.as_slice();
+        let layout = self.layout;
+        let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
+        for r in 0..layout.count {
+            if self.dead.contains(r as u32) {
+                continue;
+            }
+            let id = layout.id_at(bytes, r);
             if allowed.is_some_and(|set| !set.contains(DocId(id))) {
                 continue;
             }
             let s = search::score(
                 metric,
                 &q,
-                layout.row_at(bytes, i),
-                layout.norm_at(bytes, i),
+                layout.row_at(bytes, r),
+                layout.norm_at(bytes, r),
             );
             scored.push((s, id));
         }
@@ -321,31 +563,19 @@ impl VectorIndex for FlatIndex {
     }
 
     fn len(&self) -> u64 {
-        self.header.count
+        self.header.live
     }
 }
 
-/// Write a generation to `index.bin.tmp`, sync, and `rename` it over `index.bin`.
-fn write_generation(
-    dir: &Path,
-    header: &Header,
-    ids: &[u32],
-    norms: &[f32],
-    rows: &[f32],
-) -> Result<()> {
-    let encoded = format::encode(header, ids, norms, rows)?;
-    let tmp = dir.join(TMP);
+/// Write a manifest to `manifest.bin.tmp`, sync, and `rename` it over `manifest.bin`.
+fn write_manifest(dir: &Path, header: &Header, dead: &RoaringBitmap) -> Result<()> {
+    let encoded = format::encode_manifest(header, dead)?;
+    let tmp = dir.join(MANIFEST_TMP);
     {
         let mut file = std::fs::File::create(&tmp)?;
         file.write_all(&encoded)?;
         file.sync_all()?;
     }
-    std::fs::rename(&tmp, dir.join(FILE))?;
+    std::fs::rename(&tmp, dir.join(MANIFEST))?;
     Ok(())
-}
-
-fn read_generation(dir: &Path, load_path: LoadPath) -> Result<Generation> {
-    let bytes = bytes::read(&dir.join(FILE), load_path)?;
-    let (_, layout) = format::decode(bytes.as_slice())?;
-    Ok(Generation { bytes, layout })
 }

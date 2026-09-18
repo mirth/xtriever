@@ -1,0 +1,14 @@
+# cargo bench -p xtriever-dense --bench scan — MacBookPro18,3, 10 threads, release, 100,000 rows × 384 dims, k = 10
+# scan group: the first run (before the O(change) post-append fix — the scan is unaffected by it)
+scan/v1_shape/100000    time:   [31.825 ms 32.845 ms 34.720 ms]
+scan/v2/100000          time:   [31.510 ms 31.584 ms 31.671 ms]
+scan/v2_filtered_half/100000
+                        time:   [16.166 ms 16.195 ms 16.232 ms]
+# (the first run's commit group, superseded: v2_append 37.6 ms — it re-read the row file after each append — v1_rewrite 134.8 ms)
+# commit group: after the fix (the in-memory rows extend by the appended bytes instead of re-reading the file)
+commit_10_rows/v2_append
+                        time:   [12.571 ms 12.898 ms 13.214 ms]
+commit_10_rows/v1_rewrite
+                        time:   [167.87 ms 175.64 ms 183.22 ms]
+v2_append: ~15440 bytes written per 10-row commit (dense/ grew by 9881600 over 6400 rows)
+v1_rewrite: 154400101 bytes written per commit

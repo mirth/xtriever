@@ -53,7 +53,11 @@ fn commit_appends_only_the_new_rows() {
     index.commit().unwrap();
     assert_eq!(file_len(&rows), 110 * ROW);
     let after = std::fs::read(&rows).unwrap();
-    assert_eq!(&after[..before.len()], &before[..], "committed bytes never change");
+    assert_eq!(
+        &after[..before.len()],
+        &before[..],
+        "committed bytes never change"
+    );
     assert_eq!(
         index.stats(),
         DenseStats {
@@ -68,8 +72,9 @@ fn commit_appends_only_the_new_rows() {
 
 #[test]
 fn replace_and_delete_never_touch_committed_bytes() {
+    // Cosine: a query equal to a row scores it 1.0, so "the old row 7 is gone" is testable.
     let tmp = tempfile::tempdir().unwrap();
-    let mut index = FlatIndex::create(tmp.path(), DIM, Metric::Dot, "fp").unwrap();
+    let mut index = FlatIndex::create(tmp.path(), DIM, Metric::Cosine, "fp").unwrap();
     for i in 0..110 {
         index.add(DocId(i), &vec_for(i)).unwrap();
     }
@@ -77,7 +82,7 @@ fn replace_and_delete_never_touch_committed_bytes() {
     let rows = row_file(tmp.path(), 0);
     let before = std::fs::read(&rows).unwrap();
     let old_seven = index.vector(DocId(7)).unwrap();
-    let old_seven_hit = index.search(&old_seven, None, 1).unwrap()[0].clone();
+    let old_seven_hit = index.search(&old_seven, None, 1).unwrap()[0];
     assert_eq!(old_seven_hit.id, DocId(7));
 
     let new_seven = vec![-3.0, -3.0, -3.0, -3.0];
@@ -85,7 +90,11 @@ fn replace_and_delete_never_touch_committed_bytes() {
     index.delete(&[DocId(3)]).unwrap();
     index.commit().unwrap();
 
-    assert_eq!(file_len(&rows), 111 * ROW, "one appended row for the replacement");
+    assert_eq!(
+        file_len(&rows),
+        111 * ROW,
+        "one appended row for the replacement"
+    );
     let after = std::fs::read(&rows).unwrap();
     assert_eq!(&after[..before.len()], &before[..]);
     assert_eq!(
@@ -101,7 +110,7 @@ fn replace_and_delete_never_touch_committed_bytes() {
     assert_eq!(index.vector(DocId(7)), Some(new_seven.clone()));
     assert_eq!(index.vector(DocId(3)), None);
     // The old row for 7 is dead: querying with its vector must not reproduce its old score.
-    let hit = index.search(&old_seven, None, 1).unwrap()[0].clone();
+    let hit = index.search(&old_seven, None, 1).unwrap()[0];
     assert!(
         hit.id != DocId(7) || hit.score.to_bits() != old_seven_hit.score.to_bits(),
         "the superseded row surfaced"
@@ -149,14 +158,18 @@ fn bytes_written_are_proportional_to_the_change() {
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), D, Metric::Cosine, "fp").unwrap();
     for i in 0..1000u32 {
-        let v: Vec<f32> = (0..D).map(|j| ((i * 31 + j as u32) % 17) as f32 + 1.0).collect();
+        let v: Vec<f32> = (0..D)
+            .map(|j| ((i * 31 + j as u32) % 17) as f32 + 1.0)
+            .collect();
         index.add(DocId(i), &v).unwrap();
     }
     index.commit().unwrap();
     let before = dir_bytes(tmp.path());
     let manifest_before = file_len(&tmp.path().join("manifest.bin"));
     for i in 1000..1010u32 {
-        let v: Vec<f32> = (0..D).map(|j| ((i * 31 + j as u32) % 17) as f32 + 1.0).collect();
+        let v: Vec<f32> = (0..D)
+            .map(|j| ((i * 31 + j as u32) % 17) as f32 + 1.0)
+            .collect();
         index.add(DocId(i), &v).unwrap();
     }
     index.commit().unwrap();

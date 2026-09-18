@@ -8,7 +8,12 @@
 //! ```sh
 //! cargo bench -p xtriever-dense --bench scan
 //! ```
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::cast_precision_loss)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::cast_precision_loss
+)]
 
 use std::cmp::Ordering;
 use std::hint::black_box;
@@ -63,7 +68,12 @@ impl Columnar {
         let mut vectors = Vec::with_capacity(rows.len() * DIM);
         for (i, r) in rows.iter().enumerate() {
             ids.push(i as u32);
-            norms.push(r.iter().map(|x| f64::from(*x) * f64::from(*x)).sum::<f64>().sqrt() as f32);
+            norms.push(
+                r.iter()
+                    .map(|x| f64::from(*x) * f64::from(*x))
+                    .sum::<f64>()
+                    .sqrt() as f32,
+            );
             vectors.extend_from_slice(r);
         }
         Self {
@@ -75,11 +85,19 @@ impl Columnar {
 
     /// Cosine scan, `(score DESC, id ASC)`, first `k` — the version-1 loop.
     fn search(&self, q: &[f32], k: usize) -> Vec<(f32, u32)> {
-        let q_norm = q.iter().map(|x| f64::from(*x) * f64::from(*x)).sum::<f64>().sqrt();
+        let q_norm = q
+            .iter()
+            .map(|x| f64::from(*x) * f64::from(*x))
+            .sum::<f64>()
+            .sqrt();
         let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.ids.len());
         for (i, &id) in self.ids.iter().enumerate() {
             let row = &self.vectors[i * DIM..(i + 1) * DIM];
-            let dot: f64 = q.iter().zip(row).map(|(&a, &b)| f64::from(a) * f64::from(b)).sum();
+            let dot: f64 = q
+                .iter()
+                .zip(row)
+                .map(|(&a, &b)| f64::from(a) * f64::from(b))
+                .sum();
             let s = (dot / (q_norm * f64::from(self.norms[i]))) as f32;
             scored.push((s, id));
         }
@@ -191,7 +209,11 @@ fn bench_commit(c: &mut Criterion) {
         })
     });
     let per_commit = (dir_bytes(&dir) - before) / u64::from(next - ROWS) * 10;
-    eprintln!("v2_append: ~{per_commit} bytes written per 10-row commit (dense/ grew by {} over {} rows)", dir_bytes(&dir) - before, next - ROWS);
+    eprintln!(
+        "v2_append: ~{per_commit} bytes written per 10-row commit (dense/ grew by {} over {} rows)",
+        dir_bytes(&dir) - before,
+        next - ROWS
+    );
     g.bench_function("v1_rewrite", |b| {
         b.iter(|| columnar.rewrite(black_box(&v1_path)))
     });
