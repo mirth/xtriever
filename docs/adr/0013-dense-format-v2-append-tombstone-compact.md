@@ -52,10 +52,12 @@ dense/
   `vectors.<g+1>.bin`, replaces the manifest (`generation g+1`, no tombstones), and removes
   the old file. The pipeline's `merge` calls it; `commit` calls it when the configured
   dead-row share (`HybridConfig::dense_compact_dead_share`, default `None`) is exceeded.
-- **Crash safety**: the directory is fsynced after a new row file is created and after every
-  manifest rename, so a power loss cannot keep a manifest naming a row file whose entry never
-  reached disk; a crash before the manifest rename leaves the previous manifest, so the
-  previous state; a partial append's tail beyond the committed rows is ignored and cut at the
+- **Crash safety**: a crash before the manifest rename leaves the previous manifest, so the
+  previous state (any byte boundary — the test enumerates them). On the Unix targets the
+  engine ships to (macOS, iOS, Android, Linux) the directory is also fsynced after a new row
+  file is created and after every manifest rename, so a power loss cannot keep a manifest
+  naming a row file whose entry never reached disk; on other targets (Windows is a CI check
+  only) that ordering is the filesystem's, not the crate's; a partial append's tail beyond the committed rows is ignored and cut at the
   next open (best effort — a read-only directory keeps it, and only committed rows are read);
   a stale generation or manifest temporary is swept the same way.
 - **Results are unchanged by construction**: the scan visits every live row, each row's score
@@ -94,8 +96,12 @@ the single-writer precondition the caller owns is unchanged.
 - Rows are interleaved (`id · norm · vector`) rather than columnar: one append per commit,
   one length to reason about, one stream for the unfiltered scan. A filtered scan reads the
   id at a row's head and skips the rest by offset.
-- `FlatIndex` keeps an in-memory id → live row table (`Vec<u32>`, 4 bytes per id) built at
-  open by one pass over the rows; `vector(id)` and the superseded-row detection use it.
+- `FlatIndex` keeps an in-memory id → live row map (`BTreeMap<u32, u32>`, one entry per live
+  row) built at open by one pass over the rows; `vector(id)` and the superseded-row detection
+  look ids up in it, and a compaction walks it in ascending id order. A map rather than a
+  table indexed by id, because `add` accepts any `u32`: memory follows the row count, not the
+  largest id (~15 MB for the Wikipedia index's 428k rows; a sparse `u32::MAX` costs one
+  entry). Lookups are O(log rows); the scan does not use the map.
 - The pipeline's descriptor gains `dense_compact_dead_share` with a serde default; the
   pipeline format version is unchanged (as `rerank_mode` in Feature 015). The FFI
   `IndexConfig` gains the same optional field with a uniffi default.

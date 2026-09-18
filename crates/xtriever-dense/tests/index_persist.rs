@@ -3,8 +3,6 @@
 
 mod support;
 
-use std::os::unix::fs::PermissionsExt;
-
 use xtriever_core::{DocId, Metric, VectorIndex};
 use xtriever_dense::FlatIndex;
 
@@ -265,8 +263,11 @@ fn a_sparse_id_costs_one_entry_not_a_table() {
     assert_eq!(reopened.len(), 1);
 }
 
+#[cfg(unix)] // directory permissions as the read-only setup
 #[test]
 fn a_buffered_open_reads_only_the_committed_bytes() {
+    use std::os::unix::fs::PermissionsExt;
+
     // A crashed tail is never read into memory (review round 4 #4): make the tail far larger
     // than the committed rows and check the open neither fails nor reads it.
     let tmp = tempfile::tempdir().unwrap();

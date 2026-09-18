@@ -103,10 +103,13 @@ typically far less (roaring compresses runs and sparse sets).
 
 ## D6 — `vector(id)` and `len()`
 
-`rows_by_id: Vec<u32>` indexed by `DocId`, `u32::MAX` for none, sized `max id + 1`, built
-at open by one pass over the rows (later rows win; dead rows skipped) — 1.7 MB for the
-Wikipedia index, O(rows) at open (~milliseconds). `vector(id)` reads that row; `len()` is
-the manifest's `live`. Superseded rows are found the same way at commit (D3 step 1).
+`rows_by_id: BTreeMap<u32, u32>` — live id → its row — built at open by one pass over the
+rows (dead rows skipped; a second live row for an id is `Corrupt`), O(rows log rows) at open
+(tens of milliseconds for the Wikipedia index; ~15 MB). A map rather than a table sized by
+the largest id, because `FlatIndex::add` accepts any `u32` (review round 4): memory follows
+the row count, a sparse `u32::MAX` costs one entry, and the ascending iteration is the order
+a compaction writes. `vector(id)` reads that row (O(log rows)); `len()` is the manifest's
+`live`. Superseded rows are found the same way at commit (D3 step 1).
 
 ## D7 — Search, unchanged in substance
 

@@ -39,7 +39,7 @@ newest row for an id is live unless the id was deleted.
 | header | the manifest header |
 | rows (bytes) | the row file, buffered or mapped, at its committed length |
 | dead | the tombstone bitmap |
-| rows_by_id | `Vec<u32>` indexed by id, `u32::MAX` = no live row |
+| rows_by_id | `BTreeMap<u32, u32>`: live id → its row; one entry per live row (memory follows rows, not the largest id); ascending iteration is the compaction order |
 | pending | `BTreeMap<DocId, Option<Vec<f32>>>` — unchanged |
 | compaction_threshold | `Option<f32>` in `0..=1`; `None` = only on `compact()` |
 

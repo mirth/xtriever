@@ -124,3 +124,14 @@ plan's split: PR A is the format with its oracle and tests, PR B the pipeline an
    tail on a read-only directory.
 
 The commit bench re-run after the directory syncs: **17.5 ms** per 10-row commit (was 12.9 ms), still 15.4 KB written; `runs/bench-scan-…txt` carries both runs.
+
+### Review round 5 (Copilot, six comments — all applied)
+
+1. The read-only-directory test and its `PermissionsExt` import are `#[cfg(unix)]` (CI runs
+   the crate on Windows too).
+2. The power-loss ordering guarantee is scoped to the Unix targets the engine ships to
+   (`sync_dir` doc, ADR-0013, the contract); elsewhere `sync_dir` is a documented no-op and the
+   crash-at-any-byte guarantee stands on the manifest rename alone.
+3–6. ADR-0013's consequences, the data model, research D6 and task T011 now record the
+   `BTreeMap<u32, u32>` live-row map (memory follows rows; ascending order for compaction)
+   instead of the superseded `Vec<u32>` table.

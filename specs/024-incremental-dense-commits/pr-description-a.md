@@ -39,6 +39,8 @@ follows rows, not the largest id), the directory is fsynced at the protocol's or
 points, a temporary mapping is dropped before any truncation, and the buffered open reads
 exactly the committed bytes.
 
+**Review round 5** (six comments, applied): the Unix-only test gated for the Windows CI leg, the power-loss ordering guarantee scoped to Unix targets, and the ADR, data model, research and tasks brought in line with the `BTreeMap` live-row map.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

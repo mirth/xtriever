@@ -632,9 +632,14 @@ fn write_manifest(dir: &Path, header: &Header, dead: &RoaringBitmap) -> Result<(
     sync_dir(dir)
 }
 
-/// Make the directory's entries durable (a rename, a new file, a removal): on POSIX the
-/// entry lives in the directory, which is synced like any file. Without it a power loss can
-/// keep a renamed manifest that names a row file whose entry never reached disk.
+/// Make the directory's entries durable (a rename, a new file): on POSIX the entry lives in
+/// the directory, which is synced like any file. Without it a power loss can keep a renamed
+/// manifest that names a row file whose entry never reached disk.
+///
+/// The power-loss ordering guarantee (ADR-0013) is made on the Unix targets the engine ships
+/// to — macOS, iOS, Android, Linux. Elsewhere a directory cannot be opened for `fsync` and this
+/// is a no-op: the crash-at-any-byte guarantee (the manifest is the truth, replaced by rename)
+/// still holds, the ordering of entries across a power loss is the filesystem's.
 fn sync_dir(dir: &Path) -> Result<()> {
     #[cfg(unix)]
     {

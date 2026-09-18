@@ -36,7 +36,9 @@ Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other versi
 2. Search results are bit-identical to what version 1 returned for the same committed
    content, filtered or not, all metrics; before and after `compact`.
 3. A crash at any byte boundary of `commit` or `compact` reopens to the previous committed
-   state.
+   state. On Unix targets (the engine's shipping targets) the directory is fsynced at the
+   protocol's ordering points, so a power loss keeps the manifest and the row file it names
+   consistent; on other targets that ordering is the filesystem's.
 4. A mapped byte is never modified or truncated by this crate; the row file is only extended
    beyond every live mapping or replaced by rename (ADR-0013 amends ADR-0007 condition 2).
 
