@@ -175,6 +175,35 @@ fn two_live_rows_for_one_id_are_corrupt() {
 }
 
 #[test]
+fn a_generation_that_cannot_advance_is_corrupt_not_an_overflow() {
+    // The generation is read from disk (review round 2 #1): at u64::MAX, appends still work
+    // (they do not advance it) and `compact` returns `Corrupt` instead of overflowing.
+    let tmp = tempfile::tempdir().unwrap();
+    drop(small(tmp.path()));
+    rewrite_manifest_header(tmp.path(), |h| {
+        h.replace("\"generation\":0", &format!("\"generation\":{}", u64::MAX))
+    });
+    std::fs::rename(
+        tmp.path().join("vectors.0.bin"),
+        tmp.path().join(format!("vectors.{}.bin", u64::MAX)),
+    )
+    .unwrap();
+    let mut index = FlatIndex::open(tmp.path()).unwrap();
+    assert_eq!(index.stats().generation, u64::MAX);
+    index.add(DocId(3), &[0.0, 0.0, 1.0]).unwrap();
+    index.delete(&[DocId(1)]).unwrap();
+    index.commit().unwrap();
+    assert_eq!(index.len(), 2);
+    match index.compact().unwrap_err() {
+        Error::Corrupt(msg) => assert!(msg.contains("cannot advance"), "{msg}"),
+        other => panic!("expected Corrupt, got {other:?}"),
+    }
+    // The handle is still coherent with the disk after the refusal.
+    assert_eq!(index.len(), 2);
+    assert_eq!(FlatIndex::open(tmp.path()).unwrap().len(), 2);
+}
+
+#[test]
 fn bad_magic_and_truncation_are_corrupt() {
     let tmp = tempfile::tempdir().unwrap();
     drop(small(tmp.path()));

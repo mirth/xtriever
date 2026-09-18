@@ -202,38 +202,64 @@ impl FlatIndex {
         if self.dead.is_empty() && self.ascending {
             return Ok(());
         }
-        let generation = self.header.generation + 1;
+        let generation = self.header.generation.checked_add(1).ok_or_else(|| {
+            corrupt(format!(
+                "generation {} cannot advance (review round 2 #1)",
+                self.header.generation
+            ))
+        })?;
+        let old_path = self.dir.join(format::row_file(self.header.generation));
         let bytes = self.rows.as_slice();
         let mut buf = Vec::with_capacity(self.header.live as usize * self.layout.row_bytes);
+        let mut rows_by_id = vec![NONE; self.rows_by_id.len()];
+        let mut next = 0u32;
         for (id, &r) in self.rows_by_id.iter().enumerate() {
             if r != NONE {
                 let r = r as usize;
                 let row: Vec<f32> = self.layout.row_at(bytes, r).collect();
                 format::encode_row(&mut buf, id as u32, self.layout.norm_at(bytes, r), &row);
+                rows_by_id[id] = next;
+                next += 1;
             }
         }
+        let layout = Rows::new(self.header.live as usize, self.header.dim);
         let new_path = self.dir.join(format::row_file(generation));
-        let written = (|| -> Result<()> {
+        let header = Header {
+            generation,
+            rows: self.header.live,
+            live: self.header.live,
+            ..self.header.clone()
+        };
+        // Write the new generation, bring it into memory, and only then switch the manifest:
+        // every fallible step precedes the rename, so a failure leaves the previous state on
+        // disk and in this handle alike (review round 2 #2).
+        let switched = (|| -> Result<Bytes> {
             let mut file = std::fs::File::create(&new_path)?;
             file.write_all(&buf)?;
             file.sync_all()?;
-            let header = Header {
-                generation,
-                rows: self.header.live,
-                live: self.header.live,
-                ..self.header.clone()
+            let rows = if layout.count == 0 {
+                Bytes::Owned(Vec::new())
+            } else {
+                bytes::read(&new_path, self.load_path)?
             };
             write_manifest(&self.dir, &header, &RoaringBitmap::new())?;
-            self.header = header;
-            self.dead = RoaringBitmap::new();
-            Ok(())
+            Ok(rows)
         })();
-        if let Err(e) = written {
-            let _ = std::fs::remove_file(&new_path);
-            return Err(e);
-        }
-        let _ = std::fs::remove_file(self.dir.join(format::row_file(generation - 1)));
-        self.reload()
+        let rows = match switched {
+            Ok(rows) => rows,
+            Err(e) => {
+                let _ = std::fs::remove_file(&new_path);
+                return Err(e);
+            }
+        };
+        self.header = header;
+        self.dead = RoaringBitmap::new();
+        self.rows = rows;
+        self.layout = layout;
+        self.rows_by_id = rows_by_id;
+        self.ascending = true;
+        let _ = std::fs::remove_file(old_path);
+        Ok(())
     }
 
     fn live_row(&self, id: DocId) -> Option<usize> {
@@ -301,39 +327,6 @@ impl FlatIndex {
                     let _ = std::fs::remove_file(entry.path());
                 }
             }
-        }
-        Ok(())
-    }
-
-    /// After an append: extend the in-memory rows by the bytes just written (a buffer grows in
-    /// place; a mapping is re-made — cheap, nothing is read) and update the id table for the
-    /// appended and deleted ids. O(change), not O(index).
-    fn absorb(&mut self, buf: &[u8], appended: &[(u32, u32)], deleted: &[u32]) -> Result<()> {
-        let layout = Rows::new(self.header.rows as usize, self.header.dim);
-        match &mut self.rows {
-            Bytes::Owned(v) => {
-                v.truncate(self.layout.len_bytes());
-                v.extend_from_slice(buf);
-            }
-            #[cfg(feature = "mmap")]
-            Bytes::Mapped(_) => {
-                let path = self.dir.join(format::row_file(self.header.generation));
-                self.rows = bytes::read(&path, self.load_path)?;
-            }
-        }
-        debug_assert!(self.rows.as_slice().len() >= layout.len_bytes());
-        self.layout = layout;
-        for &id in deleted {
-            if let Some(slot) = self.rows_by_id.get_mut(id as usize) {
-                *slot = NONE;
-            }
-        }
-        for &(id, r) in appended {
-            let at = id as usize;
-            if self.rows_by_id.len() <= at {
-                self.rows_by_id.resize(at + 1, NONE);
-            }
-            self.rows_by_id[at] = r;
         }
         Ok(())
     }
@@ -514,27 +507,67 @@ impl VectorIndex for FlatIndex {
                 return Err(e.into());
             }
         }
-        // 3. The manifest: the truth, replaced atomically.
+        // 3. Bring the appended rows into memory *before* the manifest switches (review round 2
+        //    #2): a buffer grows in place (undone by a truncate on failure), a mapping is made
+        //    anew (nothing is read). Then the manifest — the truth — replaced atomically.
         let rows = u64::from(next_row);
         let header = Header {
             rows,
             live: rows - dead.len(),
             ..self.header.clone()
         };
-        if let Err(e) = write_manifest(&self.dir, &header, &dead) {
-            if !buf.is_empty()
-                && let Ok(file) = std::fs::OpenOptions::new().write(true).open(&path)
-            {
+        let layout = Rows::new(rows as usize, self.header.dim);
+        let undo_file = |path: &Path| {
+            if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
                 let _ = file.set_len(committed_len);
+            }
+        };
+        let remapped: Option<Bytes> = if let Some(v) = self.rows.owned_mut() {
+            v.truncate(committed_len as usize);
+            v.extend_from_slice(&buf);
+            None
+        } else if buf.is_empty() {
+            None
+        } else {
+            match bytes::read(&path, self.load_path) {
+                Ok(b) => Some(b),
+                Err(e) => {
+                    undo_file(&path);
+                    return Err(e);
+                }
+            }
+        };
+        if let Err(e) = write_manifest(&self.dir, &header, &dead) {
+            if let Some(v) = self.rows.owned_mut() {
+                v.truncate(committed_len as usize);
+            }
+            if !buf.is_empty() {
+                undo_file(&path);
             }
             return Err(e);
         }
-        // 4. Only now: the in-memory state follows the manifest.
+        // 4. Only now: the in-memory state follows the manifest — nothing below can fail.
+        if let Some(b) = remapped {
+            self.rows = b;
+        }
+        debug_assert!(self.rows.as_slice().len() >= layout.len_bytes());
         self.header = header;
         self.dead = dead;
+        self.layout = layout;
         self.ascending = ascending;
         self.pending.clear();
-        self.absorb(&buf, &appended, &deleted)?;
+        for &id in &deleted {
+            if let Some(slot) = self.rows_by_id.get_mut(id as usize) {
+                *slot = NONE;
+            }
+        }
+        for &(id, r) in &appended {
+            let at = id as usize;
+            if self.rows_by_id.len() <= at {
+                self.rows_by_id.resize(at + 1, NONE);
+            }
+            self.rows_by_id[at] = r;
+        }
         // 5. The configured dead-row share, if any.
         if let Some(t) = self.compaction_threshold
             && self.header.rows > 0

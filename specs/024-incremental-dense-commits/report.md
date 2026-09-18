@@ -77,3 +77,16 @@ plan's split: PR A is the format with its oracle and tests, PR B the pipeline an
    26 % (compaction); the spec's US4 wording matches.
 6. `expected.json`: the committed golden is restored (the regeneration changed only the
    provenance line); research D9, the quickstart and T018 now say so explicitly.
+
+### Review round 2 (Copilot, two comments — both applied)
+
+1. The generation read from disk advances with `checked_add`: at `u64::MAX`, appends still
+   work and `compact` returns `Corrupt` ("cannot advance") instead of overflowing;
+   `index_errors::a_generation_that_cannot_advance_is_corrupt_not_an_overflow` also checks
+   the handle stays coherent after the refusal.
+2. Every fallible step now precedes the manifest switch, in both protocols: `commit` grows
+   the in-memory buffer (undone by a truncate on failure) or makes the new mapping *before*
+   renaming the manifest, and the state swap after the rename is infallible; `compact`
+   writes the new generation, brings it into memory, then renames, then swaps — a failure
+   anywhere leaves disk and handle on the previous state (the partial file removed). The
+   `absorb`/`reload`-after-rename paths are gone; `reload` is used at open only.

@@ -25,6 +25,10 @@ decoder, a duplicate-live-id check at open, the property test honouring `PROPTES
 read-only wording corrected, the fixture's committed `expected.json` kept (only its
 provenance line had changed).
 
+**Review round 2** (two comments, applied): the generation advances with checked
+arithmetic (`Corrupt` at `u64::MAX`), and both `commit` and `compact` do every fallible step
+before the manifest rename, so a failure never leaves the handle disagreeing with disk.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.
