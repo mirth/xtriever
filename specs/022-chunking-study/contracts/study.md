@@ -12,7 +12,8 @@ chunking_study.py decide  [--owner-decision FILE]                # the rule; pri
 chunking_study.py all     --dataset D                            # whole build → check → the chunked builds → all cells → score
 ```
 
-Variants: `whole`, `contract`, `chonky`, `chonky-bounded`. Datasets: `scifact`, `nfcorpus`,
+Variants: `whole`, `contract`, `chonky`, `chonky-bounded`, `chonky-if-long` (the owner's
+amendment of 2026-09-18: chonky only for over-window documents). Datasets: `scifact`, `nfcorpus`,
 `fiqa`. `--limit N` (first N documents) is for smoke tests only and names the index
 `V.D.limitN` — never a committed cell.
 

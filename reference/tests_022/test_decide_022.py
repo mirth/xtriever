@@ -49,7 +49,7 @@ def test_not_recommended_when_recall_drops():
 
 def test_ties_go_to_the_non_neural_chunker():
     same = {"scifact": (0.71, 0.95), "nfcorpus": (0.37, 0.30), "fiqa": (0.40, 0.70)}
-    rows = _rows(WHOLE, {"chonky": dict(same), "contract": dict(same), "chonky-bounded": dict(same)})
+    rows = _rows(WHOLE, {"chonky": dict(same), "contract": dict(same), "chonky-bounded": dict(same), "chonky-if-long": dict(same)})
     assert cs.decide(rows)["best_chunker"] == "contract"
 
 

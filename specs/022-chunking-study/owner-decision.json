@@ -49,6 +49,24 @@
       },
       "delta_recall": -0.006915596830790793,
       "recommended": false
+    },
+    "chonky-if-long": {
+      "datasets": [
+        "fiqa",
+        "nfcorpus",
+        "scifact"
+      ],
+      "scope": "three-way",
+      "mean_ndcg_10": 0.4853861283301882,
+      "whole_mean_ndcg_10": 0.49124381707708703,
+      "delta_mean": -0.005857688746898848,
+      "deltas": {
+        "fiqa": -0.03080907905405844,
+        "nfcorpus": -0.0034351839709979015,
+        "scifact": 0.0166711967843598
+      },
+      "delta_recall": -0.008537106157764707,
+      "recommended": false
     }
   },
   "best_chunker": null,

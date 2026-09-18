@@ -69,6 +69,11 @@ recorded mode (interpolate α 0.5). Cells are named `<variant>-d<rerank depth>@<
   SC-003 is read this way (it said "unless it is a whole document"; the window exception is
   the one case the two fixes cannot both satisfy).
 
+- `chonky-if-long` (owner's amendment, 2026-09-18): `positions(title + " " + text) > WINDOW`
+  → the chonky passages (raw — the better of the two chonky forms on SciFact), else the
+  document whole. Reuses the cached splits, so no new splitter runs; short documents are
+  never split.
+
 ## D6 — MaxP aggregation
 
 Hits come ordered by the engine (fused order at depth 0; the re-ranked order at depth 20);

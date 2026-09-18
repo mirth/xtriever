@@ -85,21 +85,25 @@ scratch under `target/xt-chunking-study/` (gitignored).
 
 ## Phase 6: User Story 3 — FiQA for the anchor and the winner (Priority: P2)
 
-- [ ] T018 [US3] FiQA `whole` (~2 h 10, background + monitor): `build --variant whole --dataset fiqa`; `search … --k 100` at depths 0 and 20; `score --dataset fiqa`; `check --dataset fiqa` → **PASS** (**⛔** otherwise); then `search … --k 300` at both depths; `score`
-- [ ] T019 [US3] FiQA for the leader named in T017 (~2 h 35): `build --variant <leader> --dataset fiqa`; the two `@300` cells; `score --dataset fiqa`; `table` → the FiQA table into the report; if no chunker led, record that FiQA ran `whole` only and why
+- [X] T018 [US3] FiQA `whole` (~2 h 10, background + monitor): `build --variant whole --dataset fiqa`; `search … --k 100` at depths 0 and 20; `score --dataset fiqa`; `check --dataset fiqa` → **PASS** (**⛔** otherwise); then `search … --k 300` at both depths; `score`
+- [X] T019 [US3] FiQA for the leader named in T017 (~2 h 35): `build --variant <leader> --dataset fiqa`; the two `@300` cells; `score --dataset fiqa`; `table` → the FiQA table into the report; if no chunker led, record that FiQA ran `whole` only and why
 
 ---
 
+## Phase 6b: The owner's fifth variant — `chonky-if-long` (amendment, 2026-09-18)
+
+- [X] T019b `reference/chunking_study.py`: `VARIANTS` / `CHUNKERS` gain `chonky-if-long`; `passages_for` splits with chonky only when `positions(title + " " + text) > WINDOW`, else the document whole; `build` skips the splitter for short documents; tests: `test_chonky_if_long_splits_only_over_window_documents`, the ties test includes the variant; a 50-document smoke; then `all --dataset scifact --variant chonky-if-long`, `… nfcorpus …`, `… fiqa …` (the cached splits — no new chonky runs; ~45 min + ~3 h); the cells and build records into the report; `decide` re-run — the same rule, three-way
+
 ## Phase 7: User Story 4 — The decision by the rule (final) (Priority: P1)
 
-- [ ] T020 [US4] `$PY reference/chunking_study.py decide --owner-decision specs/022-chunking-study/owner-decision.json` → the final verdict (three-way for `whole` and the leader, two-way for the others — labelled); `runs/build-records.json` assembled from every `build.json`; the report's decision section states what follows (the demos' recipe and the docs in a later feature; the shipped Wikipedia index untouched; a chonky win over `contract` → a separate feature for a pre-split input to the Rust build) — the study itself changes none of them
+- [X] T020 [US4] `$PY reference/chunking_study.py decide --owner-decision specs/022-chunking-study/owner-decision.json` → the final verdict (three-way for `whole` and the leader, two-way for the others — labelled); `runs/build-records.json` assembled from every `build.json`; the report's decision section states what follows (the demos' recipe and the docs in a later feature; the shipped Wikipedia index untouched; a chonky win over `contract` → a separate feature for a pre-split input to the Rust build) — the study itself changes none of them
 
 ---
 
 ## Phase 8: Polish
 
-- [ ] T021 Gate (quickstart Step 5): `git diff --stat main -- crates/ swift/ python/src apps/ specs/*/baselines` empty; `cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo deny check` unchanged; the four reference suites in one collection green; `grep -rn "$(hostname -s)\|$USER" specs/022-chunking-study reference/chunking_study.py reference/tests_022 reference/requirements-022.*` → nothing; `git status --short` shows only the intended files (`target/xt-chunking-study` and `reference/.venv-022` absent — ignored)
-- [ ] T022 Write `specs/022-chunking-study/report.md` (verdict; the red checkpoint; the anchor check per dataset; the build records; the tables with deltas; the `@100`/`@300` difference; the short-query shares; the decision with the numbers and its scope; the cost actually spent per block; "Deliberately not done": no engine or demo change, no fallback beyond the two fixes, no CI) and `specs/022-chunking-study/pr-description.md` (the question, the method in four lines, the table's headline numbers, the verdict, the cost, the attribution line). **⛔ Checkpoint C4 — the owner commits**, pushes and opens the PR
+- [X] T021 Gate (quickstart Step 5): `git diff --stat main -- crates/ swift/ python/src apps/ specs/*/baselines` empty; `cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo deny check` unchanged; the four reference suites in one collection green; `grep -rn "$(hostname -s)\|$USER" specs/022-chunking-study reference/chunking_study.py reference/tests_022 reference/requirements-022.*` → nothing; `git status --short` shows only the intended files (`target/xt-chunking-study` and `reference/.venv-022` absent — ignored)
+- [X] T022 Write `specs/022-chunking-study/report.md` (verdict; the red checkpoint; the anchor check per dataset; the build records; the tables with deltas; the `@100`/`@300` difference; the short-query shares; the decision with the numbers and its scope; the cost actually spent per block; "Deliberately not done": no engine or demo change, no fallback beyond the two fixes, no CI) and `specs/022-chunking-study/pr-description.md` (the question, the method in four lines, the table's headline numbers, the verdict, the cost, the attribution line). **⛔ Checkpoint C4 — the owner commits**, pushes and opens the PR
 
 ---
 

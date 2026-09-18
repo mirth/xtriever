@@ -1,6 +1,6 @@
 # Report: The Chunking Study
 
-**Feature**: 022 · **Branch**: `022-chunking-study` · **Status**: in progress
+**Feature**: 022 · **Branch**: `022-chunking-study` · **Status**: done — no chunking variant is recommended by the rule; the evidence and the recipe it points at are recorded
 
 ## Environment (T001)
 
@@ -110,3 +110,131 @@ in the abstract's first sentences, which the whole-document embedding already co
 Best chunker: **chonky** — the leader for FiQA. Both misses are narrow: contract's mean gain
 is 0.0006 short and its recall 0.0004 over the line; chonky-bounded's recall 0.0019 over.
 The verdict is provisional until FiQA's `whole` (the third anchor) and FiQA's chonky cells.
+
+## US3 — FiQA: the anchor and the leader
+
+**FiQA anchor — PASS.** `whole` (57,638 documents, 11,040 over the window), built in
+5,882 s (~102 ms per document); `whole-d0@100` = **0.369210** / **0.707111** and
+`whole-d20@100` = **0.390964** / **0.707111** — the baselines exactly. All three anchors
+reproduce: the harness measures the engine. The re-ranked pass 1,338 s for 648 queries.
+
+**FiQA chonky** (the two-way leader): 57,638 documents → **160,592 passages** (median 3 per
+document; 2,052 over the window), split 1,714 s, embed 16,209 s (4 h 30); the re-ranked
+pass 1,346 s.
+
+| variant | passages | fused nDCG@10 | Δ vs whole@300 | re-ranked nDCG@10 | Δ | Recall@100 | Δ |
+|---|---|---|---|---|---|---|---|
+| whole@100 (anchor) | 57,638 | 0.3692 | | 0.3910 | | 0.7071 | |
+| whole@300 | 57,638 | 0.3698 | | 0.3896 | | 0.7129 | |
+| chonky | 160,592 | 0.2938 | −0.0759 | 0.3183 | **−0.0713** | 0.6601 | **−0.0528** |
+
+The depth alone: −0.0013 nDCG, +0.0058 recall. Reading: FiQA's posts are short (median 120
+positions; 81 % inside the window) and chonky cuts them into a median of three passages
+each; the fragments lose the context the question needs, and both metrics fall by five to
+seven points. Chunking documents that already fit the window is harmful with this splitter.
+
+## US4 — the decision by the rule (after the four variants)
+
+| variant | scope | Δ mean nDCG@10 | per dataset | Δ recall | verdict |
+|---|---|---|---|---|---|
+| contract | two-way | +0.0044 | scifact +0.0083, nfcorpus +0.0005 | −0.0054 | not recommended |
+| chonky | **three-way** | **−0.0148** | scifact +0.0293, nfcorpus −0.0024, **fiqa −0.0713** | −0.0201 | not recommended |
+| chonky-bounded | two-way | +0.0108 | scifact +0.0249, nfcorpus −0.0034 | −0.0069 | not recommended |
+
+**No variant is recommended by the rule as fixed.** `decide` was corrected while writing
+this: "best chunker" had compared a two-way mean with a three-way one; it now ranks only
+recommended variants and says `None` when there are none (tested).
+
+What the four variants say together: splitting helps when documents are long *and* the
+answer lies past the window (SciFact, +2.9 with chonky), is flat when the answer sits in
+the first sentences (NFCorpus), and hurts when the splitter fragments documents that
+already fit (FiQA). That points at a conditional recipe rather than a blanket one.
+
+## The owner's amendment — `chonky-if-long` (2026-09-18)
+
+A fifth variant, added by the owner after these results: chonky only for a document whose
+`title + " " + text` exceeds the window, the document whole otherwise. Implemented with a
+test (`test_chonky_if_long_splits_only_over_window_documents`, 29 tests green) and a
+50-document smoke (94 passages, median 1 per document), then run on all three sets under
+the same rule. The chonky splits are cached from the earlier runs, so no new splitter
+run was needed.
+
+## The fifth variant's cells
+
+| dataset | passages | over window | fused nDCG@10 | Δ | re-ranked nDCG@10 | Δ | Recall@100 | Δ |
+|---|---|---|---|---|---|---|---|---|
+| scifact | 10,297 | 2,311 | 0.7279 | +0.0145 | **0.7387** | **+0.0167** | **0.9693** | **+0.0043** |
+| nfcorpus | 10,410 | 1,027 | 0.3504 | −0.0046 | 0.3587 | −0.0034 | 0.3149 | −0.0092 |
+| fiqa | 95,041 | 2,052 | 0.3347 | −0.0351 | 0.3588 | **−0.0308** | 0.6922 | −0.0207 |
+
+SciFact: the first chunker with a gain *and* no recall cost (+0.4 recall). FiQA: a third of
+raw chonky's loss, still three points down — FiQA's over-window posts, once split, retrieve
+worse than whole even with the embedding cut at 256; the lexical stage over the whole post
+and the single embedding of its head beat the fragments. (FiQA's index: 95,041 passages,
+embed 9,611 s; the cached splits made the split step free.)
+
+One defect found on the way: the FiQA split cache was read with `str.splitlines()`, which
+also breaks on U+2028 inside a post's JSON string; the file was intact, the reader was
+wrong — fixed to read `\n`-lines with a test, and the FiQA block re-run from its start
+(the crash was before any embedding).
+
+## US4 — the final decision (`owner-decision.json`)
+
+| variant | scope | Δ mean nDCG@10 | scifact | nfcorpus | fiqa | Δ recall | verdict |
+|---|---|---|---|---|---|---|---|
+| contract | two-way | +0.0044 | +0.0083 | +0.0005 | — | −0.0054 | not recommended |
+| chonky | three-way | −0.0148 | +0.0293 | −0.0024 | −0.0713 | −0.0201 | not recommended |
+| chonky-bounded | two-way | +0.0108 | +0.0249 | −0.0034 | — | −0.0069 | not recommended |
+| chonky-if-long | three-way | −0.0059 | +0.0167 | −0.0034 | −0.0308 | −0.0085 | not recommended |
+
+**No chunking variant is recommended by the rule fixed in the spec; `best_chunker` is
+`None`.** The constants (0.005 / 0.005 / 0.005, 16, 256) are the script's literals, tested.
+
+What follows (spec US4): the demos' recipe and the documentation keep indexing documents
+whole; the shipped Wikipedia index is untouched; no chonky variant beat `contract` by the
+rule, so no feature to feed pre-split passages to the Rust build is opened. What the study
+adds to the record: chunking is corpus-dependent — a large gain where documents are long and
+the answer lies past the window (SciFact: +2.9 points re-ranked with chonky, +1.7 with
+chonky-if-long at no recall cost), nothing where the answer sits up front (NFCorpus), and a
+loss where documents are short or where splitting a long post loses its context (FiQA).
+A recipe would have to be chosen per corpus, with a measurement like this one behind it.
+
+## Success criteria
+
+| SC | Result |
+|---|---|
+| SC-001 | `whole@100` reproduces the six nDCG@10 figures and the Recall@100 figures exactly on all three datasets — **met** |
+| SC-002 | 32 cells committed with scores (whole: 3 datasets × 2 depths × 2 k; contract and chonky-bounded: 2 datasets; chonky and chonky-if-long: 3 datasets), one table — **met** |
+| SC-003 | `chonky-bounded`: 0 passages over the window on both sets; 11 and 12 under-16 remainders kept (merging would breach the window) — **met** as read in research D5 |
+| SC-004 | the decision file states the verdict by the rule with the means and per-dataset deltas; the constants are literals in the script and the tests — **met** |
+| SC-005 | `git diff --stat main -- crates/ swift/ python/src apps/ specs/*/baselines` empty — **met** |
+
+## Cost actually spent
+
+| block | wall time |
+|---|---|
+| SciFact anchor (whole build + two @100 cells) | 26 min |
+| NFCorpus anchor | 23 min |
+| SciFact, the four variants at @300 | 1 h 55 |
+| NFCorpus, the four variants | 1 h 45 |
+| FiQA whole (anchor + @300) | 2 h 20 |
+| FiQA chonky | 5 h 20 (160,592 passages) |
+| chonky-if-long: SciFact + NFCorpus | 45 min |
+| chonky-if-long: FiQA | 3 h 05 (95,041 passages) |
+
+About 16 hours of laptop time; the re-ranking of whole abstracts cost ~165 ms per pair
+(twice the Wikipedia-passage estimate), the chunked variants near the estimate.
+
+## Gate
+
+`cargo fmt --check`, `clippy`, `deny` unchanged; the four reference suites in one collection
+**118 passed**; no identifiers in the records; `runs/` holds 32 run files with scores and
+`build-records.json` (15 MB — the same kind of record 014 and 016 committed).
+
+## Deliberately not done
+
+- No engine, FFI, format, baseline, demo or shipped-artefact change: the study measured and
+  recorded; the recipe stays "index whole".
+- No further variants (a per-corpus rule, a contract-if-long, a smaller window for the
+  splitter) — each would be another spec with a measurement like this one.
+- No CI job (all model-backed).

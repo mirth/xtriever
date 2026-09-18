@@ -11,6 +11,11 @@
 **Owner's framing (2026-09-17)**: "I want to pursue chonky further. We actually didn't compute
 how Chonky chunking affects the metrics."
 
+**Owner's amendment (2026-09-18)**, after the four variants had run: a fifth variant,
+`chonky-if-long` — chonky only for documents whose contents exceed the window, the rest
+indexed whole — because on FiQA (81 % of posts inside the window) chonky fragmented short
+documents and lost 7 nDCG@10 points. The same rule applies to it; it runs on all three sets.
+
 ## Why This Spec Reads Technically
 
 Every retrieval number this repository has published was measured on documents indexed
@@ -135,7 +140,9 @@ numbers; a unit test checks the rule on synthetic rows at the boundaries.
   budget 256 − title positions, priced by the embedder's tokenizer); `chonky` (the pinned
   splitter, unbounded); `chonky-bounded` (chonky, then chunks over the window split at
   blank lines and then at sentence ends until each part fits, and passages under 16
-  positions merged into the preceding passage of the same document).
+  positions merged into the preceding passage of the same document); and, by the owner's
+  amendment, `chonky-if-long` (chonky for a document whose `title + " " + text` exceeds the
+  window, the document whole otherwise).
 - **FR-005**: Every passage MUST carry its document id; retrieval MUST be at k = 300
   passages with candidate depth 300, at re-rank depth 0 and 20 (α 0.5); aggregation MUST
   be MaxP (a document's score is its best passage's; order by first occurrence in the

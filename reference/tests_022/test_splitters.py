@@ -1,6 +1,8 @@
 """The four splitters' pure parts (research D5; spec FR-004): the contract budget and the
 title-fills-window case, chonky's partition check, and chonky-bounded's merge-then-bound."""
 
+import json
+
 import pytest
 
 from helpers_022 import MIN_POSITIONS, WINDOW, StubSplitter, words_cost, words_positions
@@ -81,3 +83,27 @@ def test_passages_for_whole_and_counts():
     passages, counters = cs.passages_for("whole", doc, words_cost, _cost_positions, splitter=None)
     assert passages == [doc["text"]]
     assert counters == {"over_window": 0, "under_16": 0, "title_fills_window": 0}
+
+
+def test_chonky_if_long_splits_only_over_window_documents():
+    short = {"_id": "s", "title": "T", "text": "one two three."}
+    long_text = "\n\n".join(" ".join(f"w{i}{j}" for j in range(40)) for i in range(8))  # 320 words
+    long = {"_id": "l", "title": "T", "text": long_text}
+    pieces = long_text.split("\n\n")
+    splitter = StubSplitter({long_text: [p + ("\n\n" if i < len(pieces) - 1 else "") for i, p in enumerate(pieces)]})
+    passages, counters = cs.passages_for("chonky-if-long", short, words_cost, _cost_positions, splitter=None)
+    assert passages == [short["text"]] and counters["over_window"] == 0
+    passages, counters = cs.passages_for("chonky-if-long", long, words_cost, _cost_positions, splitter=splitter)
+    assert passages == pieces and counters["over_window"] == 0
+    assert "chonky-if-long" in cs.VARIANTS and "chonky-if-long" in cs.CHUNKERS
+
+
+def test_chonky_cache_survives_unicode_line_separators(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "STUDY_DIR", tmp_path)
+    text = "before\u2028after"
+    splits = cs.ChonkySplits("toy", None)
+    splits.cache["d1"] = [text]
+    splits.path.parent.mkdir(parents=True, exist_ok=True)
+    splits.path.write_text(json.dumps({"_id": "d1", "pieces": [text]}, ensure_ascii=False) + "\n", encoding="utf-8")
+    again = cs.ChonkySplits("toy", None)
+    assert again.cache == {"d1": [text]}

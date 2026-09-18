@@ -14,6 +14,8 @@ Variants:
   chonky          the pinned chonky paragraph splitter, unbounded
   chonky-bounded  chonky, then fragments (< 16 positions) merged into their predecessor and
                   any chunk over the window re-chunked by the contract chunker
+  chonky-if-long  chonky only for documents whose contents exceed the window; the rest whole
+                  (the owner's fifth variant after FiQA, where chonky fragmented short posts)
 
 Cells are `<variant>-d<rerank depth>@<k>.<dataset>`: `@100` (k = 100, candidate depth 100)
 is the harness's configuration and exists only for `whole` — it must reproduce the committed
@@ -67,8 +69,8 @@ DEPTHS = (0, 20)
 DOCS_PER_QUERY = 100
 BATCH = 4_096
 DATASETS = ("scifact", "nfcorpus", "fiqa")
-VARIANTS = ("whole", "contract", "chonky", "chonky-bounded")
-CHUNKERS = ("contract", "chonky", "chonky-bounded")
+VARIANTS = ("whole", "contract", "chonky", "chonky-bounded", "chonky-if-long")
+CHUNKERS = ("contract", "chonky", "chonky-bounded", "chonky-if-long")
 
 BEIR = REPO / "reference/datasets/beir"
 RUNS_DIR = REPO / "specs/022-chunking-study/runs"
@@ -202,6 +204,8 @@ def passages_for(variant: str, doc: dict, cost, positions, splitter) -> tuple[li
     elif variant == "chonky-bounded":
         passages, kept = bound_and_merge(chonky_passages(text, splitter), cost, positions, title_positions)
         counters["under_16"] += kept
+    elif variant == "chonky-if-long":
+        passages = chonky_passages(text, splitter) if positions(join_title_text(title, text)) > WINDOW else [text]
     else:
         raise StudyError(f"unknown variant {variant!r}")
     for p in passages:
@@ -256,9 +260,13 @@ class ChonkySplits:
         self.cache: dict[str, list[str]] = {}
         self._splitter = None
         if self.path.exists():
-            for line in self.path.read_text(encoding="utf-8").splitlines():
-                rec = json.loads(line)
-                self.cache[rec["_id"]] = rec["pieces"]
+            # one JSON object per "\n" line; never `splitlines()`, which also breaks on U+2028
+            # and friends that appear inside FiQA posts (ensure_ascii=False keeps them raw)
+            with self.path.open("r", encoding="utf-8", newline="\n") as fh:
+                for line in fh:
+                    if line.strip():
+                        rec = json.loads(line)
+                        self.cache[rec["_id"]] = rec["pieces"]
 
     def splitter_for(self, doc_id: str, text: str):
         """A callable yielding the cached pieces, splitting with chonky on a miss."""
@@ -320,7 +328,9 @@ def build(variant: str, dataset: str, limit: int | None = None) -> dict:
 
     for doc in docs:
         t = time.perf_counter()
-        splitter = splits.splitter_for(doc["_id"], doc.get("text", "")) if splits else None
+        splitter = None
+        if splits and not (variant == "chonky-if-long" and cost.token_count(join_title_text(doc.get("title", ""), doc.get("text", ""))) <= WINDOW):
+            splitter = splits.splitter_for(doc["_id"], doc.get("text", ""))
         try:
             passages, c = passages_for(variant, doc, cost.cost, cost.token_count, splitter)
         except StudyError as e:
