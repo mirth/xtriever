@@ -29,6 +29,27 @@ pub struct DenseStats {
     pub dead: u64,
     /// The row file's generation (`vectors.<generation>.bin`); `compact` advances it.
     pub generation: u64,
+    /// Row ids strictly ascending in the file (a fresh or compacted generation appended to
+    /// with higher ids only).
+    pub ordered: bool,
+}
+
+/// The one definition of an acceptable dead-row share: `None`, or a finite value in
+/// `0.0..=1.0`. `Error::Schema` otherwise — the pipeline's configuration check and the
+/// descriptor check at open both call this, so the rule cannot drift between layers.
+///
+/// # Errors
+///
+/// `Error::Schema` naming the value.
+pub fn validate_compaction_threshold(share: Option<f32>) -> Result<()> {
+    if let Some(s) = share
+        && !(s.is_finite() && (0.0..=1.0).contains(&s))
+    {
+        return Err(schema_err(format!(
+            "compaction threshold {s} is not in 0.0..=1.0"
+        )));
+    }
+    Ok(())
 }
 
 /// A flat, exact vector index: `vectors.<g>.bin` (rows, append-only) + `manifest.bin`.
@@ -309,6 +330,7 @@ impl FlatIndex {
             live: self.header.live,
             dead: self.dead.len(),
             generation: self.header.generation,
+            ordered: self.header.ordered,
         }
     }
 
@@ -343,13 +365,7 @@ impl FlatIndex {
         if self.read_only {
             return Err(Error::read_only());
         }
-        if let Some(s) = share
-            && !(s.is_finite() && (0.0..=1.0).contains(&s))
-        {
-            return Err(schema_err(format!(
-                "compaction threshold {s} is not in 0.0..=1.0"
-            )));
-        }
+        validate_compaction_threshold(share)?;
         self.compaction_threshold = share;
         Ok(())
     }
@@ -754,9 +770,12 @@ impl VectorIndex for FlatIndex {
         let (adds, superseded) = self.pending_counts();
         let rows_after = self.layout.count + adds;
         let dead_after = self.dead.len() + superseded as u64;
+        // The share is compared in its own precision (`f32`), so "more than the share" means the
+        // same at every boundary whatever the share's binary representation: 7 of 10 at 0.7
+        // and 6 of 10 at 0.6 are both *at* the share, not over it.
         if let Some(t) = self.compaction_threshold
             && rows_after > 0
-            && (dead_after as f64 / rows_after as f64) > f64::from(t)
+            && (dead_after as f32 / rows_after as f32) > t
         {
             return self.rewrite();
         }

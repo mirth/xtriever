@@ -159,12 +159,15 @@ impl IndexHandle {
         crate::index::commit(&self.inner)
     }
 
-    /// Commit, then merge the lexical stage into one segment — the shape a shipped index has
-    /// (Feature 008). Hits and scores are identical before and after.
+    /// Commit, then compact the dense vectors (live rows only, under a new generation —
+    /// Feature 024) and merge the lexical stage into one segment — the shape a shipped index
+    /// has (Feature 008). Dense scores are identical before and after; across a merge that
+    /// physically drops deleted or replaced documents the lexical BM25 statistics move, so
+    /// fused hits and scores can change (ADR-0013).
     ///
     /// # Errors
     ///
-    /// As [`commit`](Self::commit), plus the lexical merge's.
+    /// As [`commit`](Self::commit), plus the dense compaction's and the lexical merge's.
     pub fn merge(&self) -> Result<(), XtrieverError> {
         crate::index::merge(&self.inner)
     }

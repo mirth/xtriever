@@ -4,7 +4,7 @@
 mod support;
 
 use support::{TestIndex, corpus, ids, index_in_batches, queries};
-use xtriever_core::LexicalIndex;
+use xtriever_core::{DocId, LexicalIndex};
 
 fn build(batches: usize) -> TestIndex {
     let mut t = TestIndex::create_fixture();
@@ -191,4 +191,48 @@ fn k_boundary_membership_is_identical_across_processes() {
             "process {i} returned different k-boundary membership"
         );
     }
+}
+
+// Feature 024 (ADR-0013): the backend's BM25 statistics are deletion-inclusive until a merge
+// physically drops the deleted documents (`stats.rs`; Feature 002 FR-025), so a merge that
+// does so moves BM25 score bits — and a merge on a single segment, which has nothing to
+// merge, moves none. This pins the boundary the pipeline's merge doc and spec FR-005 rely on.
+#[test]
+fn merge_after_deletes_moves_bm25_bits_only_when_it_drops_documents() {
+    let q = support::query("match_body").query;
+    let bits = |t: &support::TestIndex| -> Vec<(u32, u32)> {
+        t.index
+            .search(&q, None, 10)
+            .expect("search")
+            .iter()
+            .map(|h| (h.id.0, h.score.to_bits()))
+            .collect()
+    };
+    let mut moved = Vec::new();
+    for batches in [1usize, 3] {
+        let mut t = support::TestIndex::create_fixture();
+        support::index_in_batches(&mut t.index, &support::corpus().documents, batches);
+        let victims: Vec<DocId> = support::ids(&t.index.search(&q, None, 10).expect("search"))
+            [1..4]
+            .iter()
+            .map(|&i| DocId(i))
+            .collect();
+        t.index.delete(&victims).expect("delete");
+        t.index.commit().expect("commit");
+        let after_delete = bits(&t);
+        t.index.merge().expect("merge");
+        let after_merge = bits(&t);
+        assert_eq!(
+            support::ids_of(&after_delete),
+            support::ids_of(&after_merge),
+            "{batches} batches: the same documents rank in the top 10"
+        );
+        moved.push(after_delete != after_merge);
+    }
+    assert_eq!(
+        moved,
+        vec![false, true],
+        "one segment: nothing to merge, bits unchanged; three segments: the merge drops the \
+         deleted documents and the BM25 bits move"
+    );
 }

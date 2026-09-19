@@ -153,6 +153,19 @@ the single-writer precondition the caller owns is unchanged.
   (`crates/xtriever-dense/tests/support/v1_oracle.json`) is reproducible from
   `reference/gen_024_fixtures.py`, which recomputes every expectation from the contract's
   arithmetic in Python (Principle II).
+- An observation from PR B's tests, about the *lexical* stage: the backend's BM25
+  statistics are deletion-inclusive until a merge physically drops the deleted or replaced
+  documents (Feature 002 FR-025), so any `merge` that drops documents — after plain deletes
+  or replacements, whenever the index holds more than one segment — moves BM25 and hence
+  fused bits; a single-segment merge drops nothing and keeps every bit. (PR B's first
+  reading, "replacements move bits, plain deletes do not", was an artefact of probing the
+  deletes on a one-segment fixture.) Pinned by the lexical crate's
+  `merge_after_deletes_moves_bm25_bits_only_when_it_drops_documents` (one batch → every bit
+  kept; three batches → bits move), the only lexical change on the branch: pre-existing
+  behaviour, not something this format changes. The dense stage's scores are bit-identical
+  across a compaction by construction and the tests compare every live row's score; spec
+  FR-005 was revised to say exactly this, and the lexical behaviour is left for a lexical
+  spec.
 - Existing version-1 indexes must be rebuilt (or converted once; the Wikipedia artefact was
   converted by `reference/convert_dense_v1_to_v2.py`, a record of the step rather than a
   supported tool).

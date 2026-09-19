@@ -174,6 +174,11 @@ pub fn fixture_index() -> TestIndex {
     t
 }
 
+/// The ids of `(id, score bits)` pairs.
+pub fn ids_of(pairs: &[(u32, u32)]) -> Vec<u32> {
+    pairs.iter().map(|p| p.0).collect()
+}
+
 pub fn ids(hits: &[Hit]) -> Vec<u32> {
     hits.iter().map(|h| h.id.0).collect()
 }

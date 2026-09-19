@@ -62,7 +62,8 @@ fn churned(dir: &Path) -> FlatIndex {
             rows: 70,
             live: 52,
             dead: 18,
-            generation: 0
+            generation: 0,
+            ordered: false
         }
     );
     index
@@ -80,7 +81,8 @@ fn compact_drops_dead_rows_and_keeps_every_bit() {
             rows: 52,
             live: 52,
             dead: 0,
-            generation: 1
+            generation: 1,
+            ordered: true
         }
     );
     assert!(tmp.path().join("vectors.1.bin").is_file());
@@ -149,7 +151,8 @@ fn threshold_compacts_on_the_crossing_commit() {
             rows: 100,
             live: 80,
             dead: 20,
-            generation: 0
+            generation: 0,
+            ordered: true
         },
         "20 % is not over 25 %"
     );
@@ -162,7 +165,8 @@ fn threshold_compacts_on_the_crossing_commit() {
             rows: 100,
             live: 75,
             dead: 25,
-            generation: 0
+            generation: 0,
+            ordered: true
         },
         "exactly 25 % is not over 25 %: the comparison is strict"
     );
@@ -174,7 +178,8 @@ fn threshold_compacts_on_the_crossing_commit() {
             rows: 74,
             live: 74,
             dead: 0,
-            generation: 1
+            generation: 1,
+            ordered: true
         },
         "26 % crosses 25 %: compacted in that commit"
     );
@@ -288,4 +293,35 @@ fn a_threshold_commit_is_one_protocol_that_fails_whole() {
     assert_eq!(index.vector(DocId(20)), Some(vec_for(20)));
     assert_eq!(index.vector(DocId(1)), None);
     assert_eq!(index.stats().dead, 1);
+}
+
+#[test]
+fn the_share_is_compared_in_its_own_precision() {
+    // 0.7 and 0.6 are not representable in f32 (0.699999988…, 0.600000024…): a commit leaving
+    // exactly 7 of 10 or 6 of 10 rows dead is *at* the share either way, never over it — the
+    // comparison happens in the share's own precision, not in f64 against the widened f32.
+    for (share, victims) in [(0.7f32, 14u32), (0.6, 12), (0.9, 18), (0.25, 5)] {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut index = FlatIndex::create(tmp.path(), DIM, Metric::Dot, "fp").unwrap();
+        index.set_compaction_threshold(Some(share)).unwrap();
+        for i in 0..20 {
+            index.add(DocId(i), &vec_for(i)).unwrap();
+        }
+        index.commit().unwrap();
+        let dead: Vec<DocId> = (0..victims).map(DocId).collect(); // victims / 20 == share
+        index.delete(&dead).unwrap();
+        index.commit().unwrap();
+        assert_eq!(
+            index.stats().generation,
+            0,
+            "share {share}: {victims}/20 is at the share, not over it"
+        );
+        index.delete(&[DocId(victims)]).unwrap();
+        index.commit().unwrap();
+        assert_eq!(
+            index.stats().generation,
+            1,
+            "share {share}: one more row crosses it"
+        );
+    }
 }

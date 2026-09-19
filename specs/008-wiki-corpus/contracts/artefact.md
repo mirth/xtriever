@@ -8,7 +8,8 @@
 index/                      # a pipeline format-v2 hybrid index, opened unchanged by 007's surface
 ├── xtriever-pipeline.json  # descriptor (untouched format)
 ├── lexical/                # one segment after merge
-├── dense/index.bin
+├── dense/manifest.bin           # since Feature 024 (dense format 2): manifest + vectors.<g>.bin, not index.bin
+├── dense/vectors.<g>.bin
 ├── passages.bin
 ├── ids.json
 └── corpus.json             # 008 sidecar (identity + counts); the pipeline ignores it
