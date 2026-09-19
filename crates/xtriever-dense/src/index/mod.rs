@@ -36,8 +36,9 @@ pub struct DenseStats {
 /// `add` and `delete` stage changes in memory; `commit` appends the new rows, marks superseded
 /// and deleted rows dead, and replaces the manifest by `rename`; `compact` writes the live rows
 /// under a new generation and switches the manifest the same way. A reader (or a mapping) of
-/// the previous state is never disturbed by either, and a crash at any point leaves the
-/// previous manifest and therefore the previous state.
+/// the previous state is never disturbed by either, and a crash at any point leaves either the
+/// previous manifest or the new one — the previous committed state or the fully committed
+/// new one, never a partial state.
 #[derive(Debug)]
 pub struct FlatIndex {
     dir: PathBuf,
@@ -72,6 +73,13 @@ impl FlatIndex {
     pub fn create(dir: &Path, dim: usize, metric: Metric, fingerprint: &str) -> Result<Self> {
         if dim == 0 {
             return Err(corrupt("dim must be at least 1"));
+        }
+        // The row layout must be representable before a byte is written: a refused `dim` must
+        // not leave a populated, unusable directory behind.
+        if Rows::checked(0, dim).is_none() {
+            return Err(corrupt(format!(
+                "dim {dim} does not fit this platform's row layout"
+            )));
         }
         std::fs::create_dir_all(dir)?;
         if std::fs::read_dir(dir)?.next().is_some() {

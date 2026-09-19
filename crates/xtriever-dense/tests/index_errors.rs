@@ -204,6 +204,25 @@ fn a_generation_that_cannot_advance_is_corrupt_not_an_overflow() {
 }
 
 #[test]
+fn an_unrepresentable_dim_is_refused_before_anything_is_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("idx");
+    assert!(matches!(
+        FlatIndex::create(&dir, usize::MAX, Metric::Dot, "fp").unwrap_err(),
+        Error::Corrupt(_)
+    ));
+    assert!(
+        !dir.exists() || std::fs::read_dir(&dir).unwrap().next().is_none(),
+        "a refused create leaves nothing behind"
+    );
+    // A corrected retry succeeds in the same directory.
+    assert_eq!(
+        FlatIndex::create(&dir, 3, Metric::Dot, "fp").unwrap().len(),
+        0
+    );
+}
+
+#[test]
 fn an_empty_index_still_needs_its_row_file() {
     // A manifest naming zero rows is still a manifest naming a generation: the row file must
     // exist, for a read-only open as for a writable one.

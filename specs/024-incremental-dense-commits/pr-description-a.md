@@ -47,6 +47,8 @@ exactly the committed bytes.
 
 **Review round 8** (three comments, applied): the rewrite validates its row count against the `u32` limit before I/O, an empty index's open checks its row file exists, and read-only opens keep the no-concurrent-writer precondition.
 
+**Review round 9** (five comments, applied): `create` validates the layout before writing, the crash guarantee is stated as old-or-new (never partial), the crate docs defer `merge` compaction to PR B, and the completed tasks record the protocols as landed.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

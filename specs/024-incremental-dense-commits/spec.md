@@ -157,7 +157,9 @@ dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two
   bit-identical before and after (the pipeline's existing merge-determinism tests extend to
   the dense file).
 - **FR-006**: A crash at any byte boundary during `commit` or `merge` MUST leave an index
-  that opens to the previous committed state; a partially appended tail MUST be ignored.
+  that opens to either the previous committed state or the fully committed new one — the
+  manifest rename is the switch — never to a partial state; a partially appended tail MUST
+  be ignored.
 - **FR-007**: The new layout is dense format version 2 with its own ADR; version 1 is not
   read — a version-1 file MUST be refused at open with the existing version error (naming
   the file's version and this build's). Every artefact the repository relies on MUST be

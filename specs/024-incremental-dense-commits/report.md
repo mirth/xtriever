@@ -176,3 +176,15 @@ open exposes the committed rows only; the next writable open cleans up.
 3. The read-only docs no longer suggest sharing the directory with a writer: the
    no-concurrent-writer precondition of every open (spec edge cases, the pipeline's
    `OpenOptions`) stands; a read-only open merely alters nothing.
+
+### Review round 9 (Copilot, five comments — all applied)
+
+1. `create` validates the row layout (`Rows::checked(0, dim)`) before any write, so a refused
+   `dim` leaves no populated, unusable directory behind.
+2. The `FlatIndex` doc and FR-006 now state the transaction as it is: a crash reopens to the
+   previous committed state *or* the fully committed new one (the manifest rename is the
+   switch), never a partial state — which is what `index_crash` enumerates.
+3. The crate docs no longer say the pipeline's `merge` compacts — that lands in PR B (T021).
+4. T011 and T013's completed descriptions record the protocols as landed (rows in memory
+   before the rename; the threshold decided up front as one rewrite; pending folded into
+   `compact`), so an audit cannot recreate the superseded crash window.
