@@ -46,7 +46,7 @@ no device job here.)
 | unfiltered scan | 32.8 ms (v1 shape) | **31.6 ms** (−4 %); 40.4 vs 40.1 ms in the contended re-run after the review fixes | within 5 % |
 | scan, `allowed` = every other id | — | 16.2 ms | reported |
 | 10-row commit, bytes written | 154,400,101 | **15,596** (ten rows + one manifest, by the handle's own counter; net growth 15,440) | < 100 KB |
-| 10-row commit, time | 145–176 ms across runs (a `rows × row_bytes` rewrite by construction) | **18.5 ms** idle after the `/code-review` fixes (17.5–18.2 before them; 12.9 before the directory fsyncs; three `fsync`s and a manifest read for the stale-writer check now) | < 50 ms |
+| 10-row commit, time | 145–176 ms across runs (a `rows × row_bytes` rewrite by construction) | **20.4 ms** warm, **23.1 ms** cold (the first commit of a freshly opened handle — no matrix reallocation; the difference is the one-time order check and a manifest read); 18.5 before round 14, 12.9 before the directory fsyncs | < 50 ms |
 
 The first commit run measured 37.6 ms: `commit` re-read the whole row file after each
 append. Fixed (`absorb`: the in-memory buffer grows by the appended bytes; a mapping is
@@ -268,3 +268,14 @@ manifest, goldens reproduce, the committed file kept); the bench re-recorded.
    avoid, so the flag stays trusted by read-only handles (like `rows` or the tombstone set —
    the format has no checksums); a writable handle verifies it once, before its first write,
    and refuses to build on a lying manifest (`Corrupt` "not ordered"); tested both ways.
+
+### Review round 14 (Copilot, two comments — both applied)
+
+1. The buffered path's first append after an open reallocated (and copied) the whole matrix.
+   The committed rows now stay in the buffer they were read into and appended rows go to a
+   separate in-memory tail (`RowBytes { base, tail }`: every row lies wholly in one segment),
+   folded back at the next reopen or compaction; the mapped path keeps its lazy re-map. A new
+   bench case, `commit_10_rows/v2_first_append_after_open`, times exactly the cold first
+   commit of a freshly opened handle (see the bench record).
+2. `bytes_written` counts a manifest right after its `write_all` succeeds, before the sync,
+   as the append path does.

@@ -32,8 +32,8 @@ New:
   changes folded in, one manifest rename) instead of an append — one protocol, so it fails
   whole or succeeds whole, never as a durable append followed by a separate compaction.
 - `stats(&self) -> DenseStats { rows, live, dead, generation }` for tests and records;
-  `bytes_written(&self)`: bytes this handle wrote (each write counted once it succeeded — a
-  rolled-back append still wrote its rows); `is_sync_pending(&self)`; `is_read_only(&self)`.
+  `bytes_written(&self)`: bytes this handle wrote (each `write_all` counted once it
+  succeeded, before the sync — a rolled-back append still wrote its rows); `is_sync_pending(&self)`; `is_read_only(&self)`.
 - Every writable `commit` / `compact` first verifies the manifest on disk is the one this
   handle last saw (generation, rows) and refuses with `Error::Corrupt` "changed by another
   writer" otherwise.

@@ -26,15 +26,6 @@ impl Bytes {
             Self::Mapped(m) => &m[..],
         }
     }
-
-    /// The heap buffer, if this is one (a mapping cannot grow in place).
-    pub(crate) fn owned_mut(&mut self) -> Option<&mut Vec<u8>> {
-        match self {
-            Self::Owned(v) => Some(v),
-            #[cfg(feature = "mmap")]
-            Self::Mapped(_) => None,
-        }
-    }
 }
 
 /// Read `path` through `load_path`, whole.

@@ -123,6 +123,12 @@ the single-writer precondition the caller owns is unchanged.
 
 ## Consequences
 
+- An append never reallocates or copies the matrix already in memory: on the buffered path
+  the committed rows stay in the buffer they were read into and the appended rows live in a
+  separate in-memory tail (every row lies wholly in one segment — the tail starts at a row
+  boundary), folded back at the next reopen or compaction; the mapped path re-maps the
+  committed prefix (a mapping is lazy). The first commit after an open costs the same as any
+  other (the bench's cold case).
 - A 10-row commit into a 100k-row index writes the ten rows plus a manifest under 1 KB
   instead of the `rows × (8 + 4·dim)` bytes a version-1 rewrite wrote (154 MB at 100k × 384 —
   arithmetic, not a measurement; the bench in `crates/xtriever-dense/benches/scan.rs`

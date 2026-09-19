@@ -38,3 +38,9 @@ v2_append: 15611 bytes written per 10-row commit (the handle's own count: rows +
 commit_10_rows/v2_append
                         time:   [17.497 ms 18.470 ms 19.467 ms]
 v2_append: 15611 bytes written per 10-row commit (the handle's own count: rows + manifest; 585 commits), net dense/ growth 15440 bytes per commit
+# commit group, idle, after review round 14 (committed rows + an appended in-memory tail; `v2_first_append_after_open` is the cold first commit of a freshly opened handle — no reallocation of the matrix):
+commit_10_rows/v2_append
+                        time:   [19.280 ms 20.384 ms 21.071 ms]
+commit_10_rows/v2_first_append_after_open
+                        time:   [22.152 ms 23.143 ms 24.472 ms]
+v2_append: 15611 bytes written per 10-row commit (the handle's own count: rows + manifest; 530 commits), net dense/ growth 15440 bytes per commit

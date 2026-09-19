@@ -59,6 +59,8 @@ exactly the committed bytes.
 
 **Review round 13** (two comments): the stale-writer check covers no-op commits/compacts; the `ordered` flag is trusted by read-only handles and verified by writable handles before their first write (a full scan at every open would forfeit the mapped-open goal).
 
+**Review round 14** (two comments, applied): an append never reallocates the matrix in memory (committed rows + an appended tail), with a cold first-append-after-open bench; `bytes_written` counts a manifest after its write, before the sync.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

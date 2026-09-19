@@ -16,7 +16,7 @@ use crate::FORMAT_VERSION;
 use crate::LoadPath;
 use crate::bytes::{self, Bytes};
 use crate::error::{corrupt, dim_mismatch, schema_err};
-use format::{Header, MANIFEST, MANIFEST_TMP, Rows, V1_FILE};
+use format::{Header, MANIFEST, MANIFEST_TMP, RowBytes, Rows, V1_FILE};
 
 /// What the manifest says about the committed state — for tests, records and `about`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,8 +50,12 @@ pub struct FlatIndex {
     /// The validated row layout of `header` (`rows × dim`); switched together with it.
     layout: Rows,
     load_path: LoadPath,
-    /// The row file over exactly its committed length.
+    /// The row file's committed rows as loaded (read, or mapped) …
     rows: Bytes,
+    /// … plus the rows appended in memory since (the buffered path: the matrix already in
+    /// memory is never reallocated or copied by an append; a reopen or a compaction folds the
+    /// tail back). Empty on the mapped path, which re-maps the committed prefix instead.
+    tail: Vec<u8>,
     dead: RoaringBitmap,
     /// Live id → its row, built only when the file needs it — tombstones present, or ids not
     /// in order. An ordered, tombstone-free generation (fresh, compacted, or appended to with
@@ -98,6 +102,7 @@ struct Committed {
     header: Header,
     layout: Rows,
     rows: Bytes,
+    tail: Vec<u8>,
     dead: RoaringBitmap,
     table: Option<BTreeMap<u32, u32>>,
 }
@@ -277,7 +282,7 @@ impl FlatIndex {
     #[must_use]
     pub fn vector(&self, id: DocId) -> Option<Vec<f32>> {
         let r = self.live_row(id)?;
-        Some(self.layout.row_at(self.rows.as_slice(), r).collect())
+        Some(self.layout.row_at(self.bytes(), r).collect())
     }
 
     /// Whether this handle was opened read-only (`open_read_only*`): every mutation is refused
@@ -409,21 +414,20 @@ impl FlatIndex {
         // Stream the merged rows to the new file — a kept row is its committed bytes copied
         // as they are — keeping a copy in memory only on the buffered path (the memory the new
         // state needs anyway); the mapped path maps the file afterwards.
-        let prepared = (|| -> Result<(Bytes, u64)> {
+        let prepared = (|| -> Result<Bytes> {
             let file = std::fs::File::create(&new_path)?;
             let mut out = std::io::BufWriter::new(file);
             let mut mem: Option<Vec<u8>> = matches!(self.load_path, LoadPath::Buffered)
                 .then(|| Vec::with_capacity(layout.len_bytes()));
             let mut row_buf = Vec::with_capacity(layout.row_bytes);
             let mut emitted = 0usize;
-            let bytes = self.rows.as_slice();
+            let bytes = self.bytes();
             let old = self.layout;
             for row in self.merged_rows() {
                 row_buf.clear();
                 match row {
                     Merged::Kept(r) => {
-                        let at = r * old.row_bytes;
-                        row_buf.extend_from_slice(&bytes[at..at + old.row_bytes]);
+                        row_buf.extend_from_slice(old.row_bytes_at(bytes, r));
                     }
                     Merged::Pending(id, v) => {
                         format::encode_row(&mut row_buf, id, row_norm(v), v);
@@ -439,6 +443,7 @@ impl FlatIndex {
             let file = out
                 .into_inner()
                 .map_err(std::io::IntoInnerError::into_error)?;
+            self.written += layout.len_bytes() as u64;
             file.sync_all()?;
             // The new generation's entry must be durable before a manifest names it.
             fs::sync_dir(&self.dir)?;
@@ -447,16 +452,15 @@ impl FlatIndex {
                 None if layout.count == 0 => Bytes::Owned(Vec::new()),
                 None => bytes::read_prefix(&new_path, self.load_path, layout.len_bytes())?,
             };
-            Ok((rows, layout.len_bytes() as u64))
+            Ok(rows)
         })();
-        let (rows, wrote) = match prepared {
+        let rows = match prepared {
             Ok(v) => v,
             Err(e) => {
                 let _ = std::fs::remove_file(&new_path);
                 return Err(e);
             }
         };
-        self.written += wrote;
         let switched =
             match write_manifest(&self.dir, &header, &RoaringBitmap::new(), &mut self.written) {
                 Ok(()) => Ok(()),
@@ -471,6 +475,7 @@ impl FlatIndex {
             header,
             layout,
             rows,
+            tail: Vec::new(),
             dead: RoaringBitmap::new(),
             table: None,
         });
@@ -492,7 +497,7 @@ impl FlatIndex {
     /// row, or a pending vector (a replacement or insert); deletes and superseded rows are
     /// skipped.
     fn merged_rows(&self) -> impl Iterator<Item = Merged<'_>> + '_ {
-        let bytes = self.rows.as_slice();
+        let bytes = self.bytes();
         let layout = self.layout;
         let committed: Box<dyn Iterator<Item = (u32, usize)> + '_> = match &self.table {
             Some(t) => Box::new(t.iter().map(|(&id, &r)| (id, r as usize))),
@@ -552,7 +557,7 @@ impl FlatIndex {
         if self.order_verified || self.table.is_some() {
             return Ok(());
         }
-        let bytes = self.rows.as_slice();
+        let bytes = self.bytes();
         let layout = self.layout;
         for r in 1..layout.count {
             if layout.id_at(bytes, r - 1) >= layout.id_at(bytes, r) {
@@ -580,11 +585,21 @@ impl FlatIndex {
 
     /// Switch the in-memory state to a committed one — the one place it changes.
     fn adopt(&mut self, c: Committed) {
+        debug_assert!(c.rows.as_slice().len() + c.tail.len() >= c.layout.len_bytes());
         self.header = c.header;
         self.layout = c.layout;
         self.rows = c.rows;
+        self.tail = c.tail;
         self.dead = c.dead;
         self.table = c.table;
+    }
+
+    /// The committed rows: the loaded segment plus the appended tail.
+    fn bytes(&self) -> RowBytes<'_> {
+        RowBytes {
+            base: self.rows.as_slice(),
+            tail: &self.tail,
+        }
     }
 
     fn live_row(&self, id: DocId) -> Option<usize> {
@@ -592,7 +607,7 @@ impl FlatIndex {
             Some(t) => t.get(&id.0).map(|&r| r as usize),
             None => {
                 // Ordered, tombstone-free: binary search over the row ids.
-                let bytes = self.rows.as_slice();
+                let bytes = self.bytes();
                 let (mut lo, mut hi) = (0usize, self.layout.count);
                 while lo < hi {
                     let mid = lo + (hi - lo) / 2;
@@ -626,6 +641,7 @@ impl FlatIndex {
             layout: committed.layout,
             load_path,
             rows: Bytes::Owned(Vec::new()),
+            tail: Vec::new(),
             dead: RoaringBitmap::new(),
             table: None,
             pending: BTreeMap::new(),
@@ -753,10 +769,8 @@ impl VectorIndex for FlatIndex {
         let mut appended: Vec<(u32, u32)> = Vec::new(); // (id, row)
         let mut removed: Vec<u32> = Vec::new(); // ids whose live row is superseded or deleted
         let mut next_row = self.layout.count as u32;
-        let last_id = (self.layout.count > 0).then(|| {
-            self.layout
-                .id_at(self.rows.as_slice(), self.layout.count - 1)
-        });
+        let last_id =
+            (self.layout.count > 0).then(|| self.layout.id_at(self.bytes(), self.layout.count - 1));
         let mut ordered = self.header.ordered;
         for (id, change) in &self.pending {
             if let Some(r) = self.live_row(*id) {
@@ -796,12 +810,15 @@ impl VectorIndex for FlatIndex {
             // file whatever the range). Whatever is left beyond the new length after a
             // shorter append is ignored the same way and cut at the next writable open.
             file.seek(SeekFrom::Start(committed_len))?;
-            if let Err(e) = file.write_all(&buf).and_then(|()| file.sync_all()) {
+            let wrote = file.write_all(&buf);
+            if wrote.is_ok() {
+                self.written += buf.len() as u64;
+            }
+            if let Err(e) = wrote.and_then(|()| file.sync_all()) {
                 // Best effort: the partial tail is unobservable either way.
                 let _ = file.set_len(committed_len);
                 return Err(e.into());
             }
-            self.written += buf.len() as u64;
         }
         // 3. Bring the appended rows into memory *before* the manifest switches: a buffer grows
         //    in place (undone by a truncate on failure), a mapping is made anew over the new
@@ -821,14 +838,11 @@ impl VectorIndex for FlatIndex {
                 let _ = file.set_len(committed_len);
             }
         };
+        // The mapped path maps the new committed prefix before the switch (a mapping is lazy:
+        // nothing is read); the buffered path appends to the in-memory tail *after* the
+        // switch, infallibly — the matrix already in memory is never reallocated or copied.
         let remapped: Option<Bytes> = match self.load_path {
-            LoadPath::Buffered => {
-                if let Some(v) = self.rows.owned_mut() {
-                    v.truncate(committed_len as usize);
-                    v.extend_from_slice(&buf);
-                }
-                None
-            }
+            LoadPath::Buffered => None,
             #[cfg(feature = "mmap")]
             LoadPath::Mmap if buf.is_empty() => None,
             #[cfg(feature = "mmap")]
@@ -853,9 +867,6 @@ impl VectorIndex for FlatIndex {
                 // The temporary mapping covers the appended bytes: it must be gone before they
                 // are cut (the invariant in `bytes::map_readonly`).
                 drop(remapped);
-                if let Some(v) = self.rows.owned_mut() {
-                    v.truncate(committed_len as usize);
-                }
                 if !buf.is_empty() {
                     undo_file(&path);
                 }
@@ -872,15 +883,22 @@ impl VectorIndex for FlatIndex {
                 t.insert(id, r);
             }
         }
-        let rows = match remapped {
-            Some(b) => b,
-            None => std::mem::replace(&mut self.rows, Bytes::Owned(Vec::new())),
+        let (rows, tail) = match remapped {
+            Some(b) => (b, Vec::new()),
+            None => {
+                let mut tail = std::mem::take(&mut self.tail);
+                tail.extend_from_slice(&buf);
+                (
+                    std::mem::replace(&mut self.rows, Bytes::Owned(Vec::new())),
+                    tail,
+                )
+            }
         };
-        debug_assert!(rows.as_slice().len() >= layout.len_bytes());
         self.adopt(Committed {
             header,
             layout,
             rows,
+            tail,
             dead,
             table,
         });
@@ -899,7 +917,7 @@ impl VectorIndex for FlatIndex {
         if k == 0 || allowed.is_some_and(DocSet::is_empty) {
             return Ok(Vec::new());
         }
-        let bytes = self.rows.as_slice();
+        let bytes = self.bytes();
         let layout = self.layout;
         let no_dead = self.dead.is_empty();
         let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
@@ -931,7 +949,7 @@ impl FlatIndex {
     /// Live id → row from the current rows and tombstones. Infallible here: it is only built
     /// from a state whose ids were validated at open (duplicates are `Corrupt` there).
     fn build_table(&self) -> BTreeMap<u32, u32> {
-        let bytes = self.rows.as_slice();
+        let bytes = self.bytes();
         (0..self.layout.count)
             .filter(|&r| !self.dead.contains(r as u32))
             .map(|r| (self.layout.id_at(bytes, r), r as u32))
@@ -1067,7 +1085,7 @@ fn load(
     let table = if dead.is_empty() && header.ordered {
         None
     } else {
-        let bytes = rows.as_slice();
+        let bytes = RowBytes::whole(rows.as_slice());
         let mut table = BTreeMap::new();
         for r in 0..layout.count {
             if dead.contains(r as u32) {
@@ -1087,6 +1105,7 @@ fn load(
         header,
         layout,
         rows,
+        tail: Vec::new(),
         dead,
         table,
     })
@@ -1113,9 +1132,9 @@ fn write_manifest(
         {
             let mut file = std::fs::File::create(&tmp)?;
             file.write_all(&encoded)?;
+            *written += encoded.len() as u64;
             file.sync_all()?;
         }
-        *written += encoded.len() as u64;
         std::fs::rename(&tmp, dir.join(MANIFEST))
     })()
     .map_err(|e| before(e.into()))?;

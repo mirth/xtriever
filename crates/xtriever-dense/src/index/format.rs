@@ -138,24 +138,55 @@ impl Rows {
         self.count * self.row_bytes
     }
 
-    pub fn id_at(&self, bytes: &[u8], r: usize) -> u32 {
-        u32::from_le_bytes(four(bytes, r * self.row_bytes))
+    pub fn id_at(&self, bytes: RowBytes<'_>, r: usize) -> u32 {
+        u32::from_le_bytes(four(bytes.slice(r * self.row_bytes, 4)))
     }
 
-    pub fn norm_at(&self, bytes: &[u8], r: usize) -> f32 {
-        f32::from_le_bytes(four(bytes, r * self.row_bytes + 4))
+    pub fn norm_at(&self, bytes: RowBytes<'_>, r: usize) -> f32 {
+        f32::from_le_bytes(four(bytes.slice(r * self.row_bytes + 4, 4)))
     }
 
-    pub fn row_at<'a>(&self, bytes: &'a [u8], r: usize) -> impl Iterator<Item = f32> + 'a {
-        let at = r * self.row_bytes + 8;
-        bytes[at..at + self.dim * 4]
+    pub fn row_at<'a>(&self, bytes: RowBytes<'a>, r: usize) -> impl Iterator<Item = f32> + 'a {
+        bytes
+            .slice(r * self.row_bytes + 8, self.dim * 4)
             .chunks_exact(4)
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
     }
+
+    /// The bytes of row `r`, as they are on disk.
+    pub fn row_bytes_at<'a>(&self, bytes: RowBytes<'a>, r: usize) -> &'a [u8] {
+        bytes.slice(r * self.row_bytes, self.row_bytes)
+    }
 }
 
-fn four(bytes: &[u8], at: usize) -> [u8; 4] {
-    [bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]
+/// The committed rows as two segments: the bytes read (or mapped) when the state was loaded,
+/// and the rows appended in memory since (the buffered path), so an append never reallocates
+/// — and never copies — the matrix already in memory. Every row lies wholly in one segment:
+/// the tail starts at a row boundary and rows are fixed-size.
+#[derive(Clone, Copy)]
+pub(crate) struct RowBytes<'a> {
+    pub base: &'a [u8],
+    pub tail: &'a [u8],
+}
+
+impl<'a> RowBytes<'a> {
+    pub fn whole(base: &'a [u8]) -> Self {
+        Self { base, tail: &[] }
+    }
+
+    /// `len` bytes at offset `at` of the logical row file; never straddles the segments.
+    pub fn slice(&self, at: usize, len: usize) -> &'a [u8] {
+        if at + len <= self.base.len() {
+            &self.base[at..at + len]
+        } else {
+            let at = at - self.base.len();
+            &self.tail[at..at + len]
+        }
+    }
+}
+
+fn four(bytes: &[u8]) -> [u8; 4] {
+    [bytes[0], bytes[1], bytes[2], bytes[3]]
 }
 
 /// Append one row to `out`.
@@ -371,11 +402,19 @@ mod tests {
         encode_row(&mut out, 9, 2.0, &[0.0, 2.0]);
         let rows = Rows::for_count(2, 2).unwrap();
         assert_eq!(rows.len_bytes(), out.len());
-        assert!(Rows::for_count(usize::MAX, 4).is_err());
-        assert!(Rows::for_count(1, usize::MAX).is_err());
-        assert_eq!(rows.id_at(&out, 1), 9);
-        assert_eq!(rows.norm_at(&out, 1), 2.0);
-        assert_eq!(rows.row_at(&out, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        let whole = RowBytes::whole(&out);
+        assert_eq!(rows.id_at(whole, 1), 9);
+        assert_eq!(rows.norm_at(whole, 1), 2.0);
+        assert_eq!(rows.row_at(whole, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        // The same rows split at the row boundary between a base and a tail.
+        let split = RowBytes {
+            base: &out[..rows.row_bytes],
+            tail: &out[rows.row_bytes..],
+        };
+        assert_eq!(rows.id_at(split, 0), 3);
+        assert_eq!(rows.id_at(split, 1), 9);
+        assert_eq!(rows.row_at(split, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        assert_eq!(rows.row_bytes_at(split, 1), &out[rows.row_bytes..]);
         assert_eq!(row_file(7), "vectors.7.bin");
         assert_eq!(row_file_generation("vectors.7.bin"), Some(7));
         assert_eq!(row_file_generation("vectors.x.bin"), None);

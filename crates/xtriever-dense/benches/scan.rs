@@ -21,7 +21,7 @@
 use std::cmp::Ordering;
 use std::hint::black_box;
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use xtriever_core::{DocId, DocSet, Metric, VectorIndex};
 use xtriever_dense::FlatIndex;
 
@@ -162,6 +162,24 @@ fn bench_commit(c: &mut Criterion) {
         commits,
         (dir_bytes(&dir) - growth_before) / commits
     );
+    // The cold case: the first 10-row commit of a handle just opened on the 100k-row index —
+    // the one criterion's warm-up would otherwise hide. Each iteration opens a fresh handle
+    // (the committed matrix is read into memory in the setup, outside the timing) and commits
+    // once; the appended rows go to the in-memory tail, so no reallocation of the matrix.
+    let mut cold_next = next + 1_000_000;
+    g.bench_function("v2_first_append_after_open", |b| {
+        b.iter_batched(
+            || FlatIndex::open(&dir).unwrap(),
+            |mut fresh| {
+                for _ in 0..10 {
+                    fresh.add(DocId(cold_next), &rng.vector(DIM)).unwrap();
+                    cold_next += 1;
+                }
+                fresh.commit().unwrap();
+            },
+            BatchSize::PerIteration,
+        )
+    });
     g.finish();
 }
 
