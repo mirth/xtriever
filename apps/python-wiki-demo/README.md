@@ -64,6 +64,12 @@ apps/python-wiki-demo/.venv/bin/wikidemo measure                                
 demo-built slice is a complete artefact in the same shape. The sections below follow the same
 order.
 
+**Dense format 2 (Feature 024).** An artefact built before that feature holds `index/dense/index.bin`
+and is refused at open — "dense index is format version 1 … rebuild the index" — because the
+dense vectors now live in a manifest plus one row file per generation
+(`index/dense/manifest.bin`, `index/dense/vectors.<generation>.bin`). Rebuild the slice
+(`wikidemo build …`, minutes); the shipped artefact was converted once in place.
+
 ## Build an index
 
 ```bash
@@ -169,7 +175,7 @@ wikidemo about
 
 The corpus (edition, snapshot date, counts, identity — from the index's `corpus.json`),
 the engine's index information (`info()`: documents, format version, model fingerprints,
-depths, the re-rank mode the index recorded), the engine's re-rank depth beside the demo's default,
+depths, the re-rank mode and the dense compaction share the index recorded), the engine's re-rank depth beside the demo's default,
 this session's open and load times, and `ATTRIBUTION.txt` verbatim with the licence link.
 
 ## Measure

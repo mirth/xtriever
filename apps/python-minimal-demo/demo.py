@@ -38,8 +38,7 @@ SCHEMA = xtriever.IndexConfig(
 )
 
 def build(index_dir):
-    # build: create → add → commit → merge (the engine embeds each document as it is added;
-    # merge compacts the dense vectors and the lexical segments into one generation each)
+    # build: create → add → commit → merge (the engine embeds; merge compacts both stages)
     handle = xtriever.IndexHandle.create(index_dir, SCHEMA, EMBEDDER, RERANKER, xtriever.LoadPath.MMAP)
     handle.add([xtriever.Document(external_id=i, fields={"contents": xtriever.FieldValue.TEXT(t)}) for i, t in DOCS])
     handle.commit()
