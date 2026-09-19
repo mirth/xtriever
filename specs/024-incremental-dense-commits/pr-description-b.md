@@ -9,18 +9,22 @@ FFI `IndexConfig` with a uniffi default, so existing Python and Swift callers ar
 
 **The shipped Wikipedia artefact** is converted to format 2 without re-embedding
 (`reference/convert_dense_v1_to_v2.py`, a record of the step, not a supported tool):
-`wikidemo measure` over the host goldens — parity **PASS, 800/800 score bits**, peak RSS
-1,035 MB beside the 019 record's 1,029 MB. The SciFact hybrid baseline (nDCG@10 0.7143693584, Recall@100 0.955) and the dense baseline
+`wikidemo measure` over the host goldens — parity **PASS, 800/800 score bits**; peak RSS on
+the idle run 1,013 MB, below the 019 record's 1,029 MB (contended runs peak higher, with
+latencies that show it). The SciFact hybrid baseline (nDCG@10 0.7143693584, Recall@100 0.955) and the dense baseline
 (0.6450816521 / 0.925) reproduce through the rebuilt format-2 cache with every Δ 0.0.
 
 **Tests**: six pipeline tests (`compact_threshold.rs`: merge compacts and keeps every dense
 score bit; the share compacts on the crossing commit and not at equality; `None` never; out
 of range refused; a descriptor without the key reads `None`) plus the no-delete merge case
-kept bit-identical; a Python knob test. One observation recorded in ADR-0013: a merge after
-deletes changes BM25 statistics (tantivy garbage-collects deleted documents) — pre-existing
-lexical behaviour, not a dense change.
+kept bit-identical, plus the plain-delete merge bit-identical while the dense file compacts;
+a Python knob test. **One spec revision (FR-005), with evidence**: a merge after
+*replacements* moves BM25 bits — reproduced on `TantivyIndex` alone with no dense stage, on
+a branch where the lexical crate has no diff against `main` — so the fused-bit guarantee is
+scoped to adds and plain deletes and the replacement case is left for a lexical spec; a
+merge after plain deletes keeps every bit.
 
-Gate green: fmt, clippy, nextest (workspace, 317), deny, the three cross-target checks, the
+Gate green: fmt, clippy, nextest (workspace, 318), deny, the three cross-target checks, the
 Python surface (34). No change under `deny.toml`, `apps/` beyond two doc lines, or any baseline.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

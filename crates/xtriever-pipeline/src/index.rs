@@ -246,9 +246,17 @@ impl HybridIndex {
         } else {
             FlatIndex::open_for(&dense_dir, embedder.as_ref())?
         };
+        // A persisted share that could not have been created is corruption, not a schema
+        // error, like `rerank_mode` below — checked whatever the open's mode; installed on the
+        // dense stage only when this handle may write.
+        if let Some(s) = descriptor.dense_compact_dead_share
+            && !(s.is_finite() && (0.0..=1.0).contains(&s))
+        {
+            return Err(corrupt(format!(
+                "descriptor: dense_compact_dead_share {s} is not in 0.0..=1.0"
+            )));
+        }
         if !read_only {
-            // A persisted share that could not have been created is corruption, not a schema
-            // error, like `rerank_mode` below.
             dense
                 .set_compaction_threshold(descriptor.dense_compact_dead_share)
                 .map_err(|e| corrupt(format!("descriptor: {e}")))?;
@@ -453,7 +461,14 @@ impl HybridIndex {
 
     /// Commit, then compact the dense file (the live rows only, in id order — Feature 024,
     /// ADR-0013) and merge the lexical stage's segments into one (Feature 008 D10). The passage
-    /// store has no segments. A shipped artefact is one segment: fewer
+    /// store has no segments.
+    ///
+    /// Scores across a merge: the dense stage's are bit-identical by construction (the tests
+    /// compare every hit's dense score), and a merge after adds and deletes only leaves every
+    /// fused bit unchanged (Feature 008's guarantee). After *replacements* — an add under an
+    /// existing id — the lexical merge garbage-collects the replaced documents and the backend's
+    /// BM25 statistics move, so BM25 (and hence fused) bits can change: the lexical stage's own
+    /// behaviour, unchanged since Feature 002, recorded in ADR-0013. A shipped artefact is one segment: fewer
     /// files to map, and `DocAddress` order equal to `DocId` order. Scores do not depend on the
     /// segment layout (the backend computes IDF and average field length from searcher-wide
     /// totals); the pipeline tests assert every hit and score bit-identical across a merge.

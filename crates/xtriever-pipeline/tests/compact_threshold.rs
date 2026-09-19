@@ -87,10 +87,13 @@ fn merge_compacts_the_dense_file_and_keeps_every_bit() {
     assert_eq!(m["live"].as_u64().unwrap(), 37);
     assert_eq!(m["generation"].as_u64().unwrap(), 0);
     // The dense stage's scores cannot move across a compaction (ADR-0013): every hit's dense
-    // score, by id. The *fused* bits are not compared here: a merge after deletes also
-    // garbage-collects the lexical stage's deleted documents, which changes tantivy's BM25
-    // statistics — the lexical stage's pre-existing behaviour, covered by `open_with.rs` for
-    // the no-delete case.
+    // score, by id. The *fused* bits are not compared here because this sequence *replaces*
+    // documents: a lexical-only probe (the 002 fixture, `TantivyIndex` alone, no dense stage)
+    // showed a merge after replacements moves BM25 bits (the merge garbage-collects the
+    // replaced documents and the backend's statistics change) while a merge after plain
+    // deletes does not — the lexical stage's behaviour on `main`, which this branch does not
+    // touch. Spec FR-005 is scoped accordingly; the no-replacement case stays bit-identical
+    // (`merge_without_deletes_keeps_every_fused_bit_and_compacts_nothing` and `open_with.rs`).
     let before: Vec<Vec<(String, Option<u32>)>> = h
         .queries
         .iter()
@@ -125,6 +128,34 @@ fn merge_compacts_the_dense_file_and_keeps_every_bit() {
         .map(|q| dense_bits(&reopened, &q.text))
         .collect();
     assert_eq!(again, after);
+}
+
+#[test]
+fn merge_after_plain_deletes_keeps_every_fused_bit_and_compacts_the_dense_file() {
+    // Deletes without replacements: the lexical statistics do not move across the merge, so
+    // every fused bit is identical, while the dense file drops its dead rows.
+    let tmp = tempfile::tempdir().unwrap();
+    let h = support::hybrid();
+    let mut index = build(tmp.path(), support::fixture_config(&h));
+    let ids: Vec<&str> = h.documents.iter().map(|d| d.external_id.as_str()).collect();
+    index.delete(&ids[1..4]).unwrap();
+    index.commit().unwrap();
+    let before: Vec<Vec<(String, u64)>> = h.queries.iter().map(|q| hits(&index, &q.text)).collect();
+    index.merge().unwrap();
+    let m = dense_manifest(tmp.path());
+    assert_eq!(
+        (
+            m["generation"].as_u64().unwrap(),
+            m["rows"].as_u64().unwrap(),
+            m["live"].as_u64().unwrap()
+        ),
+        (1, 37, 37)
+    );
+    let after: Vec<Vec<(String, u64)>> = h.queries.iter().map(|q| hits(&index, &q.text)).collect();
+    assert_eq!(
+        after, before,
+        "merge after plain deletes must not change any hit or score bit"
+    );
 }
 
 #[test]
@@ -272,4 +303,20 @@ fn a_descriptor_without_the_field_reads_as_none() {
     std::fs::write(&path, serde_json::to_vec_pretty(&descriptor).unwrap()).unwrap();
     let reopened = HybridIndex::open(tmp.path(), embedder()).unwrap();
     assert_eq!(reopened.config().dense_compact_dead_share, None);
+    // A persisted value outside 0..1 is corruption at open, read-only or not.
+    descriptor["dense_compact_dead_share"] = serde_json::json!(1.5);
+    std::fs::write(&path, serde_json::to_vec_pretty(&descriptor).unwrap()).unwrap();
+    assert!(matches!(
+        HybridIndex::open(tmp.path(), embedder()).unwrap_err(),
+        Error::Corrupt(_)
+    ));
+    let ro = HybridIndex::open_with(
+        tmp.path(),
+        embedder(),
+        xtriever_pipeline::OpenOptions {
+            mapped: false,
+            read_only: true,
+        },
+    );
+    assert!(matches!(ro.unwrap_err(), Error::Corrupt(_)));
 }

@@ -153,11 +153,15 @@ the single-writer precondition the caller owns is unchanged.
   (`crates/xtriever-dense/tests/support/v1_oracle.json`) is reproducible from
   `reference/gen_024_fixtures.py`, which recomputes every expectation from the contract's
   arithmetic in Python (Principle II).
-- An observation from PR B's tests, about the *lexical* stage: a `merge` after deletes also
-  garbage-collects tantivy's deleted documents, which changes its BM25 statistics and so the
-  fused bits — pre-existing behaviour (the Feature 008 merge test covers the no-delete case
-  only), not something this format changes; the dense stage's scores are bit-identical
-  across a compaction by construction and the tests compare them per hit.
+- An observation from PR B's tests, about the *lexical* stage: a `merge` after
+  **replacements** (an add under an existing id) garbage-collects the replaced documents and
+  the backend's BM25 statistics move, so BM25 — and hence fused — bits can change; a merge
+  after plain deletes does not move them. Established by a lexical-only probe on
+  `TantivyIndex` (the 002 fixture, no dense stage), on a branch where the lexical crate has
+  no diff against `main`: pre-existing behaviour, not something this format changes. The
+  dense stage's scores are bit-identical across a compaction by construction and the tests
+  compare them per hit; spec FR-005 was revised to say exactly this, and the lexical
+  behaviour is left for a lexical spec.
 - Existing version-1 indexes must be rebuilt (or converted once; the Wikipedia artefact was
   converted by `reference/convert_dense_v1_to_v2.py`, a record of the step rather than a
   supported tool).

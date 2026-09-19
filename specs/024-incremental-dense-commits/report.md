@@ -290,10 +290,15 @@ knob test would fail on the attribute.
 - `HybridIndex::merge` = `commit` → `dense.compact()` → lexical merge. The dense file is
   compacted to the live rows in id order (`rows == live`, `generation + 1`, `ordered`);
   the dense stage's scores are bit-identical across it by construction and the test compares
-  every hit's dense score by id. Observation, recorded in ADR-0013: a merge *after deletes*
-  also garbage-collects tantivy's deleted documents, which changes BM25 statistics and so the
-  fused bits — pre-existing lexical behaviour (the 008 merge test covers the no-delete case,
-  which stays bit-identical and compacts nothing).
+  every hit's dense score by id; a merge after plain deletes keeps every fused bit while
+  compacting the dense file. **Finding, with evidence**: a merge after *replacements* (an add
+  under an existing id) moves BM25 bits. First attributed to "deletes" and to tantivy's
+  garbage collection by assertion; Copilot's round objected (Rule 6), so it was probed: on
+  `TantivyIndex` alone (the 002 fixture, no dense stage) a merge after plain deletes keeps
+  every bit and a merge after replacements moves them — on a branch where the lexical crate
+  has no diff against `main`. Pre-existing lexical behaviour; FR-005 revised to scope the
+  guarantee (dense bit-identical; fused bit-identical after adds and plain deletes) and the
+  replacement case left for a lexical spec. The owner may veto the revision.
 - `HybridConfig::dense_compact_dead_share: Option<f32>` (default `None`; `0..=1` else
   `Error::Schema` at create), recorded in the descriptor with a serde default (pipeline
   format version unchanged — an index without the key reads `None`), applied to the dense
@@ -303,8 +308,12 @@ knob test would fail on the attribute.
 - The shipped Wikipedia artefact converted, not re-embedded (`reference/convert_dense_v1_to_v2.py`,
   two tests; 427,947 rows × 1,544 B; the v1 copy kept beside it under `target/xt-wiki-v1`).
   **Proof**: `wikidemo measure` over the host goldens — parity **PASS, 800/800 score bits**
-  (`runs/measure-…`), peak RSS 1,035 MB beside the 019 record's 1,029 MB (latencies inflated
-  by an eval running alongside). **The SciFact baselines reproduce exactly** through the
+  on every run. Peak RSS (`ru_maxrss`, a memory-mapped 660 MB row file): the committed record
+  (`runs/measure-…-idle.json`) is the controlled run — fused median 250 ms, as the 019
+  record's 246 ms — at **1,062,453,248 B (1,013 MB), below the 019 record's 1,079,508,992 B
+  (1,029 MB)**; two contended runs (an eval embedding SciFact, then the workspace test suite,
+  alongside) peaked at 1,085,849,600 and 1,120,124,928 B with fused medians of 319–325 ms —
+  page-cache pressure, not the format. SC-004 holds on the controlled measurement. **The SciFact baselines reproduce exactly** through the
   rebuilt (format 2) dense cache: hybrid-baseline-v2 nDCG@10 0.7143693584 / Recall@100 0.955
   and dense-baseline-v1 0.6450816521 / 0.925, every Δ 0.0 against the committed files.
 - Docs: the dense crate's `merge` sentence back, the 008 artefact tree, both demos' `merge`
@@ -319,3 +328,18 @@ knob test would fail on the attribute.
 **Gate (PR B)**: fmt, clippy (workspace), deny, the three cross-target checks; `cargo nextest
 run --workspace` 317 passed; the Python surface 34 (the knob test included); the converter's
 two tests; `wikidemo measure` parity PASS 800/800; SciFact hybrid and dense baselines Δ 0.0.
+
+### Review round B1 (Copilot, four comments)
+
+1. FR-005 / T020 — not weakened silently: probed and formally revised (above), with the
+   lexical-only evidence and the no-diff-against-`main` check; a new test pins the
+   plain-delete case bit-identical while the dense file compacts.
+2. A persisted `dense_compact_dead_share` outside `0..=1` is `Corrupt` at every open,
+   read-only included; the value is installed on the dense stage only for writable handles.
+   Tested through `open` and `open_with(read_only)`.
+3. `HybridIndex::merge`'s doc scopes the guarantee: dense bit-identical; fused bit-identical
+   after adds and plain deletes; replacements move the lexical statistics.
+4. Peak RSS: the first recorded 1,085,849,600 B was measured with an eval embedding SciFact
+   in parallel. Re-measured twice more; the idle run — the one whose fused median matches the
+   019 record — peaks at 1,062,453,248 B, below the 019 record's 1,079,508,992 B, and is now
+   the committed record; the contended runs are reported beside it. SC-004 met.

@@ -153,9 +153,15 @@ dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two
 - **FR-004**: `vector(id)` MUST return the newest live row for `id` and `None` otherwise;
   `len()` MUST be the live row count.
 - **FR-005**: The pipeline's `merge` MUST compact the dense file as it merges the lexical
-  segments: live rows only, ascending id order, empty tombstone set; results MUST be
-  bit-identical before and after (the pipeline's existing merge-determinism tests extend to
-  the dense file).
+  segments: live rows only, ascending id order, empty tombstone set. The dense stage's
+  scores MUST be bit-identical before and after (every hit's dense score, by id), and a
+  merge after adds and plain deletes MUST leave every fused result bit-identical (the
+  pipeline's existing merge-determinism tests extend to the dense file). *Revised during PR
+  B (2026-09-19)*: after **replacements** (an add under an existing id) a merge moves the
+  lexical stage's BM25 statistics — a lexical-only probe on `TantivyIndex` reproduces it with
+  no dense stage involved, and the lexical crate is unchanged on this branch — so fused bits
+  after a replacement-then-merge are outside this requirement; that behaviour predates this
+  feature and belongs to a lexical spec of its own.
 - **FR-006**: A crash at any byte boundary during `commit` or `merge` MUST leave an index
   that opens to either the previous committed state or the fully committed new one — the
   manifest rename is the switch — never to a partial state; a partially appended tail MUST
