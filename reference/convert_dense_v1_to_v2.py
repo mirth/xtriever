@@ -68,38 +68,46 @@ def convert(dense_dir: Path, dry_run: bool) -> dict:
         "ordered": True,
         "tombstones_len": len(EMPTY_TOMBSTONES),
     }
-    summary = {"rows": n, "dim": dim, "row_bytes": 8 + 4 * dim, "v1_bytes": actual_len}
+    encoded = json.dumps(manifest_header, separators=(",", ":")).encode("utf-8")
+    manifest = V2_MAGIC + struct.pack("<Q", len(encoded)) + encoded + EMPTY_TOMBSTONES
+    row_bytes = 8 + 4 * dim
+    summary = {
+        "rows": n,
+        "dim": dim,
+        "row_bytes": row_bytes,
+        "v1_bytes": actual_len,
+        "v2_rows_bytes": n * row_bytes,
+        "manifest_bytes": len(manifest),
+        "written": not dry_run,
+    }
     if dry_run:
         return summary
     rows_path = dense_dir / "vectors.0.bin"
     tmp_rows = dense_dir / "vectors.0.bin.tmp"
-    last_id = -1
     with v1.open("rb") as src, tmp_rows.open("wb") as dst:
+        # The id and norm columns are 4 bytes a row — read once; the vector column is then
+        # streamed in file order, so the source is read sequentially from front to back.
+        src.seek(ids_at)
+        ids = struct.unpack(f"<{n}I", src.read(4 * n))
+        norms = src.read(4 * n)
+        if any(b <= a for a, b in zip(ids, ids[1:])):
+            raise SystemExit(f"{v1}: ids are not strictly ascending")
         for start in range(0, n, CHUNK_ROWS):
             count = min(CHUNK_ROWS, n - start)
-            src.seek(ids_at + 4 * start)
-            ids = struct.unpack(f"<{count}I", src.read(4 * count))
-            src.seek(norms_at + 4 * start)
-            norms = src.read(4 * count)
-            src.seek(vectors_at + 4 * dim * start)
             vectors = src.read(4 * dim * count)
             for i in range(count):
-                if ids[i] <= last_id:
-                    raise SystemExit(f"{v1}: ids are not strictly ascending at row {start + i}")
-                last_id = ids[i]
-                dst.write(struct.pack("<I", ids[i]))
-                dst.write(norms[4 * i : 4 * i + 4])
+                r = start + i
+                dst.write(struct.pack("<I", ids[r]))
+                dst.write(norms[4 * r : 4 * r + 4])
                 dst.write(vectors[4 * dim * i : 4 * dim * (i + 1)])
         dst.flush()
     tmp_rows.replace(rows_path)
-    encoded = json.dumps(manifest_header, separators=(",", ":")).encode("utf-8")
-    manifest = V2_MAGIC + struct.pack("<Q", len(encoded)) + encoded + EMPTY_TOMBSTONES
     tmp_manifest = dense_dir / "manifest.bin.tmp"
     tmp_manifest.write_bytes(manifest)
     tmp_manifest.replace(dense_dir / "manifest.bin")
     v1.unlink()
-    summary["v2_rows_bytes"] = rows_path.stat().st_size
-    summary["manifest_bytes"] = len(manifest)
+    if rows_path.stat().st_size != summary["v2_rows_bytes"]:
+        raise SystemExit(f"{rows_path}: {rows_path.stat().st_size} bytes, expected {summary['v2_rows_bytes']}")
     return summary
 
 

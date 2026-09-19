@@ -313,11 +313,10 @@ fn cached_index(
                 dir.display()
             ),
         }
-    } else if dir.exists() {
-        eprintln!(
-            "cache at {} does not match this key (format version, config, fingerprint, corpus hash or count); re-embedding",
-            dir.display()
-        );
+    } else if dir.exists()
+        && let Some(why) = key.mismatch(&dir)
+    {
+        eprintln!("cache at {}: {why}; re-embedding", dir.display());
     }
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
@@ -499,12 +498,11 @@ fn evaluate_hybrid(
         corpus_sha256,
         documents: ds.corpus.ids.len() as u64,
     };
-    if !key.matches(&cache_dir) {
+    if let Some(why) = key.mismatch(&cache_dir) {
         bail!(
-            "the Feature 004 embedding cache at {} does not match (config {}, fingerprint, corpus \
-             hash or count differ); run `beir run --dataset {dataset} --config dense-baseline-v1` first",
-            cache_dir.display(),
-            cfg.dense.name
+            "the Feature 004 embedding cache at {} does not match: {why}; run `beir run --dataset \
+             {dataset} --config dense-baseline-v1` first",
+            cache_dir.display()
         );
     }
     let cache = FlatIndex::open_for(&cache_dir, &embedder)

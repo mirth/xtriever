@@ -44,7 +44,7 @@ mod index;
 pub mod model;
 
 pub use embedder::MiniLmEmbedder;
-pub use index::{DenseStats, FlatIndex};
+pub use index::{DenseStats, FlatIndex, validate_compaction_threshold};
 
 /// How the weight file (and the vector index file) are brought into memory (spec FR-008).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

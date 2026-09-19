@@ -169,11 +169,13 @@ def test_dense_compact_dead_share_is_optional_and_recorded(tmp_path):
     handle.add([document(d) for d in h["documents"]])
     handle.commit()
     assert handle.info().documents == 40
+    assert handle.info().dense_compact_dead_share is None
     c2 = config(h)
     c2.dense_compact_dead_share = 0.5
     handle2 = xtriever.IndexHandle.create(str(tmp_path / "b"), c2, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
     handle2.add([document(d) for d in h["documents"]])
     handle2.commit()
+    assert handle2.info().dense_compact_dead_share == pytest.approx(0.5), "recorded and reported"
     handle2.delete([d["external_id"] for d in h["documents"][:30]])
     handle2.commit()  # 75 % dead: compacted within the commit
     assert handle2.info().documents == 10

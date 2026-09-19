@@ -313,7 +313,8 @@ pub(crate) fn commit(inner: &Inner) -> Result<(), XtrieverError> {
     Ok(())
 }
 
-/// Commit, then merge the lexical stage into one segment (`HybridIndex::merge`).
+/// Commit, compact the dense vectors and merge the lexical stage into one segment
+/// (`HybridIndex::merge`).
 pub(crate) fn merge(inner: &Inner) -> Result<(), XtrieverError> {
     write_guard(inner)?.merge()?;
     Ok(())
@@ -355,6 +356,7 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
         rerank_depth: count(config.rerank_depth),
         rerank_mode: config.rerank_mode.into(),
         rrf_k: config.rrf_k,
+        dense_compact_dead_share: config.dense_compact_dead_share,
         embedder_load_ms: ms(inner.embedder_load),
         reranker_load_ms: inner.reranker_load.map(ms),
     }

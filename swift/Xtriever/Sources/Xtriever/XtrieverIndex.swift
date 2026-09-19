@@ -16,7 +16,7 @@ import Foundation
 ///   usable. The time budget (`SearchOptions.maxTimeMs`) is the bound.
 ///
 /// `loadPath: .mmap` maps both models' weight files **and** the dense index's vectors
-/// (`dense/index.bin`) read-only (ADR-0007, ADR-0009); the caller owns the precondition that no
+/// (`dense/vectors.<generation>.bin` — the generation advances on every compaction) read-only (ADR-0007, ADR-0009); the caller owns the precondition that no
 /// other process modifies or truncates any of those files while the instance lives. The index
 /// directory is opened read-only in every sense — nothing in it is modified or created — so an
 /// index shipped inside the app bundle is opened **in place** (Feature 008 D11; the 007

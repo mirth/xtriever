@@ -7,20 +7,14 @@ mod support;
 
 use std::path::Path;
 
-use xtriever_pipeline::{HybridIndex, OpenOptions, SearchOptions};
+use xtriever_pipeline::{HybridIndex, OpenOptions};
 
 fn embedder() -> Box<dyn xtriever_core::Embedder> {
-    Box::new(support::TableEmbedder::from_fixture(&support::hybrid()))
+    support::fixture_embedder(&support::hybrid())
 }
 
 fn hits(index: &HybridIndex, text: &str) -> Vec<(String, u64)> {
-    index
-        .search(text, None, 10, &SearchOptions::default())
-        .unwrap()
-        .hits
-        .iter()
-        .map(|h| (h.external_id.clone(), h.score.to_bits()))
-        .collect()
+    support::fused_bits(index, text)
 }
 
 /// dirs 0o555, files 0o444; restored on drop. POSIX permissions: the read-only test is unix-only.

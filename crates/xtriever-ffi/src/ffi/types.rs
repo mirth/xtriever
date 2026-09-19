@@ -182,6 +182,8 @@ pub struct IndexInfo {
     pub rerank_mode: RerankMode,
     /// Reciprocal rank fusion constant.
     pub rrf_k: u32,
+    /// The recorded dense compaction share (`None` = compact only on `merge`; Feature 024).
+    pub dense_compact_dead_share: Option<f32>,
     /// Wall time the embedder took to load, in milliseconds.
     pub embedder_load_ms: u64,
     /// Wall time the re-ranker took to load, in milliseconds, if one was loaded.

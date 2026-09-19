@@ -2,46 +2,24 @@
 //! `HybridConfig::dense_compact_dead_share` makes a commit that crosses it a rewrite — decided
 //! by the dense stage, recorded in the descriptor, validated at create. Offline (the table
 //! embedder), over the 005 hybrid fixture.
+//!
+//! What is bit-identical across a merge, and what is not: the dense stage's scores are, for
+//! every live row (compared here through a read-only handle on the stage with the fixture
+//! embedder's query vector); the lexical stage's BM25 statistics move across a merge that
+//! physically drops deleted or replaced documents (Feature 002 FR-025; pinned by the lexical
+//! crate's `merge_after_deletes_moves_bm25_bits_only_when_it_drops_documents`), so fused bits
+//! are compared only where the lexical merge drops nothing — a single-segment index, or one
+//! without deletes.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
 
 use std::path::Path;
 
-use xtriever_core::{Embedder, Error, TextKind, VectorIndex};
-use xtriever_dense::FlatIndex;
-use xtriever_pipeline::{HybridConfig, HybridIndex, SearchOptions};
-
-fn embedder() -> Box<dyn xtriever_core::Embedder> {
-    Box::new(support::TableEmbedder::from_fixture(&support::hybrid()))
-}
-
-fn hits(index: &HybridIndex, text: &str) -> Vec<(String, u64)> {
-    index
-        .search(text, None, 10, &SearchOptions::default())
-        .unwrap()
-        .hits
-        .iter()
-        .map(|h| (h.external_id.clone(), h.score.to_bits()))
-        .collect()
-}
-
-/// The dense manifest's JSON header (magic · hdr_len · JSON · tombstones).
-fn dense_manifest(dir: &Path) -> serde_json::Value {
-    let bytes = std::fs::read(dir.join("dense/manifest.bin")).unwrap();
-    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
-    serde_json::from_slice(&bytes[16..16 + hdr_len]).unwrap()
-}
-
-/// The manifest's tombstone payload — the bytes after the header.
-fn dense_tombstones(dir: &Path) -> Vec<u8> {
-    let bytes = std::fs::read(dir.join("dense/manifest.bin")).unwrap();
-    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
-    bytes[16 + hdr_len..].to_vec()
-}
-
-/// `RoaringBitmap::new().serialize_into(..)`: the no-run-container cookie and zero containers.
-const EMPTY_TOMBSTONES: [u8; 8] = [0x3a, 0x30, 0, 0, 0, 0, 0, 0];
+use support::{Hybrid, build_from_fixture_with, dense_stats, fixture_embedder, fused_bits};
+use xtriever_core::{Error, TextKind, VectorIndex};
+use xtriever_dense::{DenseStats, FlatIndex};
+use xtriever_pipeline::{HybridIndex, OpenOptions};
 
 /// The row files present under `dense/`, sorted.
 fn vector_files(dir: &Path) -> Vec<String> {
@@ -54,117 +32,91 @@ fn vector_files(dir: &Path) -> Vec<String> {
     names
 }
 
-/// The dense stage's complete answer for a query — every live row's `(DocId, score bits)` —
-/// read through a read-only handle on the stage's directory (it alters nothing), with the
-/// fixture embedder's query vector: the whole map, not a fused top-k's intersection.
-fn dense_stage_bits(dir: &Path, text: &str) -> Vec<(u32, u32)> {
-    let h = support::hybrid();
-    let embedder = support::TableEmbedder::from_fixture(&h);
-    let q = embedder.embed(&[text], TextKind::Query).unwrap().remove(0);
+/// The dense stage's complete answer per fixture query — every live row's `(DocId, score
+/// bits)`, sorted — through one read-only handle and one embedder per pass.
+fn dense_answers(dir: &Path, h: &Hybrid) -> Vec<Vec<(u32, u32)>> {
+    let embedder = fixture_embedder(h);
     let dense = FlatIndex::open_read_only(&dir.join("dense")).unwrap();
-    let mut hits: Vec<(u32, u32)> = dense
-        .search(&q, None, 10_000)
-        .unwrap()
+    h.queries
         .iter()
-        .map(|h| (h.id.0, h.score.to_bits()))
-        .collect();
-    hits.sort_unstable();
-    hits
-}
-
-fn build(dir: &Path, config: HybridConfig) -> HybridIndex {
-    let h = support::hybrid();
-    let mut index = HybridIndex::create(dir, config, embedder()).unwrap();
-    let batch: Vec<_> = h.documents.iter().map(|d| d.source()).collect();
-    index.add(&batch).unwrap();
-    index.commit().unwrap();
-    index
-}
-
-/// Every hit's dense score bits, by external id, for one query (`explain` on).
-fn dense_bits(index: &HybridIndex, text: &str) -> Vec<(String, Option<u32>)> {
-    let options = SearchOptions {
-        explain: true,
-        ..SearchOptions::default()
-    };
-    let mut hits: Vec<(String, Option<u32>)> = index
-        .search(text, None, 10, &options)
-        .unwrap()
-        .hits
-        .iter()
-        .map(|h| {
-            (
-                h.external_id.clone(),
-                h.explain
-                    .as_ref()
-                    .and_then(|e| e.dense_score)
-                    .map(f32::to_bits),
-            )
+        .map(|q| {
+            let v = embedder
+                .embed(&[q.text.as_str()], TextKind::Query)
+                .unwrap()
+                .remove(0);
+            let mut hits: Vec<(u32, u32)> = dense
+                .search(&v, None, 10_000)
+                .unwrap()
+                .iter()
+                .map(|hit| (hit.id.0, hit.score.to_bits()))
+                .collect();
+            hits.sort_unstable();
+            hits
         })
-        .collect();
-    hits.sort();
-    hits
+        .collect()
+}
+
+/// Every fixture query's fused hits through the live handle — the writer's own adopted state.
+fn fused_answers(index: &HybridIndex, h: &Hybrid) -> Vec<Vec<(String, u64)>> {
+    h.queries
+        .iter()
+        .map(|q| fused_bits(index, &q.text))
+        .collect()
+}
+
+fn external_ids(h: &Hybrid) -> Vec<&str> {
+    h.documents.iter().map(|d| d.external_id.as_str()).collect()
+}
+
+fn counts(dir: &Path) -> (u64, u64, u64) {
+    let s = dense_stats(dir);
+    (s.generation, s.rows, s.live)
 }
 
 #[test]
-fn merge_compacts_the_dense_file_and_keeps_every_bit() {
+fn merge_compacts_the_dense_file_and_keeps_every_dense_bit() {
     let tmp = tempfile::tempdir().unwrap();
     let h = support::hybrid();
-    let mut index = build(tmp.path(), support::fixture_config(&h));
-    let ids: Vec<&str> = h.documents.iter().map(|d| d.external_id.as_str()).collect();
-    // Replace two, delete three: five dead rows in the dense file.
+    let mut index = build_from_fixture_with(tmp.path(), &h, support::fixture_config(&h));
+    let ids = external_ids(&h);
+    // Replace two, delete three: five dead rows in the dense file, and a second lexical
+    // segment (the replacements) for the merge to drop.
     index
         .add(&[h.documents[0].source(), h.documents[5].source()])
         .unwrap();
     index.delete(&ids[1..4]).unwrap();
     index.commit().unwrap();
-    let m = dense_manifest(tmp.path());
     assert_eq!(
-        m["rows"].as_u64().unwrap(),
-        42,
-        "40 + 2 replacements appended"
+        dense_stats(tmp.path()),
+        DenseStats {
+            rows: 42,
+            live: 37,
+            dead: 5,
+            generation: 0,
+            ordered: false
+        },
+        "40 + 2 replacements appended, 5 dead"
     );
-    assert_eq!(m["live"].as_u64().unwrap(), 37);
-    assert_eq!(m["generation"].as_u64().unwrap(), 0);
-    // The dense stage's scores cannot move across a compaction (ADR-0013): every hit's dense
-    // score, by id. The *fused* bits are not compared here because this sequence *replaces*
-    // documents: a lexical-only probe (the 002 fixture, `TantivyIndex` alone, no dense stage)
-    // showed a merge after replacements moves BM25 bits (the merge garbage-collects the
-    // replaced documents and the backend's statistics change) while a merge after plain
-    // deletes does not — the lexical stage's behaviour on `main`, which this branch does not
-    // touch. Spec FR-005 is scoped accordingly; the no-replacement case stays bit-identical
-    // (`merge_without_deletes_keeps_every_fused_bit_and_compacts_nothing` and `open_with.rs`).
-    // The complete dense answer per query — every live row — through a read-only handle on
-    // the stage, plus the fused hits' explained dense scores.
-    let before: Vec<Vec<(u32, u32)>> = h
-        .queries
-        .iter()
-        .map(|q| dense_stage_bits(tmp.path(), &q.text))
-        .collect();
+    let dense_before = dense_answers(tmp.path(), &h);
     assert!(
-        before.iter().all(|b| b.len() == 37),
+        dense_before.iter().all(|b| b.len() == 37),
         "every live row scored"
     );
-    let explained_before: Vec<Vec<(String, Option<u32>)>> = h
-        .queries
-        .iter()
-        .map(|q| dense_bits(&index, &q.text))
-        .collect();
     index.merge().unwrap();
-    let m = dense_manifest(tmp.path());
-    assert_eq!(m["rows"].as_u64().unwrap(), 37, "live rows only");
-    assert_eq!(m["live"].as_u64().unwrap(), 37);
-    assert_eq!(m["generation"].as_u64().unwrap(), 1);
-    assert!(m["ordered"].as_bool().unwrap());
+    assert_eq!(
+        dense_stats(tmp.path()),
+        DenseStats {
+            rows: 37,
+            live: 37,
+            dead: 0,
+            generation: 1,
+            ordered: true
+        }
+    );
     assert_eq!(
         vector_files(tmp.path()),
         vec!["vectors.1.bin".to_owned()],
         "exactly one generation"
-    );
-    assert_eq!(
-        dense_tombstones(tmp.path()),
-        EMPTY_TOMBSTONES,
-        "an empty tombstone set"
     );
     assert_eq!(
         std::fs::metadata(tmp.path().join("dense/vectors.1.bin"))
@@ -172,63 +124,45 @@ fn merge_compacts_the_dense_file_and_keeps_every_bit() {
             .len(),
         37 * (8 + 4 * h.dim as u64)
     );
-    let after: Vec<Vec<(u32, u32)>> = h
-        .queries
-        .iter()
-        .map(|q| dense_stage_bits(tmp.path(), &q.text))
-        .collect();
+    // The dense stage: every live row's score, bit for bit, on disk …
     assert_eq!(
-        after, before,
-        "every live row's dense score, bit for bit, across the compaction"
+        dense_answers(tmp.path(), &h),
+        dense_before,
+        "dense scores across the compaction"
     );
-    let explained_after: Vec<Vec<(String, Option<u32>)>> = h
-        .queries
-        .iter()
-        .map(|q| dense_bits(&index, &q.text))
-        .collect();
-    for (b, a) in explained_before.iter().zip(&explained_after) {
-        for (id, bits) in b {
-            if let Some((_, x)) = a.iter().find(|(i, _)| i == id) {
-                assert_eq!(x, bits, "explained dense score of {id}");
-            }
-        }
-    }
+    // … and the live handle's own adopted state equals what a fresh open reads: the writer
+    // handle serves the compacted generation it switched to, not a stale layout.
+    let live = fused_answers(&index, &h);
     drop(index);
-    let reopened = HybridIndex::open(tmp.path(), embedder()).unwrap();
+    let reopened = HybridIndex::open(tmp.path(), fixture_embedder(&h)).unwrap();
     assert_eq!(reopened.len(), 37);
-    let again: Vec<Vec<(u32, u32)>> = h
-        .queries
-        .iter()
-        .map(|q| dense_stage_bits(tmp.path(), &q.text))
-        .collect();
-    assert_eq!(again, before);
+    assert_eq!(
+        fused_answers(&reopened, &h),
+        live,
+        "the live handle after the merge equals a fresh open"
+    );
+    assert_eq!(dense_answers(tmp.path(), &h), dense_before);
 }
 
 #[test]
-fn merge_after_plain_deletes_keeps_every_fused_bit_and_compacts_the_dense_file() {
-    // Deletes without replacements: the lexical statistics do not move across the merge, so
-    // every fused bit is identical, while the dense file drops its dead rows.
+fn merge_on_a_single_segment_compacts_the_dense_file_and_keeps_every_fused_bit() {
+    // Deletes only, one lexical segment: the lexical merge has nothing to merge, so no
+    // statistics move and every fused bit is identical, while the dense file drops its dead
+    // rows. (With more than one segment the lexical statistics *would* move — the lexical
+    // crate's own test pins that boundary.)
     let tmp = tempfile::tempdir().unwrap();
     let h = support::hybrid();
-    let mut index = build(tmp.path(), support::fixture_config(&h));
-    let ids: Vec<&str> = h.documents.iter().map(|d| d.external_id.as_str()).collect();
+    let mut index = build_from_fixture_with(tmp.path(), &h, support::fixture_config(&h));
+    let ids = external_ids(&h);
     index.delete(&ids[1..4]).unwrap();
     index.commit().unwrap();
-    let before: Vec<Vec<(String, u64)>> = h.queries.iter().map(|q| hits(&index, &q.text)).collect();
+    let before = fused_answers(&index, &h);
     index.merge().unwrap();
-    let m = dense_manifest(tmp.path());
+    assert_eq!(counts(tmp.path()), (1, 37, 37));
     assert_eq!(
-        (
-            m["generation"].as_u64().unwrap(),
-            m["rows"].as_u64().unwrap(),
-            m["live"].as_u64().unwrap()
-        ),
-        (1, 37, 37)
-    );
-    let after: Vec<Vec<(String, u64)>> = h.queries.iter().map(|q| hits(&index, &q.text)).collect();
-    assert_eq!(
-        after, before,
-        "merge after plain deletes must not change any hit or score bit"
+        fused_answers(&index, &h),
+        before,
+        "one segment: nothing dropped, every fused bit identical"
     );
 }
 
@@ -238,25 +172,49 @@ fn merge_without_deletes_keeps_every_fused_bit_and_compacts_nothing() {
     // leaves its generation alone; the fused results are bit-identical, as before Feature 024.
     let tmp = tempfile::tempdir().unwrap();
     let h = support::hybrid();
-    let mut index =
-        HybridIndex::create(tmp.path(), support::fixture_config(&h), embedder()).unwrap();
+    let mut index = HybridIndex::create(
+        tmp.path(),
+        support::fixture_config(&h),
+        fixture_embedder(&h),
+    )
+    .unwrap();
     for docs in h.documents.chunks(h.documents.len().div_ceil(3)) {
         let batch: Vec<_> = docs.iter().map(|d| d.source()).collect();
         index.add(&batch).unwrap();
         index.commit().unwrap();
     }
-    let before: Vec<Vec<(String, u64)>> = h.queries.iter().map(|q| hits(&index, &q.text)).collect();
+    let before = fused_answers(&index, &h);
     index.merge().unwrap();
-    let m = dense_manifest(tmp.path());
+    assert_eq!(counts(tmp.path()), (0, 40, 40));
     assert_eq!(
-        (
-            m["generation"].as_u64().unwrap(),
-            m["rows"].as_u64().unwrap()
-        ),
-        (0, 40)
+        fused_answers(&index, &h),
+        before,
+        "merge must not change any hit or score bit"
     );
-    let after: Vec<Vec<(String, u64)>> = h.queries.iter().map(|q| hits(&index, &q.text)).collect();
-    assert_eq!(after, before, "merge must not change any hit or score bit");
+}
+
+#[test]
+fn merge_with_staged_changes_is_one_dense_protocol() {
+    // Staged deletes at merge time: the merge's commit rewrites the dense file directly (one
+    // generation advance, no append that a compaction then supersedes), whatever the index's
+    // configured share.
+    let tmp = tempfile::tempdir().unwrap();
+    let h = support::hybrid();
+    let mut index = build_from_fixture_with(tmp.path(), &h, support::fixture_config(&h));
+    let ids = external_ids(&h);
+    index.delete(&ids[..5]).unwrap();
+    index.merge().unwrap();
+    assert_eq!(
+        counts(tmp.path()),
+        (1, 35, 35),
+        "one rewrite: generation 1, no appended dead rows"
+    );
+    assert_eq!(
+        index.config().dense_compact_dead_share,
+        None,
+        "the configured share is restored"
+    );
+    assert_eq!(vector_files(tmp.path()), vec!["vectors.1.bin".to_owned()]);
 }
 
 #[test]
@@ -265,39 +223,28 @@ fn a_dead_share_compacts_on_the_crossing_commit_and_not_before() {
     let h = support::hybrid();
     let mut config = support::fixture_config(&h);
     config.dense_compact_dead_share = Some(0.25);
-    let mut index = build(tmp.path(), config);
-    let ids: Vec<&str> = h.documents.iter().map(|d| d.external_id.as_str()).collect();
+    let mut index = build_from_fixture_with(tmp.path(), &h, config);
+    let ids = external_ids(&h);
     index.delete(&ids[..8]).unwrap(); // 8 / 40 = 20 %
     index.commit().unwrap();
-    let m = dense_manifest(tmp.path());
-    assert_eq!(
-        (
-            m["generation"].as_u64().unwrap(),
-            m["rows"].as_u64().unwrap()
-        ),
-        (0, 40),
-        "20 % is not over 25 %"
-    );
+    assert_eq!(counts(tmp.path()), (0, 40, 32), "20 % is not over 25 %");
     index.delete(&ids[8..10]).unwrap(); // 10 / 40 = 25 %: not over
     index.commit().unwrap();
     assert_eq!(
-        dense_manifest(tmp.path())["generation"].as_u64().unwrap(),
-        0
+        counts(tmp.path()),
+        (0, 40, 30),
+        "exactly 25 % is not over 25 %"
     );
     index.delete(&ids[10..11]).unwrap(); // 11 / 40 > 25 %
     index.commit().unwrap();
-    let m = dense_manifest(tmp.path());
     assert_eq!(
-        (
-            m["generation"].as_u64().unwrap(),
-            m["rows"].as_u64().unwrap(),
-            m["live"].as_u64().unwrap()
-        ),
-        (1, 29, 29)
+        counts(tmp.path()),
+        (1, 29, 29),
+        "over the share: rewritten within the commit"
     );
     assert_eq!(index.len(), 29);
     drop(index);
-    let reopened = HybridIndex::open(tmp.path(), embedder()).unwrap();
+    let reopened = HybridIndex::open(tmp.path(), fixture_embedder(&h)).unwrap();
     assert_eq!(
         reopened.config().dense_compact_dead_share,
         Some(0.25),
@@ -312,28 +259,13 @@ fn without_a_dead_share_nothing_compacts_until_merge() {
     let h = support::hybrid();
     let config = support::fixture_config(&h);
     assert_eq!(config.dense_compact_dead_share, None, "the default");
-    let mut index = build(tmp.path(), config);
-    let ids: Vec<&str> = h.documents.iter().map(|d| d.external_id.as_str()).collect();
+    let mut index = build_from_fixture_with(tmp.path(), &h, config);
+    let ids = external_ids(&h);
     index.delete(&ids[..30]).unwrap();
     index.commit().unwrap();
-    let m = dense_manifest(tmp.path());
-    assert_eq!(
-        (
-            m["generation"].as_u64().unwrap(),
-            m["rows"].as_u64().unwrap(),
-            m["live"].as_u64().unwrap()
-        ),
-        (0, 40, 10)
-    );
+    assert_eq!(counts(tmp.path()), (0, 40, 10));
     index.merge().unwrap();
-    let m = dense_manifest(tmp.path());
-    assert_eq!(
-        (
-            m["generation"].as_u64().unwrap(),
-            m["rows"].as_u64().unwrap()
-        ),
-        (1, 10)
-    );
+    assert_eq!(counts(tmp.path()), (1, 10, 10));
 }
 
 #[test]
@@ -346,7 +278,7 @@ fn a_dead_share_outside_zero_to_one_is_a_schema_error_at_create() {
         let dir = tmp.path().join(format!("{bad}"));
         assert!(
             matches!(
-                HybridIndex::create(&dir, config, embedder()).unwrap_err(),
+                HybridIndex::create(&dir, config, fixture_embedder(&h)).unwrap_err(),
                 Error::Schema(_)
             ),
             "{bad}"
@@ -357,12 +289,12 @@ fn a_dead_share_outside_zero_to_one_is_a_schema_error_at_create() {
 #[test]
 fn a_descriptor_without_the_field_reads_as_none() {
     // Indexes written before PR B carry no `dense_compact_dead_share`; the format version is
-    // unchanged and the field defaults (as `rerank_mode` did in Feature 015).
+    // unchanged and the `Option` field reads as `None`.
     let tmp = tempfile::tempdir().unwrap();
     let h = support::hybrid();
     let mut config = support::fixture_config(&h);
     config.dense_compact_dead_share = Some(0.5);
-    drop(build(tmp.path(), config));
+    drop(build_from_fixture_with(tmp.path(), &h, config));
     let path = tmp.path().join("xtriever-pipeline.json");
     let mut descriptor: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
@@ -375,19 +307,19 @@ fn a_descriptor_without_the_field_reads_as_none() {
         .unwrap()
         .remove("dense_compact_dead_share");
     std::fs::write(&path, serde_json::to_vec_pretty(&descriptor).unwrap()).unwrap();
-    let reopened = HybridIndex::open(tmp.path(), embedder()).unwrap();
+    let reopened = HybridIndex::open(tmp.path(), fixture_embedder(&h)).unwrap();
     assert_eq!(reopened.config().dense_compact_dead_share, None);
     // A persisted value outside 0..1 is corruption at open, read-only or not.
     descriptor["dense_compact_dead_share"] = serde_json::json!(1.5);
     std::fs::write(&path, serde_json::to_vec_pretty(&descriptor).unwrap()).unwrap();
     assert!(matches!(
-        HybridIndex::open(tmp.path(), embedder()).unwrap_err(),
+        HybridIndex::open(tmp.path(), fixture_embedder(&h)).unwrap_err(),
         Error::Corrupt(_)
     ));
     let ro = HybridIndex::open_with(
         tmp.path(),
-        embedder(),
-        xtriever_pipeline::OpenOptions {
+        fixture_embedder(&h),
+        OpenOptions {
             mapped: false,
             read_only: true,
         },

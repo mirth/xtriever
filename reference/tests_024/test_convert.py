@@ -22,11 +22,22 @@ def write_v1(dense_dir, ids, dim, fingerprint="fp"):
     return norms, vectors
 
 
+def dry_header_json(dim, rows):
+    return json.dumps({
+        "format_version": 2, "dim": dim, "metric": "cosine", "fingerprint": "fp",
+        "generation": 0, "rows": rows, "live": rows, "ordered": True, "tombstones_len": 8,
+    }, separators=(",", ":")).encode()
+
+
 def test_rows_manifest_and_removal(tmp_path):
     dim, ids = 3, [2, 5, 9, 10]
     norms, vectors = write_v1(tmp_path, ids, dim)
+    dry = conv.convert(tmp_path, dry_run=True)
     summary = conv.convert(tmp_path, dry_run=False)
-    assert summary["rows"] == 4 and summary["row_bytes"] == 8 + 4 * dim
+    assert set(dry) == set(summary), "one summary shape for both runs"
+    assert dry == {**summary, "written": False}
+    assert summary["rows"] == 4 and summary["row_bytes"] == 8 + 4 * dim and summary["written"]
+    assert summary["v2_rows_bytes"] == 4 * (8 + 4 * dim)
     assert not (tmp_path / "index.bin").exists()
     rows = (tmp_path / "vectors.0.bin").read_bytes()
     assert len(rows) == 4 * (8 + 4 * dim)
@@ -50,7 +61,9 @@ def test_rows_manifest_and_removal(tmp_path):
 def test_dry_run_writes_nothing_and_unsorted_ids_are_refused(tmp_path):
     write_v1(tmp_path, [1, 2, 3], 2)
     before = sorted(p.name for p in tmp_path.iterdir())
-    assert conv.convert(tmp_path, dry_run=True)["rows"] == 3
+    dry = conv.convert(tmp_path, dry_run=True)
+    assert dry["rows"] == 3 and dry["v2_rows_bytes"] == 3 * (8 + 4 * 2) and not dry["written"]
+    assert dry["manifest_bytes"] == 16 + len(dry_header_json(dim=2, rows=3)) + 8
     assert sorted(p.name for p in tmp_path.iterdir()) == before
     bad = tmp_path / "bad"
     bad.mkdir()

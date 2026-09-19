@@ -97,13 +97,8 @@ impl HybridConfig {
             return Err(schema_err("rrf_k must be at least 1"));
         }
         self.rerank_mode.validate()?;
-        if let Some(s) = self.dense_compact_dead_share
-            && !(s.is_finite() && (0.0..=1.0).contains(&s))
-        {
-            return Err(schema_err(format!(
-                "dense_compact_dead_share {s} is not in 0.0..=1.0"
-            )));
-        }
+        // The dense stage owns the rule; one definition (Feature 024 review).
+        xtriever_dense::validate_compaction_threshold(self.dense_compact_dead_share)?;
         Ok(())
     }
 }
@@ -247,19 +242,12 @@ impl HybridIndex {
             FlatIndex::open_for(&dense_dir, embedder.as_ref())?
         };
         // A persisted share that could not have been created is corruption, not a schema
-        // error, like `rerank_mode` below — checked whatever the open's mode; installed on the
-        // dense stage only when this handle may write.
-        if let Some(s) = descriptor.dense_compact_dead_share
-            && !(s.is_finite() && (0.0..=1.0).contains(&s))
-        {
-            return Err(corrupt(format!(
-                "descriptor: dense_compact_dead_share {s} is not in 0.0..=1.0"
-            )));
-        }
+        // error, like `rerank_mode` below — checked whatever the open's mode (the dense stage's
+        // one rule); installed on the dense stage only when this handle may write.
+        xtriever_dense::validate_compaction_threshold(descriptor.dense_compact_dead_share)
+            .map_err(|e| corrupt(format!("descriptor: {e}")))?;
         if !read_only {
-            dense
-                .set_compaction_threshold(descriptor.dense_compact_dead_share)
-                .map_err(|e| corrupt(format!("descriptor: {e}")))?;
+            dense.set_compaction_threshold(descriptor.dense_compact_dead_share)?;
         }
         // The four-count check (research D3): every count-changing partial state is a
         // disagreement here — a second, cheap line of defence behind the marker.
@@ -461,31 +449,68 @@ impl HybridIndex {
 
     /// Commit, then compact the dense file (the live rows only, in id order — Feature 024,
     /// ADR-0013) and merge the lexical stage's segments into one (Feature 008 D10). The passage
-    /// store has no segments.
+    /// store has no segments. Staged changes are committed with the dense stage set to rewrite
+    /// on any dead row, so the whole merge is one dense protocol — never a durable append
+    /// followed by a separate compaction.
     ///
     /// Scores across a merge: the dense stage's are bit-identical by construction (the tests
-    /// compare every hit's dense score), and a merge after adds and deletes only leaves every
-    /// fused bit unchanged (Feature 008's guarantee). After *replacements* — an add under an
-    /// existing id — the lexical merge garbage-collects the replaced documents and the backend's
-    /// BM25 statistics move, so BM25 (and hence fused) bits can change: the lexical stage's own
-    /// behaviour, unchanged since Feature 002, recorded in ADR-0013.
+    /// compare every live row's score). The lexical stage's BM25 statistics are
+    /// deletion-inclusive until a merge physically drops deleted or replaced documents
+    /// (Feature 002 FR-025), so across a merge that does so BM25 — and hence RRF ranks and
+    /// fused bits — can move; a merge that drops nothing (no deletes, no replacements, or a
+    /// single segment where the lexical merge is a no-op) leaves every fused bit unchanged.
+    /// Recorded in ADR-0013 and pinned by the lexical crate's own test.
     ///
     /// A shipped artefact is one segment: fewer files to map, and `DocAddress` order equal to
-    /// `DocId` order. Without replacements, scores do not depend on the segment layout (the
-    /// backend computes IDF and average field length from searcher-wide totals) and the
-    /// pipeline tests assert every hit and score bit-identical across a merge.
+    /// `DocId` order.
     ///
     /// # Errors
     ///
-    /// `Error::Io` "read-only index" on a read-only open; otherwise as [`commit`](Self::commit)
-    /// and the lexical merge.
+    /// `Error::Io` "read-only index" on a read-only open; otherwise as [`commit`](Self::commit),
+    /// the dense compaction (`Error::Corrupt` if another writer changed the dense stage; the
+    /// durability-unconfirmed `Error::Io` when the compaction switched but its directory sync
+    /// failed — the lexical merge still runs and the error is returned at the end) and the
+    /// lexical merge.
     pub fn merge(&mut self) -> Result<()> {
         if self.lexical.is_read_only() {
             return Err(read_only());
         }
-        self.commit()?;
-        self.dense.compact()?;
-        self.lexical.merge()
+        let mut unconfirmed = None;
+        if self.dirty {
+            // One dense protocol for the merge: a commit with any dead row is a rewrite.
+            let configured = self.config.dense_compact_dead_share;
+            self.dense.set_compaction_threshold(Some(0.0))?;
+            let committed = self.commit();
+            self.dense.set_compaction_threshold(configured)?;
+            match committed {
+                Ok(()) => {}
+                Err(e) if self.dense.is_sync_pending() => unconfirmed = Some(e),
+                Err(e) => return Err(e),
+            }
+        }
+        if let Some(e) = self.dense_step(|dense| dense.compact())? {
+            unconfirmed.get_or_insert(e);
+        }
+        self.lexical.merge()?;
+        unconfirmed.map_or(Ok(()), Err)
+    }
+
+    /// Run one dense-stage step of a protocol and tell a *switched* outcome from a failure: the
+    /// stage reports its manifest switched with the directory sync unconfirmed by an error
+    /// with `is_sync_pending()` **and** a changed state; an error that changed nothing (a failed
+    /// retry of an earlier sync, a stale-writer refusal, an I/O failure before the switch) is
+    /// a failure like any other, so the protocol never advances past a stage that did not
+    /// commit. Returns the unconfirmed-durability error to be surfaced at the end.
+    fn dense_step(
+        &mut self,
+        step: impl FnOnce(&mut FlatIndex) -> Result<()>,
+    ) -> Result<Option<Error>> {
+        let before = self.dense.stats();
+        match step(&mut self.dense) {
+            Ok(()) => Ok(None),
+            Err(e) if self.dense.is_sync_pending() && self.dense.stats() != before => Ok(Some(e)),
+            Err(e) => Err(e),
+        }
     }
 
     /// Commit both stages, then the passage store, the id map and the descriptor (research
@@ -520,11 +545,7 @@ impl HybridIndex {
         //    is the new one, so the protocol continues to a consistent directory and the error
         //    is returned at the end; the next `commit` on this handle retries the sync.
         self.lexical.commit()?;
-        let unconfirmed = match self.dense.commit() {
-            Ok(()) => None,
-            Err(e) if self.dense.is_sync_pending() => Some(e),
-            Err(e) => return Err(e),
-        };
+        let unconfirmed = self.dense_step(|dense| dense.commit())?;
         // 4. The passage store (format version 2, ADR-0008): one slot per assigned id.
         self.passages.commit(self.pending_ids.len())?;
         // 5–6. The id map, then the descriptor.
