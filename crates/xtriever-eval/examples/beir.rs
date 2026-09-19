@@ -313,6 +313,11 @@ fn cached_index(
                 dir.display()
             ),
         }
+    } else if dir.exists() {
+        eprintln!(
+            "cache at {} does not match this key (format version, config, fingerprint, corpus hash or count); re-embedding",
+            dir.display()
+        );
     }
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;

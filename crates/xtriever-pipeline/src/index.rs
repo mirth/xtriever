@@ -97,6 +97,13 @@ impl HybridConfig {
             return Err(schema_err("rrf_k must be at least 1"));
         }
         self.rerank_mode.validate()?;
+        if let Some(s) = self.dense_compact_dead_share
+            && !(s.is_finite() && (0.0..=1.0).contains(&s))
+        {
+            return Err(schema_err(format!(
+                "dense_compact_dead_share {s} is not in 0.0..=1.0"
+            )));
+        }
         Ok(())
     }
 }
@@ -115,12 +122,13 @@ impl HybridIndex {
             return Err(corrupt(format!("{} is not empty", dir.display())));
         }
         let lexical = TantivyIndex::create(&dir.join(LEXICAL_DIR), config.schema.clone())?;
-        let dense = FlatIndex::create(
+        let mut dense = FlatIndex::create(
             &dir.join(DENSE_DIR),
             embedder.dim(),
             embedder.metric(),
             embedder.fingerprint(),
         )?;
+        dense.set_compaction_threshold(config.dense_compact_dead_share)?;
         let passages = PassageStore::create(dir)?;
         let ids = Arc::new(IdMap::default());
         ids.write(dir)?;
@@ -133,6 +141,7 @@ impl HybridIndex {
             rrf_k: config.rrf_k,
             rerank_depth: config.rerank_depth,
             rerank_mode: config.rerank_mode,
+            dense_compact_dead_share: config.dense_compact_dead_share,
             live_docs: 0,
             generation: 0,
         };
@@ -217,7 +226,7 @@ impl HybridIndex {
         // The store's slot count must equal the id map's length (the fifth count, ADR-0008).
         let passages = PassageStore::open(dir, ids.len())?;
         let dense_dir = dir.join(DENSE_DIR);
-        let dense = if mapped {
+        let mut dense = if mapped {
             #[cfg(feature = "mmap")]
             {
                 if read_only {
@@ -237,6 +246,13 @@ impl HybridIndex {
         } else {
             FlatIndex::open_for(&dense_dir, embedder.as_ref())?
         };
+        if !read_only {
+            // A persisted share that could not have been created is corruption, not a schema
+            // error, like `rerank_mode` below.
+            dense
+                .set_compaction_threshold(descriptor.dense_compact_dead_share)
+                .map_err(|e| corrupt(format!("descriptor: {e}")))?;
+        }
         // The four-count check (research D3): every count-changing partial state is a
         // disagreement here — a second, cheap line of defence behind the marker.
         let lexical_live = lexical.stats()?.num_docs;
@@ -258,6 +274,7 @@ impl HybridIndex {
             rrf_k: descriptor.rrf_k,
             rerank_depth: descriptor.rerank_depth,
             rerank_mode: descriptor.rerank_mode,
+            dense_compact_dead_share: descriptor.dense_compact_dead_share,
         };
         // A persisted mode that could not have been created is corruption, not a schema error
         // (review round 1 #4): every search would apply an α outside [0, 1].
@@ -434,8 +451,9 @@ impl HybridIndex {
         Ok(())
     }
 
-    /// Commit, then merge the lexical stage's segments into one (Feature 008 D10). The dense
-    /// stage and the passage store have no segments. A shipped artefact is one segment: fewer
+    /// Commit, then compact the dense file (the live rows only, in id order — Feature 024,
+    /// ADR-0013) and merge the lexical stage's segments into one (Feature 008 D10). The passage
+    /// store has no segments. A shipped artefact is one segment: fewer
     /// files to map, and `DocAddress` order equal to `DocId` order. Scores do not depend on the
     /// segment layout (the backend computes IDF and average field length from searcher-wide
     /// totals); the pipeline tests assert every hit and score bit-identical across a merge.
@@ -449,6 +467,7 @@ impl HybridIndex {
             return Err(read_only());
         }
         self.commit()?;
+        self.dense.compact()?;
         self.lexical.merge()
     }
 

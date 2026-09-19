@@ -27,6 +27,10 @@ pub(crate) struct Descriptor {
     /// is unchanged.
     #[serde(default)]
     pub rerank_mode: RerankMode,
+    /// Feature 024: the dense compaction share. Absent in indexes written before it, which
+    /// read as `None` (compact only on `merge`); the format version is unchanged.
+    #[serde(default)]
+    pub dense_compact_dead_share: Option<f32>,
     pub live_docs: u64,
     pub generation: u64,
 }
@@ -93,6 +97,7 @@ mod tests {
             rrf_k: 60,
             rerank_depth: 20,
             rerank_mode: RerankMode::default(),
+            dense_compact_dead_share: None,
             live_docs: 0,
             generation: 0,
         }

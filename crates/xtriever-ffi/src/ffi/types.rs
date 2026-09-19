@@ -265,6 +265,10 @@ pub struct IndexConfig {
     /// default (`Interpolate { alpha: 0.5 }`), recorded in the index (Feature 015).
     #[uniffi(default = None)]
     pub rerank_mode: Option<RerankMode>,
+    /// Compact the dense vectors within a commit that would leave more than this share of
+    /// them dead (`0.0..=1.0`); `None` = compact only on `merge` (Feature 024).
+    #[uniffi(default = None)]
+    pub dense_compact_dead_share: Option<f32>,
 }
 
 /// A field's value — `xtriever_core::Value` on the wire. The kind must match the field's.

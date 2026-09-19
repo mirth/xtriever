@@ -1,6 +1,6 @@
 # Report: Incremental Dense Commits
 
-**Status**: PR A (the format, `xtriever-dense`) complete and green — gate, bench, fixture regenerated, eleven Copilot rounds and one `/code-review` (16 findings) applied — awaiting merge; PR B (the pipeline's `merge` → `compact`, the threshold knob through config/descriptor/FFI, the Wikipedia artefact regeneration) not started.
+**Status**: PR A (the format, `xtriever-dense`) merged after fourteen Copilot rounds and one `/code-review`; PR B (the pipeline's `merge` → `compact`, `dense_compact_dead_share` through config / descriptor / FFI / Python, the shipped Wikipedia artefact converted and proven) complete and green — awaiting merge.
 
 ## The oracle (T002)
 
@@ -279,3 +279,43 @@ manifest, goldens reproduce, the committed file kept); the bench re-recorded.
    commit of a freshly opened handle (see the bench record).
 2. `bytes_written` counts a manifest right after its `write_all` succeeds, before the sync,
    as the append path does.
+
+## PR B — the pipeline, the knob, the artefacts (2026-09-19)
+
+**Red checkpoint (C-B1, folded into one commit at the owner's pace)**: `compact_threshold.rs`
+(six tests) did not compile — `HybridConfig` had no `dense_compact_dead_share`; the Python
+knob test would fail on the attribute.
+
+**Landed**:
+- `HybridIndex::merge` = `commit` → `dense.compact()` → lexical merge. The dense file is
+  compacted to the live rows in id order (`rows == live`, `generation + 1`, `ordered`);
+  the dense stage's scores are bit-identical across it by construction and the test compares
+  every hit's dense score by id. Observation, recorded in ADR-0013: a merge *after deletes*
+  also garbage-collects tantivy's deleted documents, which changes BM25 statistics and so the
+  fused bits — pre-existing lexical behaviour (the 008 merge test covers the no-delete case,
+  which stays bit-identical and compacts nothing).
+- `HybridConfig::dense_compact_dead_share: Option<f32>` (default `None`; `0..=1` else
+  `Error::Schema` at create), recorded in the descriptor with a serde default (pipeline
+  format version unchanged — an index without the key reads `None`), applied to the dense
+  stage at create and at every writable open, exposed as the FFI `IndexConfig` field with a
+  uniffi default (`None`) so existing Python and Swift callers are unaffected; a commit that
+  crosses the share is a rewrite (tested at 20 % → exactly 25 % → over).
+- The shipped Wikipedia artefact converted, not re-embedded (`reference/convert_dense_v1_to_v2.py`,
+  two tests; 427,947 rows × 1,544 B; the v1 copy kept beside it under `target/xt-wiki-v1`).
+  **Proof**: `wikidemo measure` over the host goldens — parity **PASS, 800/800 score bits**
+  (`runs/measure-…`), peak RSS 1,035 MB beside the 019 record's 1,029 MB (latencies inflated
+  by an eval running alongside). **The SciFact baselines reproduce exactly** through the
+  rebuilt (format 2) dense cache: hybrid-baseline-v2 nDCG@10 0.7143693584 / Recall@100 0.955
+  and dense-baseline-v1 0.6450816521 / 0.925, every Δ 0.0 against the committed files.
+- Docs: the dense crate's `merge` sentence back, the 008 artefact tree, both demos' `merge`
+  line, the pipeline's `merge` doc.
+- The eval cache: the pre-PR SciFact cache (key version 1) was refused by the hybrid path with
+  the reason and rebuilt through the dense baseline, whose key-mismatch path now also names
+  why it re-embeds (it had printed only the progress lines).
+
+**Deliberately not done**: no device re-measurement (no device job); the demo slices under
+`target/` are not converted (rebuilt when next needed); no automatic compaction by default.
+
+**Gate (PR B)**: fmt, clippy (workspace), deny, the three cross-target checks; `cargo nextest
+run --workspace` 317 passed; the Python surface 34 (the knob test included); the converter's
+two tests; `wikidemo measure` parity PASS 800/800; SciFact hybrid and dense baselines Δ 0.0.

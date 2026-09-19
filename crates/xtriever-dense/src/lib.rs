@@ -16,9 +16,10 @@
 //!   ADR-0013) and searches them exactly: scores accumulate in `f64` and are rounded once;
 //!   results are ordered `(score DESC, DocId ASC)`, including at the `k`-th rank. `commit`
 //!   appends the new rows and marks deleted or replaced rows dead in the manifest's tombstone
-//!   set — it never modifies a committed byte; `compact` (also performed by `commit` when a
-//!   dead-row share is configured) rewrites the live rows under a new generation and switches
-//!   the manifest by rename. A handle (or a mapping) of the previous state is never disturbed
+//!   set — it never modifies a committed byte; `compact` (run by the pipeline's `merge`, and
+//!   performed by `commit` itself when the index's `dense_compact_dead_share` would be
+//!   exceeded) rewrites the live rows under a new generation and switches the manifest by
+//!   rename. A handle (or a mapping) of the previous state is never disturbed
 //!   by either.
 //! - **Fingerprint** ([`model::FINGERPRINT`]): `repo@revision;weights=sha256:…;dim=384;
 //!   pool=mean-mask;norm=l2;max_tokens=256;dtype=f32;prefix=none;engine=candle-0.9.2` — every

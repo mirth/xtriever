@@ -65,6 +65,7 @@ fn config(h: &support::Hybrid) -> IndexConfig {
         rrf_k: 60,
         rerank_depth: 20,
         rerank_mode: None,
+        dense_compact_dead_share: None,
     }
 }
 

@@ -105,7 +105,9 @@ The recipe, module by module:
 4. **add** through the package: one `Document` per passage — `external_id = "<article id>#<ordinal>"`,
    fields `title` and `text` (`"<title>\n\n<passage>"`), `ChunkInfo(parent, ordinal, byte_start, byte_end)` —
    in batches of 4,096; the engine embeds each passage;
-5. **commit**, **merge**;
+5. **commit**, **merge** (one lexical segment and one compact dense generation — dead rows
+   from replaced or deleted passages gone; `IndexConfig(dense_compact_dead_share=…)` makes a
+   commit compact on its own once that share of the vectors is dead);
 6. the **sidecars**: `index/corpus.json` (the corpus identity, whose chunker block names
    the chunker — the contract's strings, or chonky's model and revision — `record.py`),
    `ATTRIBUTION.txt`, `wiki-build.json`; then `<out>.partial` is renamed

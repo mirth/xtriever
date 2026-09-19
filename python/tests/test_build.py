@@ -148,3 +148,27 @@ def test_a_failed_model_load_at_create_leaves_nothing_behind(tmp_path):
     assert not target.exists()
     handle = xtriever.IndexHandle.create(str(target), config(h), str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP)
     assert handle.info().documents == 0 and handle.info().reranker_model_id is not None
+
+
+def test_dense_compact_dead_share_is_optional_and_recorded(tmp_path):
+    """Feature 024 (PR B): the compaction knob is an optional field of ``IndexConfig`` with no
+    default (``None`` = compact only on ``merge``); a value outside 0..1 is refused at create."""
+    h = fixture()
+    c = config(h)
+    assert c.dense_compact_dead_share is None
+    handle = xtriever.IndexHandle.create(str(tmp_path / "a"), c, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+    handle.add([document(d) for d in h["documents"]])
+    handle.commit()
+    assert handle.info().documents == 40
+    c2 = config(h)
+    c2.dense_compact_dead_share = 0.5
+    handle2 = xtriever.IndexHandle.create(str(tmp_path / "b"), c2, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+    handle2.add([document(d) for d in h["documents"]])
+    handle2.commit()
+    handle2.delete([d["external_id"] for d in h["documents"][:30]])
+    handle2.commit()  # 75 % dead: compacted within the commit
+    assert handle2.info().documents == 10
+    c3 = config(h)
+    c3.dense_compact_dead_share = 1.5
+    with pytest.raises(xtriever.XtrieverError):
+        xtriever.IndexHandle.create(str(tmp_path / "c"), c3, str(EMBEDDER), None, xtriever.LoadPath.MMAP)

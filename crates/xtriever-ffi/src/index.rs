@@ -215,6 +215,7 @@ impl From<IndexConfig> for HybridConfig {
             rrf_k: c.rrf_k,
             rerank_depth: to_usize(c.rerank_depth),
             rerank_mode: c.rerank_mode.map_or_else(Default::default, Into::into),
+            dense_compact_dead_share: c.dense_compact_dead_share,
         }
     }
 }
