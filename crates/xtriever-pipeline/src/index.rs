@@ -468,10 +468,12 @@ impl HybridIndex {
     /// fused bit unchanged (Feature 008's guarantee). After *replacements* — an add under an
     /// existing id — the lexical merge garbage-collects the replaced documents and the backend's
     /// BM25 statistics move, so BM25 (and hence fused) bits can change: the lexical stage's own
-    /// behaviour, unchanged since Feature 002, recorded in ADR-0013. A shipped artefact is one segment: fewer
-    /// files to map, and `DocAddress` order equal to `DocId` order. Scores do not depend on the
-    /// segment layout (the backend computes IDF and average field length from searcher-wide
-    /// totals); the pipeline tests assert every hit and score bit-identical across a merge.
+    /// behaviour, unchanged since Feature 002, recorded in ADR-0013.
+    ///
+    /// A shipped artefact is one segment: fewer files to map, and `DocAddress` order equal to
+    /// `DocId` order. Without replacements, scores do not depend on the segment layout (the
+    /// backend computes IDF and average field length from searcher-wide totals) and the
+    /// pipeline tests assert every hit and score bit-identical across a merge.
     ///
     /// # Errors
     ///

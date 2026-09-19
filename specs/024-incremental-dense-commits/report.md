@@ -298,7 +298,8 @@ knob test would fail on the attribute.
   every bit and a merge after replacements moves them — on a branch where the lexical crate
   has no diff against `main`. Pre-existing lexical behaviour; FR-005 revised to scope the
   guarantee (dense bit-identical; fused bit-identical after adds and plain deletes) and the
-  replacement case left for a lexical spec. The owner may veto the revision.
+  replacement case left for a lexical spec. **Owner's decision (2026-09-19)**: revise FR-005
+  and SC-002 consistently (the recommended option) rather than change the lexical stage here.
 - `HybridConfig::dense_compact_dead_share: Option<f32>` (default `None`; `0..=1` else
   `Error::Schema` at create), recorded in the descriptor with a serde default (pipeline
   format version unchanged — an index without the key reads `None`), applied to the dense
@@ -343,3 +344,16 @@ two tests; `wikidemo measure` parity PASS 800/800; SciFact hybrid and dense base
    in parallel. Re-measured twice more; the idle run — the one whose fused median matches the
    019 record — peaks at 1,062,453,248 B, below the 019 record's 1,079,508,992 B, and is now
    the committed record; the contended runs are reported beside it. SC-004 met.
+
+### Review round B2 (Copilot, four comments — all applied; one by the owner's decision)
+
+1. The merge test enumerates the row files (exactly `vectors.1.bin`), decodes the manifest's
+   tombstone payload (the empty roaring bitmap's eight bytes) and checks the file's exact size.
+2. The dense-score comparison is the stage's *complete* answer — every live row's
+   `(DocId, score bits)` through a read-only `FlatIndex` handle on `dense/` with the fixture
+   embedder's query vector — before and after the merge and after a reopen; no intersection.
+3. FR-005 and SC-002 revised together, by the owner's explicit decision (recorded in the spec):
+   dense bit-identical across every compaction; fused bit-identical after adds and plain
+   deletes; the replacement case is the lexical stage's and left for a lexical spec.
+4. `HybridIndex::merge`'s doc no longer contradicts itself: the segment-layout independence
+   and the every-bit claim are scoped to merges without replacements.

@@ -161,7 +161,8 @@ dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two
   lexical stage's BM25 statistics — a lexical-only probe on `TantivyIndex` reproduces it with
   no dense stage involved, and the lexical crate is unchanged on this branch — so fused bits
   after a replacement-then-merge are outside this requirement; that behaviour predates this
-  feature and belongs to a lexical spec of its own.
+  feature and belongs to a lexical spec of its own. **Owner's decision (2026-09-19)**: revise
+  FR-005 and SC-002 consistently rather than change the lexical stage under this feature.
 - **FR-006**: A crash at any byte boundary during `commit` or `merge` MUST leave an index
   that opens to either the previous committed state or the fully committed new one — the
   manifest rename is the switch — never to a partial state; a partially appended tail MUST
@@ -222,7 +223,11 @@ dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two
   numbers for both formats are in the PR.
 - **SC-002**: Bit-identical search results against the current implementation on the
   scripted goldens and on 1,000 random sequences (property test), all metrics, filtered and
-  unfiltered; bit-identical before and after `merge`.
+  unfiltered; the dense stage's results bit-identical before and after `compact` / `merge`
+  (every live row's score), and the pipeline's fused results bit-identical before and after
+  a `merge` that follows adds and plain deletes. *Revised with FR-005 (owner's decision,
+  2026-09-19)*: a merge after replacements is outside the fused guarantee — the lexical
+  stage's BM25 statistics move, a pre-existing lexical behaviour shown by a lexical-only probe.
 - **SC-003**: Every truncation point of a commit's writes reopens to the previous committed
   state (the test enumerates them); the regenerated fixture index passes its committed
   goldens bit for bit; the regenerated Wikipedia artefact passes the host goldens 800/800;

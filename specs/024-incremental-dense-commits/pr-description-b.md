@@ -18,7 +18,7 @@ latencies that show it). The SciFact hybrid baseline (nDCG@10 0.7143693584, Reca
 score bit; the share compacts on the crossing commit and not at equality; `None` never; out
 of range refused; a descriptor without the key reads `None`) plus the no-delete merge case
 kept bit-identical, plus the plain-delete merge bit-identical while the dense file compacts;
-a Python knob test. **One spec revision (FR-005), with evidence**: a merge after
+a Python knob test. **One spec revision (FR-005 and SC-002, by the owner's decision), with evidence**: a merge after
 *replacements* moves BM25 bits — reproduced on `TantivyIndex` alone with no dense stage, on
 a branch where the lexical crate has no diff against `main` — so the fused-bit guarantee is
 scoped to adds and plain deletes and the replacement case is left for a lexical spec; a

@@ -8,7 +8,8 @@ mod support;
 
 use std::path::Path;
 
-use xtriever_core::Error;
+use xtriever_core::{Embedder, Error, TextKind, VectorIndex};
+use xtriever_dense::FlatIndex;
 use xtriever_pipeline::{HybridConfig, HybridIndex, SearchOptions};
 
 fn embedder() -> Box<dyn xtriever_core::Embedder> {
@@ -30,6 +31,45 @@ fn dense_manifest(dir: &Path) -> serde_json::Value {
     let bytes = std::fs::read(dir.join("dense/manifest.bin")).unwrap();
     let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
     serde_json::from_slice(&bytes[16..16 + hdr_len]).unwrap()
+}
+
+/// The manifest's tombstone payload — the bytes after the header.
+fn dense_tombstones(dir: &Path) -> Vec<u8> {
+    let bytes = std::fs::read(dir.join("dense/manifest.bin")).unwrap();
+    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
+    bytes[16 + hdr_len..].to_vec()
+}
+
+/// `RoaringBitmap::new().serialize_into(..)`: the no-run-container cookie and zero containers.
+const EMPTY_TOMBSTONES: [u8; 8] = [0x3a, 0x30, 0, 0, 0, 0, 0, 0];
+
+/// The row files present under `dense/`, sorted.
+fn vector_files(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir.join("dense"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("vectors."))
+        .collect();
+    names.sort();
+    names
+}
+
+/// The dense stage's complete answer for a query — every live row's `(DocId, score bits)` —
+/// read through a read-only handle on the stage's directory (it alters nothing), with the
+/// fixture embedder's query vector: the whole map, not a fused top-k's intersection.
+fn dense_stage_bits(dir: &Path, text: &str) -> Vec<(u32, u32)> {
+    let h = support::hybrid();
+    let embedder = support::TableEmbedder::from_fixture(&h);
+    let q = embedder.embed(&[text], TextKind::Query).unwrap().remove(0);
+    let dense = FlatIndex::open_read_only(&dir.join("dense")).unwrap();
+    let mut hits: Vec<(u32, u32)> = dense
+        .search(&q, None, 10_000)
+        .unwrap()
+        .iter()
+        .map(|h| (h.id.0, h.score.to_bits()))
+        .collect();
+    hits.sort_unstable();
+    hits
 }
 
 fn build(dir: &Path, config: HybridConfig) -> HybridIndex {
@@ -94,7 +134,18 @@ fn merge_compacts_the_dense_file_and_keeps_every_bit() {
     // deletes does not — the lexical stage's behaviour on `main`, which this branch does not
     // touch. Spec FR-005 is scoped accordingly; the no-replacement case stays bit-identical
     // (`merge_without_deletes_keeps_every_fused_bit_and_compacts_nothing` and `open_with.rs`).
-    let before: Vec<Vec<(String, Option<u32>)>> = h
+    // The complete dense answer per query — every live row — through a read-only handle on
+    // the stage, plus the fused hits' explained dense scores.
+    let before: Vec<Vec<(u32, u32)>> = h
+        .queries
+        .iter()
+        .map(|q| dense_stage_bits(tmp.path(), &q.text))
+        .collect();
+    assert!(
+        before.iter().all(|b| b.len() == 37),
+        "every live row scored"
+    );
+    let explained_before: Vec<Vec<(String, Option<u32>)>> = h
         .queries
         .iter()
         .map(|q| dense_bits(&index, &q.text))
@@ -105,29 +156,52 @@ fn merge_compacts_the_dense_file_and_keeps_every_bit() {
     assert_eq!(m["live"].as_u64().unwrap(), 37);
     assert_eq!(m["generation"].as_u64().unwrap(), 1);
     assert!(m["ordered"].as_bool().unwrap());
-    assert!(!tmp.path().join("dense/vectors.0.bin").exists());
-    let after: Vec<Vec<(String, Option<u32>)>> = h
+    assert_eq!(
+        vector_files(tmp.path()),
+        vec!["vectors.1.bin".to_owned()],
+        "exactly one generation"
+    );
+    assert_eq!(
+        dense_tombstones(tmp.path()),
+        EMPTY_TOMBSTONES,
+        "an empty tombstone set"
+    );
+    assert_eq!(
+        std::fs::metadata(tmp.path().join("dense/vectors.1.bin"))
+            .unwrap()
+            .len(),
+        37 * (8 + 4 * h.dim as u64)
+    );
+    let after: Vec<Vec<(u32, u32)>> = h
+        .queries
+        .iter()
+        .map(|q| dense_stage_bits(tmp.path(), &q.text))
+        .collect();
+    assert_eq!(
+        after, before,
+        "every live row's dense score, bit for bit, across the compaction"
+    );
+    let explained_after: Vec<Vec<(String, Option<u32>)>> = h
         .queries
         .iter()
         .map(|q| dense_bits(&index, &q.text))
         .collect();
-    for (b, a) in before.iter().zip(&after) {
+    for (b, a) in explained_before.iter().zip(&explained_after) {
         for (id, bits) in b {
-            let same = a.iter().find(|(i, _)| i == id).map(|(_, x)| x);
-            if let Some(x) = same {
-                assert_eq!(x, bits, "dense score of {id} across the compaction");
+            if let Some((_, x)) = a.iter().find(|(i, _)| i == id) {
+                assert_eq!(x, bits, "explained dense score of {id}");
             }
         }
     }
     drop(index);
     let reopened = HybridIndex::open(tmp.path(), embedder()).unwrap();
     assert_eq!(reopened.len(), 37);
-    let again: Vec<Vec<(String, Option<u32>)>> = h
+    let again: Vec<Vec<(u32, u32)>> = h
         .queries
         .iter()
-        .map(|q| dense_bits(&reopened, &q.text))
+        .map(|q| dense_stage_bits(tmp.path(), &q.text))
         .collect();
-    assert_eq!(again, after);
+    assert_eq!(again, before);
 }
 
 #[test]
