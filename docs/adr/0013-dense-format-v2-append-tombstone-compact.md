@@ -41,24 +41,46 @@ dense/
 ```
 
 - The manifest is the truth. Its header carries `dim`, `metric`, `fingerprint`, the row
-  file's `generation`, the committed `rows`, the `live` count and the tombstone bytes'
-  length; the tombstone set (dead row indices — deleted, or superseded by a replacement) is a
-  `roaring` bitmap. It is written to `manifest.bin.tmp`, synced and renamed.
+  file's `generation`, the committed `rows`, the `live` count, whether the row ids are
+  `ordered` (strictly ascending) and the tombstone bytes' length; the tombstone set (dead
+  row indices — deleted, or superseded by a replacement) is a `roaring` bitmap embedded after
+  the header. It is written to `manifest.bin.tmp`, synced and renamed through the workspace's
+  one atomic-write definition (`xtriever_core::fs`), the directory handle for the post-rename
+  sync opened *before* the rename.
 - **`commit`** appends the pending rows to the current row file (sync), then replaces the
   manifest with `rows += appended` and the tombstones of the rows the changes superseded or
   deleted. No committed byte is modified. Cost: O(change) plus the manifest (tens of KB at
   most — the bitmap is compressed).
-- **`compact`** (inherent on `FlatIndex`) writes the live rows — pending changes folded in —
-  in ascending id order to `vectors.<g+1>.bin`, replaces the manifest (`generation g+1`, no
-  tombstones), and removes the old file. The pipeline's `merge` calls it. When the configured
-  dead-row share (`HybridConfig::dense_compact_dead_share`, default `None`) would be exceeded,
+- **`compact`** (inherent on `FlatIndex`) streams the live rows — pending changes folded in,
+  a kept row copied as its committed bytes — in ascending id order to `vectors.<g+1>.bin`,
+  replaces the manifest (`generation g+1`, no tombstones, `ordered`), and removes the old
+  file; an index larger than memory compacts on the mapped path because nothing is
+  materialised on the heap beyond one row. The pipeline's `merge` will call it (PR B). When
+  the configured dead-row share (`HybridConfig::dense_compact_dead_share`, PR B, default
+  `None`) would be exceeded,
   `commit` *is* this rewrite rather than an append: one protocol with one rename, so a commit
   fails whole or succeeds whole — never a durable append followed by a compaction that fails
   on its own.
 - **Manifest failures are two kinds**: before the rename nothing on disk changed and the
   handle rolls back (the appended rows cut, or the new generation removed; pending kept);
-  after it — only the directory sync — the manifest is the new one, the handle adopts that
-  state and the error names it as a durability-unconfirmed success.
+  after it — only an `fsync` failure on the directory handle opened before the rename, so an
+  unopenable directory fails *before* the switch — the manifest is the new one, the handle
+  adopts that state, the error names it as a durability-unconfirmed success, and no later
+  `commit` or `compact` on that handle succeeds until a sync has (`is_sync_pending`). The
+  obligation is per handle: a dropped handle drops it. The pipeline's `commit` treats that
+  outcome as switched — it finishes its own protocol so the directory is consistent, returns
+  the error, and its next `commit` retries the sync through the stage's empty commit.
+- **One writer at a time, checked**: a writable handle verifies at every commit that the
+  manifest on disk is the one it last saw (generation and rows) and refuses with `Corrupt`
+  otherwise, so a stale handle cannot cut another writer's rows in place or silently undo
+  its commit. The no-concurrent-writer precondition of every open is still the caller's.
+- **Read-only opens** (`open_read_only*`, the pipeline's `OpenOptions { read_only }`) alter
+  nothing — no tail cut, no sweep — and refuse every mutation with the workspace's one
+  read-only error (`Error::read_only`).
+- **No id table for the shipped case**: an `ordered`, tombstone-free generation answers
+  `vector(id)` by binary search over the row ids, so a mapped read-only open touches nothing
+  beyond the manifest — the id → row map (`BTreeMap`, one entry per live row) exists only
+  when a file has tombstones or out-of-order ids.
 - **Crash safety**: a crash before the manifest rename leaves the previous manifest, so the
   previous state (any byte boundary — the test enumerates them). On the Unix targets the
   engine ships to (macOS, iOS, Android, Linux) the directory is also fsynced after a new row
@@ -96,22 +118,29 @@ the single-writer precondition the caller owns is unchanged.
 ## Consequences
 
 - A 10-row commit into a 100k-row index writes the ten rows plus a manifest under 1 KB
-  instead of ~150 MB (the bench in `crates/xtriever-dense/benches/scan.rs`; numbers in the
-  spec's `runs/`).
+  instead of the `rows × (8 + 4·dim)` bytes a version-1 rewrite wrote (154 MB at 100k × 384 —
+  arithmetic, not a measurement; the bench in `crates/xtriever-dense/benches/scan.rs`
+  measures the version-2 append and compares the scan with the version-1 shape; numbers in
+  the spec's `runs/`).
 - Dead rows cost scan time until a compaction; the default leaves compaction to `merge`
   (predictable on a phone), the threshold makes it automatic for callers who prefer that.
 - Rows are interleaved (`id · norm · vector`) rather than columnar: one append per commit,
   one length to reason about, one stream for the unfiltered scan. A filtered scan reads the
   id at a row's head and skips the rest by offset.
-- `FlatIndex` keeps an in-memory id → live row map (`BTreeMap<u32, u32>`, one entry per live
-  row) built at open by one pass over the rows; `vector(id)` and the superseded-row detection
-  look ids up in it, and a compaction walks it in ascending id order. A map rather than a
-  table indexed by id, because `add` accepts any `u32`: memory follows the row count, not the
-  largest id (~15 MB for the Wikipedia index's 428k rows; a sparse `u32::MAX` costs one
-  entry). Lookups are O(log rows); the scan does not use the map.
+- `FlatIndex` keeps an id → live row map (`BTreeMap<u32, u32>`, one entry per live row)
+  only for a generation with tombstones or out-of-order ids, built by one pass over the rows
+  at open (or, for a writable handle, at the first commit that creates a tombstone); an
+  ordered, tombstone-free generation — every shipped or freshly compacted index — needs none
+  and looks ids up by binary search. A map rather than a table indexed by id, because `add`
+  accepts any `u32`: memory follows the row count, not the largest id (~15 MB for the
+  Wikipedia index's 428k rows when one is needed; a sparse `u32::MAX` costs one entry).
 - The pipeline's descriptor gains `dense_compact_dead_share` with a serde default; the
   pipeline format version is unchanged (as `rerank_mode` in Feature 015). The FFI
   `IndexConfig` gains the same optional field with a uniffi default.
+- The oracle that pins version 2 to version 1's results bit for bit
+  (`crates/xtriever-dense/tests/support/v1_oracle.json`) is reproducible from
+  `reference/gen_024_fixtures.py`, which recomputes every expectation from the contract's
+  arithmetic in Python (Principle II).
 - Existing version-1 indexes must be rebuilt (or converted once; the Wikipedia artefact was
   converted by `reference/convert_dense_v1_to_v2.py`, a record of the step rather than a
   supported tool).

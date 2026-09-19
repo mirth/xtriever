@@ -1,6 +1,6 @@
 # Report: Incremental Dense Commits
 
-**Status**: PR A (the format, `xtriever-dense`) complete and green — gate, bench, fixture regenerated, ten review rounds applied — awaiting merge; PR B (the pipeline's `merge` → `compact`, the threshold knob through config/descriptor/FFI, the Wikipedia artefact regeneration) not started.
+**Status**: PR A (the format, `xtriever-dense`) complete and green — gate, bench, fixture regenerated, eleven Copilot rounds and one `/code-review` (16 findings) applied — awaiting merge; PR B (the pipeline's `merge` → `compact`, the threshold knob through config/descriptor/FFI, the Wikipedia artefact regeneration) not started.
 
 ## The oracle (T002)
 
@@ -43,10 +43,10 @@ no device job here.)
 
 | | version 1 (shape) | **version 2** | budget |
 |---|---|---|---|
-| unfiltered scan | 32.8 ms | **31.6 ms** (−4 %) | within 5 % |
+| unfiltered scan | 32.8 ms (v1 shape) | **31.6 ms** (−4 %); 40.4 vs 40.1 ms in the contended re-run after the review fixes | within 5 % |
 | scan, `allowed` = every other id | — | 16.2 ms | reported |
 | 10-row commit, bytes written | 154,400,101 | **15,596** (ten rows + one manifest, by the handle's own counter; net growth 15,440) | < 100 KB |
-| 10-row commit, time | 145–176 ms across runs | **17.5–18.2 ms** (12.9 ms before the directory fsyncs of review round 4; three `fsync`s now) | < 50 ms |
+| 10-row commit, time | 145–176 ms across runs (a `rows × row_bytes` rewrite by construction) | **18.5 ms** idle after the `/code-review` fixes (17.5–18.2 before them; 12.9 before the directory fsyncs; three `fsync`s and a manifest read for the stale-writer check now) | < 50 ms |
 
 The first commit run measured 37.6 ms: `commit` re-read the whole row file after each
 append. Fixed (`absorb`: the in-memory buffer grows by the appended bytes; a mapping is
@@ -222,3 +222,31 @@ open exposes the committed rows only; the next writable open cleans up.
 6. Research D3's commit *and* compact steps, and T013, record the landed protocol (the new
    rows or generation in memory before the rename, the directory sync, the two failure
    kinds, infallible adoption after) — two further comments in the same round.
+
+### `/code-review` (eight finder agents; 16 findings, all applied)
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | a stale writable handle's `commit` truncated rows another handle committed (probed) | every writable `commit` / `compact` verifies the manifest on disk is the one it last saw (generation, rows) → `Corrupt` "changed by another writer"; test |
+| 2 | `Rows::new` silently degraded an overflowing layout to empty on the write path | deleted; `Rows::for_count` (u32 rows + checked bytes) is the one write-path constructor, `decode_manifest` returns the validated layout |
+| 3 | the after-switch outcome stranded the pipeline's commit; per-handle retry; `create` failed after a complete directory | the directory handle for the post-rename sync is opened *before* the rename (`xtriever_core::fs::open_dir_for_sync`), so an unopenable directory fails before the switch; the pipeline finishes its protocol on an after-switch error and returns it, and its empty `commit` retries the stage's sync; `create` opens the complete index with `sync_pending` set |
+| 4 | three `unreachable!` arms in library code | the switch tail is one `match` (roll back / adopt), the merge is an exhaustive four-arm `match` on a `Merge` iterator — no panic arm anywhere |
+| 5 | a mapped read-only open faulted in the whole row file to build the id map | the manifest records `ordered`; an ordered, tombstone-free generation has no table (`vector(id)` binary-searches the row ids), so a read-only mapped open touches nothing beyond the manifest; the map exists only for files with tombstones or unordered ids |
+| 6 | compaction materialised the whole live set on the heap and re-read it | `rewrite` streams merged rows through a `BufWriter` (a kept row is a byte copy), keeps a copy in memory only on the buffered path (the state's own memory), maps on the mapped path |
+| 7 | `create` left an unusable directory on a manifest failure | the row file and temporary are removed on a before-switch failure; test (permission case) |
+| 8 | the eval cache silently re-embedded a version-1 cache | `EmbeddingCacheKey.format_version` is 2 (three literals, the test's variant bumped to 3); the open error is printed before a wipe |
+| 9 | `set_len` on an append-only handle (Windows) | the append uses a read+write handle, `set_len` only when longer, `seek` to the committed length |
+| 10 | `bytes_written` counted bytes before the write succeeded | counted after each successful write; documented as such; test |
+| 11 | no test of the append-then-manifest-failure rollback, of read-only opens of a short row file, of owned-vs-mapped over sequences | a directory named `manifest.bin.tmp` provokes the rollback (buffered and mapped); the read-only constructors on a short file; the property test runs the same sequence on a writable mapped handle and compares after every commit, after compaction and after reopen |
+| 12 | four hand copies of write-tmp-sync-rename with unequal durability; three read-only errors | `xtriever_core::fs::{write_atomically, sync_dir, open_dir_for_sync}` and `Error::read_only()` / `READ_ONLY_MESSAGE`: the pipeline's descriptor and id map, the lexical descriptor and the dense manifest all sync the directory now; one error text |
+| 13 | ADR described PR B behaviour as landed | marked PR B |
+| 14 | the oracle had no `reference/` generator | `reference/gen_024_fixtures.py` recomputes every expectation from the contract's arithmetic in Python: **0 mismatches** over 159 commits (`--write` regenerates) |
+| 15 | derivable state (`ascending`, `layout`), duplicated prologues, the bench's v1 fossil pinned bit for bit | `ordered` lives in the manifest; the layout is switched only through `adopt`; one `pending_counts`; `Lcg`, `vec_for`, `hit_bits`, `row_bytes`, `row_file`, `dir_bytes` in `tests/support`, shared by the bench; the v1 scan shape stays as a comparison, its assertion and the v1 rewrite timing are gone (the v1 write volume is arithmetic) |
+| 16 | PR A is ~3.5× Rule 3's ~800 lines | acknowledged; the owner decided the PR A / PR B split — a further split (format + manifest tests / append commit / tombstones + compaction) remains possible at the owner's call |
+
+**Gate after the `/code-review` fixes**: fmt, clippy (workspace; dense with `--all-features`),
+deny, the three cross-target checks; `cargo nextest run --workspace` 311 passed; dense 65
+buffered / 72 with `mmap`; the oracle bit-identical; the reference-scorer property with
+`PROPTEST_CASES=1000` on the buffered *and* the writable mapped handle; the Python surface 33;
+`reference/gen_024_fixtures.py --check` 0 mismatches; the fixture regenerated (`ordered`
+manifest, goldens reproduce, the committed file kept); the bench re-recorded.

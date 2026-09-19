@@ -5,32 +5,18 @@
 
 mod support;
 
+use support::vec_for;
+
 use std::path::Path;
 
 use xtriever_core::{DocId, Metric, VectorIndex};
 use xtriever_dense::{DenseStats, FlatIndex};
 
 const DIM: usize = 4;
-const ROW: u64 = 8 + DIM as u64 * 4; // id · norm · vector
-
-fn row_file(dir: &Path, generation: u64) -> std::path::PathBuf {
-    dir.join(format!("vectors.{generation}.bin"))
-}
+const ROW: u64 = support::row_bytes(DIM);
 
 fn file_len(path: &Path) -> u64 {
     std::fs::metadata(path).unwrap().len()
-}
-
-fn vec_for(i: u32) -> Vec<f32> {
-    let f = i as f32;
-    vec![f + 1.0, (f * 0.5).sin(), (f * 0.25).cos(), 0.5]
-}
-
-fn dir_bytes(dir: &Path) -> u64 {
-    std::fs::read_dir(dir)
-        .unwrap()
-        .map(|e| e.unwrap().metadata().unwrap().len())
-        .sum()
 }
 
 #[test]
@@ -41,7 +27,7 @@ fn commit_appends_only_the_new_rows() {
         index.add(DocId(i), &vec_for(i)).unwrap();
     }
     index.commit().unwrap();
-    let rows = row_file(tmp.path(), 0);
+    let rows = support::row_file(tmp.path(), 0);
     assert_eq!(file_len(&rows), 100 * ROW);
     assert!(tmp.path().join("manifest.bin").is_file());
     assert!(!tmp.path().join("index.bin").exists());
@@ -79,7 +65,7 @@ fn replace_and_delete_never_touch_committed_bytes() {
         index.add(DocId(i), &vec_for(i)).unwrap();
     }
     index.commit().unwrap();
-    let rows = row_file(tmp.path(), 0);
+    let rows = support::row_file(tmp.path(), 0);
     let before = std::fs::read(&rows).unwrap();
     let old_seven = index.vector(DocId(7)).unwrap();
     let old_seven_hit = index.search(&old_seven, None, 1).unwrap()[0];
@@ -135,7 +121,7 @@ fn a_delete_only_commit_appends_nothing() {
         index.add(DocId(i), &vec_for(i)).unwrap();
     }
     index.commit().unwrap();
-    let rows = row_file(tmp.path(), 0);
+    let rows = support::row_file(tmp.path(), 0);
     let manifest_before = std::fs::read(tmp.path().join("manifest.bin")).unwrap();
     index.delete(&[DocId(4), DocId(5), DocId(999)]).unwrap();
     index.commit().unwrap();
@@ -167,7 +153,7 @@ fn bytes_written_are_proportional_to_the_change() {
     }
     index.commit().unwrap();
     let written_before = index.bytes_written();
-    let growth_before = dir_bytes(tmp.path());
+    let growth_before = support::dir_bytes(tmp.path());
     let manifest_before = file_len(&tmp.path().join("manifest.bin"));
     for i in 1000..1010u32 {
         let v: Vec<f32> = (0..D)
@@ -183,7 +169,7 @@ fn bytes_written_are_proportional_to_the_change() {
         "the commit wrote the ten rows and one manifest, nothing else"
     );
     assert_eq!(
-        dir_bytes(tmp.path()) - growth_before,
+        support::dir_bytes(tmp.path()) - growth_before,
         10 * row + manifest_after - manifest_before,
         "net growth: the rows plus the manifest's own change"
     );

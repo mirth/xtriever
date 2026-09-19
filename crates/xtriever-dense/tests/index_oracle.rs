@@ -3,8 +3,10 @@
 //! minted **on the version-1 implementation** (`mint`, ignored) into
 //! `tests/support/v1_oracle.json` — every hit's id and score bits. `replay` asserts that the
 //! current implementation reproduces them bit for bit, so the append/tombstone/compact format
-//! cannot change a single result. The generator is a fixed-seed LCG: deterministic without a
-//! dependency, and the file is the record either way.
+//! cannot change a single result. The generator is a fixed-seed LCG (`support::Lcg`):
+//! deterministic without a dependency, and the file is the record either way — and
+//! `reference/gen_024_fixtures.py` recomputes every expectation from the contract's
+//! arithmetic in Python (`--check`), so the fixture is reproducible independently of this crate.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
@@ -12,6 +14,7 @@ mod support;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use support::Lcg;
 use xtriever_core::{DocId, Metric, VectorIndex};
 use xtriever_dense::FlatIndex;
 
@@ -66,33 +69,6 @@ struct Oracle {
     sequences: Vec<Sequence>,
 }
 
-/// A 64-bit LCG (Knuth's MMIX constants); enough for reproducible test data.
-struct Lcg(u64);
-
-impl Lcg {
-    fn next_u64(&mut self) -> u64 {
-        self.0 = self
-            .0
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
-        self.0
-    }
-    fn below(&mut self, n: usize) -> usize {
-        (self.next_u64() >> 33) as usize % n
-    }
-    /// A finite vector with components in roughly [-1, 1], never all-zero.
-    fn vector(&mut self) -> Vec<f32> {
-        loop {
-            let v: Vec<f32> = (0..DIM)
-                .map(|_| ((self.next_u64() >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0)
-                .collect();
-            if v.iter().any(|x| *x != 0.0) {
-                return v;
-            }
-        }
-    }
-}
-
 fn oracle_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/v1_oracle.json")
 }
@@ -107,7 +83,7 @@ fn generate_steps(rng: &mut Lcg) -> Vec<Step> {
             0..=4 => {
                 steps.push(Step::Add {
                     id: next_id,
-                    vector: rng.vector(),
+                    vector: rng.vector(DIM),
                 });
                 known.push(next_id);
                 next_id += 1;
@@ -116,7 +92,7 @@ fn generate_steps(rng: &mut Lcg) -> Vec<Step> {
                 let id = known[rng.below(known.len())];
                 steps.push(Step::Replace {
                     id,
-                    vector: rng.vector(),
+                    vector: rng.vector(DIM),
                 });
             }
             7 if !known.is_empty() => {
@@ -175,7 +151,7 @@ fn drive(seq: &Sequence, dim: usize, fingerprint: &str, mint: bool, rng: &mut Lc
                 let expect = if mint {
                     let mut queries = Vec::new();
                     for q in 0..QUERIES_PER_COMMIT {
-                        let vector = rng.vector();
+                        let vector = rng.vector(DIM);
                         let k = KS[rng.below(KS.len())];
                         let allowed = if q < 2 && !known.is_empty() {
                             let n = 1 + rng.below(known.len());

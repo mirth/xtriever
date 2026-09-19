@@ -2,8 +2,11 @@
 //! row file against the version-1 shape, and the cost of a 10-row commit against the rewrite
 //! version 1 did. 100,000 rows × 384 dims from a fixed-seed generator; `k = 10`.
 //!
-//! The version-1 shape is kept here as bench-local code (three columns, the same `f64`
-//! accumulation and the same total order), so the comparison outlives the format's removal.
+//! The version-1 *scan shape* is kept here as bench-local code (three columns, the same `f64`
+//! accumulation and the same total order) so SC-004's comparison outlives the format's removal;
+//! it is a comparison, not an assertion — the product kernel may change. The version-1 write
+//! volume needs no measurement: a rewrite is `rows × (8 + 4·dim)` bytes per commit by
+//! construction (154 MB at 100k × 384), stated in ADR-0013.
 //!
 //! ```sh
 //! cargo bench -p xtriever-dense --bench scan
@@ -17,40 +20,26 @@
 
 use std::cmp::Ordering;
 use std::hint::black_box;
-use std::io::Write;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use xtriever_core::{DocId, DocSet, Metric, VectorIndex};
 use xtriever_dense::FlatIndex;
 
+#[path = "../tests/support/mod.rs"]
+mod support;
+use support::Lcg;
+
 const ROWS: u32 = 100_000;
 const DIM: usize = 384;
 const K: usize = 10;
 
-struct Lcg(u64);
-
-impl Lcg {
-    fn next_u64(&mut self) -> u64 {
-        self.0 = self
-            .0
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
-        self.0
-    }
-    fn vector(&mut self) -> Vec<f32> {
-        (0..DIM)
-            .map(|_| ((self.next_u64() >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0)
-            .collect()
-    }
-}
-
 fn rows() -> Vec<Vec<f32>> {
     let mut rng = Lcg(0x0024_BE4C);
-    (0..ROWS).map(|_| rng.vector()).collect()
+    (0..ROWS).map(|_| rng.vector(DIM)).collect()
 }
 
 fn query() -> Vec<f32> {
-    Lcg(0xC0FFEE).vector()
+    Lcg(0xC0FFEE).vector(DIM)
 }
 
 // ── the version-1 shape: three columns, the same arithmetic ────────────────────────────────
@@ -109,32 +98,6 @@ impl Columnar {
         scored.truncate(k);
         scored
     }
-
-    /// The version-1 commit: the whole file rewritten (header · ids · norms · vectors).
-    fn rewrite(&self, path: &std::path::Path) {
-        let mut out = Vec::with_capacity(16 + 64 + self.ids.len() * 8 + self.vectors.len() * 4);
-        out.extend_from_slice(b"XTDENSE1");
-        let header = format!(
-            r#"{{"format_version":1,"dim":{DIM},"metric":"cosine","fingerprint":"bench","count":{}}}"#,
-            self.ids.len()
-        );
-        out.extend_from_slice(&(header.len() as u64).to_le_bytes());
-        out.extend_from_slice(header.as_bytes());
-        for id in &self.ids {
-            out.extend_from_slice(&id.to_le_bytes());
-        }
-        for n in &self.norms {
-            out.extend_from_slice(&n.to_le_bytes());
-        }
-        for x in &self.vectors {
-            out.extend_from_slice(&x.to_le_bytes());
-        }
-        let tmp = path.with_extension("tmp");
-        let mut f = std::fs::File::create(&tmp).unwrap();
-        f.write_all(&out).unwrap();
-        f.sync_all().unwrap();
-        std::fs::rename(&tmp, path).unwrap();
-    }
 }
 
 fn bench_scan(c: &mut Criterion) {
@@ -147,15 +110,6 @@ fn bench_scan(c: &mut Criterion) {
         index.add(DocId(i as u32), r).unwrap();
     }
     index.commit().unwrap();
-    // Agreement, so the comparison is between equals.
-    let a = columnar.search(&q, K);
-    let b: Vec<(f32, u32)> = index
-        .search(&q, None, K)
-        .unwrap()
-        .iter()
-        .map(|h| (h.score, h.id.0))
-        .collect();
-    assert_eq!(a, b, "the two shapes must agree bit for bit");
     let mut allowed = DocSet::new();
     for i in (0..ROWS).step_by(2) {
         allowed.insert(DocId(i));
@@ -177,7 +131,6 @@ fn bench_scan(c: &mut Criterion) {
 
 fn bench_commit(c: &mut Criterion) {
     let rows = rows();
-    let columnar = Columnar::build(&rows);
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("v2");
     let mut index = FlatIndex::create(&dir, DIM, Metric::Cosine, "bench").unwrap();
@@ -187,14 +140,7 @@ fn bench_commit(c: &mut Criterion) {
     index.commit().unwrap();
     let mut rng = Lcg(0xADD5);
     let mut next = ROWS;
-    let v1_path = tmp.path().join("v1-index.bin");
-    columnar.rewrite(&v1_path);
-    let dir_bytes = |d: &std::path::Path| -> u64 {
-        std::fs::read_dir(d)
-            .unwrap()
-            .map(|e| e.unwrap().metadata().unwrap().len())
-            .sum()
-    };
+    let dir_bytes = support::dir_bytes;
 
     let mut g = c.benchmark_group("commit_10_rows");
     g.sample_size(10);
@@ -203,7 +149,7 @@ fn bench_commit(c: &mut Criterion) {
     g.bench_function("v2_append", |b| {
         b.iter(|| {
             for _ in 0..10 {
-                index.add(DocId(next), &rng.vector()).unwrap();
+                index.add(DocId(next), &rng.vector(DIM)).unwrap();
                 next += 1;
             }
             index.commit().unwrap();
@@ -215,13 +161,6 @@ fn bench_commit(c: &mut Criterion) {
         (index.bytes_written() - written_before) / commits,
         commits,
         (dir_bytes(&dir) - growth_before) / commits
-    );
-    g.bench_function("v1_rewrite", |b| {
-        b.iter(|| columnar.rewrite(black_box(&v1_path)))
-    });
-    eprintln!(
-        "v1_rewrite: {} bytes written per commit",
-        std::fs::metadata(&v1_path).unwrap().len()
     );
     g.finish();
 }

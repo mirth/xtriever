@@ -188,8 +188,8 @@ dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two
   version 1 for an unfiltered scan; stated in the plan), and the bytes written and wall time
   of a 10-row commit into a 100k-row index against the current implementation.
 - **FR-012**: The regenerated artefacts MUST pass their existing parity checks unchanged
-  (the fixture goldens, the host goldens, the demo `measure`); no change under
-  `crates/xtriever-core`, `deny.toml`, any baseline, `apps/`; the only changes under
+  (the fixture goldens, the host goldens, the demo `measure`); no change to the
+  `xtriever-core` traits, `deny.toml`, any baseline, `apps/`; the only changes under
   `python/src` and `swift/` are the additive configuration field of FR-013 and the
   regenerated fixture index bytes.
 
@@ -225,9 +225,12 @@ dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two
   crosses it (asserted by file rows and tombstone count) and never with it unset.
 - **SC-004**: The unfiltered scan over version 2 is within 5 % of version 1 at 100k × 384
   (criterion, both in the PR); RSS of a mapped version-2 index is not above version 1's.
-- **SC-005**: `git diff --stat main -- crates/xtriever-core deny.toml apps/ specs/*/baselines`
-  is empty; under `python/src` and `swift/` only the additive field and the fixture bytes
-  change; the ADR is in `docs/adr/`.
+- **SC-005**: `git diff --stat main -- deny.toml apps/ specs/*/baselines` is empty; the
+  `xtriever-core` traits are unchanged (the crate gains only the additive `fs` helpers —
+  atomic write, directory sync — and the shared read-only error the `/code-review`
+  consolidation asked for; no trait, format or error-variant change); under `python/src`
+  and `swift/` only the additive field and the fixture bytes change; the ADR is in
+  `docs/adr/`.
 
 ## Assumptions
 

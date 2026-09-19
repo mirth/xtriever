@@ -5,18 +5,15 @@
 
 mod support;
 
+use support::vec_for;
+
 use std::path::Path;
 
 use xtriever_core::{DocId, Error, Metric, VectorIndex};
 use xtriever_dense::{DenseStats, FlatIndex};
 
 const DIM: usize = 4;
-const ROW: usize = 8 + DIM * 4;
-
-fn vec_for(i: u32) -> Vec<f32> {
-    let f = i as f32;
-    vec![f + 1.0, (f * 0.7).sin(), (f * 0.3).cos(), 1.0]
-}
+const ROW: usize = support::row_bytes(DIM) as usize;
 
 fn queries() -> Vec<Vec<f32>> {
     (0..20)
@@ -30,10 +27,8 @@ fn results(index: &FlatIndex) -> Vec<Vec<(u32, u32)>> {
         .map(|q| {
             index
                 .search(q, None, 50)
+                .map(|h| support::hit_bits(&h))
                 .unwrap()
-                .iter()
-                .map(|h| (h.id.0, h.score.to_bits()))
-                .collect()
         })
         .collect()
 }

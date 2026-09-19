@@ -5,7 +5,7 @@
 //!   magic          8 bytes  b"XTDENSE2"
 //!   hdr_len        8 bytes  u64 LE
 //!   header         JSON     {"format_version":2,"dim":..,"metric":"..","fingerprint":"..",
-//!                            "generation":g,"rows":n,"live":m,"tombstones_len":t}
+//!                            "generation":g,"rows":n,"live":m,"ordered":b,"tombstones_len":t}
 //!   tombstones     t bytes  a `roaring` bitmap of dead row indices (portable serialisation)
 //!
 //! vectors.<g>.bin          n rows in commit order, each
@@ -13,6 +13,11 @@
 //!   norm           4 bytes  f32 LE   (Euclidean norm of the row; used by Cosine, written always)
 //!   vector         dim × 4  f32 LE
 //! ```
+//!
+//! `ordered` records whether the row file's ids are strictly ascending (a fresh or compacted
+//! generation, appended to only with higher ids): with no tombstones, such a file needs no id
+//! table — `vector(id)` is a binary search — so a read-only open of a shipped index touches
+//! nothing beyond the manifest.
 //!
 //! The manifest is the truth: it is replaced atomically (written to `manifest.bin.tmp`, synced,
 //! renamed) and its `rows` is the committed length of the row file — bytes beyond it are not
@@ -62,6 +67,10 @@ pub(crate) struct Header {
     pub generation: u64,
     pub rows: u64,
     pub live: u64,
+    /// Ids strictly ascending in the row file. Absent in manifests written before the field
+    /// (read as `false` — an id table is built, which is always correct).
+    #[serde(default)]
+    pub ordered: bool,
     pub tombstones_len: u64,
 }
 
@@ -114,13 +123,14 @@ impl Rows {
         })
     }
 
-    /// As [`checked`](Self::checked) for a header `decode_manifest` has already validated.
-    pub fn new(count: usize, dim: usize) -> Self {
-        Self::checked(count, dim).unwrap_or(Self {
-            count: 0,
-            dim,
-            row_bytes: 0,
-        })
+    /// The layout of `count` rows of `dim`, or the row-space error: the byte arithmetic must
+    /// fit the platform and the row indices must fit `u32` (the tombstone set's domain). The
+    /// one constructor every write path uses, before any I/O.
+    pub fn for_count(count: usize, dim: usize) -> Result<Self> {
+        if u32::try_from(count).is_err() {
+            return Err(row_space_error(count, dim));
+        }
+        Self::checked(count, dim).ok_or_else(|| row_space_error(count, dim))
     }
 
     /// The committed length in bytes.
@@ -176,9 +186,21 @@ pub(crate) fn encode_manifest(header: &Header, dead: &RoaringBitmap) -> Result<V
     Ok(out)
 }
 
-/// Validate a manifest's bytes and return its header and tombstone set (`Corrupt` on any
-/// problem, naming both versions when the version is not this build's).
-pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, RoaringBitmap)> {
+/// The refusal of a layout that does not fit: an `Io` error (the caller's disk state is fine;
+/// the request is what cannot be served) naming the limit and the remedy.
+pub(crate) fn row_space_error(count: usize, dim: usize) -> xtriever_core::Error {
+    xtriever_core::Error::Io(std::io::Error::other(format!(
+        "dense row space exhausted: {count} rows of dim {dim} exceed this platform's limits \
+         ({} rows, {} bytes) — compact the index first",
+        u32::MAX,
+        usize::MAX
+    )))
+}
+
+/// Validate a manifest's bytes and return its header, its row layout (validated) and its
+/// tombstone set (`Corrupt` on any problem, naming both versions when the version is not this
+/// build's).
+pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, Rows, RoaringBitmap)> {
     let Some(magic) = bytes.get(..8) else {
         return Err(corrupt(format!(
             "{MANIFEST} is {} bytes, shorter than the magic",
@@ -242,8 +264,8 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, RoaringBitmap)> {
         )));
     }
     // The row layout comes from the untrusted header: checked arithmetic, so an absurd `dim`
-    // or `rows` is `Corrupt`, never an overflow (review round 1 #1).
-    Rows::checked(header.rows as usize, header.dim).ok_or_else(|| {
+    // or `rows` is `Corrupt`, never an overflow.
+    let layout = Rows::checked(header.rows as usize, header.dim).ok_or_else(|| {
         corrupt(format!(
             "{MANIFEST} rows {} × dim {} does not fit this platform",
             header.rows, header.dim
@@ -295,7 +317,7 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, RoaringBitmap)> {
             dead.len()
         )));
     }
-    Ok((header, dead))
+    Ok((header, layout, dead))
 }
 
 /// The refusal of a version-1 directory (`index.bin`, Feature 004–023).
@@ -320,6 +342,7 @@ mod tests {
             generation: 3,
             rows,
             live,
+            ordered: true,
             tombstones_len: 0,
         }
     }
@@ -329,14 +352,16 @@ mod tests {
         let mut dead = RoaringBitmap::new();
         dead.insert(1);
         let bytes = encode_manifest(&header(3, 2), &dead).unwrap();
-        let (h, d) = decode_manifest(&bytes).unwrap();
+        let (h, layout, d) = decode_manifest(&bytes).unwrap();
+        assert_eq!(layout, Rows::checked(3, 2).unwrap());
+        assert!(h.ordered);
         assert_eq!(h.rows, 3);
         assert_eq!(h.live, 2);
         assert_eq!(h.generation, 3);
         assert_eq!(h.tombstones_len as usize, dead.serialized_size());
         assert_eq!(d, dead);
         let json = serde_json::to_string(&h).unwrap();
-        assert!(json.starts_with("{\"format_version\":2,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"generation\":3,\"rows\":3,\"live\":2,\"tombstones_len\":"), "{json}");
+        assert!(json.starts_with("{\"format_version\":2,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"generation\":3,\"rows\":3,\"live\":2,\"ordered\":true,\"tombstones_len\":"), "{json}");
     }
 
     #[test]
@@ -344,8 +369,10 @@ mod tests {
         let mut out = Vec::new();
         encode_row(&mut out, 3, 1.0, &[1.0, 0.0]);
         encode_row(&mut out, 9, 2.0, &[0.0, 2.0]);
-        let rows = Rows::new(2, 2);
+        let rows = Rows::for_count(2, 2).unwrap();
         assert_eq!(rows.len_bytes(), out.len());
+        assert!(Rows::for_count(usize::MAX, 4).is_err());
+        assert!(Rows::for_count(1, usize::MAX).is_err());
         assert_eq!(rows.id_at(&out, 1), 9);
         assert_eq!(rows.norm_at(&out, 1), 2.0);
         assert_eq!(rows.row_at(&out, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);

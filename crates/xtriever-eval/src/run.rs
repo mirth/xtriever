@@ -366,7 +366,8 @@ pub fn execute_dense(
 /// the vector index; any field disagreement is a miss.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EmbeddingCacheKey {
-    /// Cache layout version.
+    /// Cache layout version: the dense on-disk format the cache directory holds (2 since
+    /// Feature 024; a key that says 1 names a directory this build cannot open).
     pub format_version: u32,
     /// `DenseConfig::name`.
     pub config: String,

@@ -327,32 +327,107 @@ fn a_mapped_read_only_open_exposes_the_committed_rows_only() {
 
 #[cfg(unix)]
 #[test]
-fn an_unconfirmed_directory_sync_is_retried_before_any_later_success() {
-    // A directory without read permission cannot be opened for `fsync`, so the manifest rename
-    // succeeds and the directory sync fails: the commit reports a durability-unconfirmed
-    // success, adopts the new state, and no later commit — even an empty one — succeeds until
-    // a sync has.
+fn an_unopenable_directory_fails_a_commit_before_the_switch() {
+    // The directory handle for the post-rename sync is opened *before* the rename, so a
+    // directory that cannot be opened (no read permission) fails the commit cleanly: nothing
+    // on disk changes, the pending changes are kept, and nothing is left "switched but
+    // unconfirmed" — the only after-switch failure left is an `fsync` error on an open
+    // handle, which no test can provoke and the retry state (`is_sync_pending`) covers.
     use std::os::unix::fs::PermissionsExt;
 
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("idx");
     let mut index = FlatIndex::create(&dir, 2, Metric::Dot, "fp").unwrap();
     index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    let manifest_before = std::fs::read(dir.join("manifest.bin")).unwrap();
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o300)).unwrap();
     let err = index.commit().unwrap_err();
-    assert!(err.to_string().contains("durability"), "{err}");
-    assert!(index.is_sync_pending());
-    assert_eq!(index.len(), 1, "the switched state is adopted");
-    assert!(
-        index.commit().is_err(),
-        "an empty commit retries the sync and fails again"
-    );
-    assert!(index.compact().is_err());
-    assert!(index.is_sync_pending());
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
-    index.commit().unwrap();
+    assert!(matches!(err, xtriever_core::Error::Io(_)), "{err}");
     assert!(!index.is_sync_pending());
+    assert_eq!(index.len(), 0, "nothing switched");
+    assert_eq!(
+        std::fs::read(dir.join("manifest.bin")).unwrap(),
+        manifest_before
+    );
+    assert_eq!(
+        std::fs::metadata(dir.join("vectors.0.bin")).unwrap().len(),
+        0,
+        "the append was rolled back"
+    );
+    index.commit().unwrap();
+    assert_eq!(index.len(), 1);
     assert_eq!(FlatIndex::open(&dir).unwrap().len(), 1);
+}
+
+#[test]
+fn an_append_that_succeeds_before_the_manifest_fails_is_rolled_back() {
+    // A directory named `manifest.bin.tmp` makes the append succeed and the manifest's
+    // `File::create` fail: the rows are cut back to the committed length, the buffer (or
+    // mapping) too, the pending changes survive, and the retry — once the obstacle is gone —
+    // commits exactly them. `bytes_written` counts the rolled-back rows (they were written)
+    // but not a manifest.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    index.commit().unwrap();
+    let rows = tmp.path().join("vectors.0.bin");
+    let committed = std::fs::read(&rows).unwrap();
+    let written_before = index.bytes_written();
+    std::fs::create_dir(tmp.path().join("manifest.bin.tmp")).unwrap();
+    index.add(DocId(2), &[0.0, 1.0]).unwrap();
+    index.delete(&[DocId(1)]).unwrap();
+    assert!(matches!(
+        index.commit().unwrap_err(),
+        xtriever_core::Error::Io(_)
+    ));
+    assert_eq!(
+        std::fs::read(&rows).unwrap(),
+        committed,
+        "the appended row was cut"
+    );
+    assert_eq!(
+        index.bytes_written() - written_before,
+        16,
+        "one row of dim 2 was written, no manifest"
+    );
+    assert_eq!(index.len(), 1);
+    assert_eq!(
+        index.vector(DocId(1)),
+        Some(vec![1.0, 0.0]),
+        "the buffer was cut too"
+    );
+    assert_eq!(index.vector(DocId(2)), None);
+    std::fs::remove_dir(tmp.path().join("manifest.bin.tmp")).unwrap();
+    index.commit().unwrap();
+    assert_eq!(index.len(), 1);
+    assert_eq!(index.vector(DocId(2)), Some(vec![0.0, 1.0]));
+    assert_eq!(index.vector(DocId(1)), None);
+    assert_eq!(FlatIndex::open(tmp.path()).unwrap().len(), 1);
+}
+
+#[cfg(feature = "mmap")]
+#[test]
+fn a_mapped_append_that_fails_before_the_manifest_drops_its_mapping_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    index.commit().unwrap();
+    drop(index);
+    let mut mapped = FlatIndex::open_mapped(tmp.path()).unwrap();
+    std::fs::create_dir(tmp.path().join("manifest.bin.tmp")).unwrap();
+    mapped.add(DocId(2), &[0.0, 1.0]).unwrap();
+    assert!(mapped.commit().is_err());
+    assert_eq!(mapped.len(), 1);
+    assert_eq!(
+        mapped.search(&[0.0, 1.0], None, 5).unwrap().len(),
+        1,
+        "the old mapping still serves"
+    );
+    std::fs::remove_dir(tmp.path().join("manifest.bin.tmp")).unwrap();
+    mapped.commit().unwrap();
+    assert_eq!(mapped.len(), 2);
+    assert!(mapped.is_mapped());
 }
 
 #[test]

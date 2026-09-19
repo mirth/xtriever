@@ -7,7 +7,7 @@ See [data-model.md](../data-model.md). `manifest.bin` is the truth; `vectors.<g>
 
 ## `FlatIndex` (public, `xtriever-dense`)
 
-Unchanged signatures: `create(dir, dim, metric, fingerprint)`, `open(dir)`,
+Unchanged signatures: `create(dir, dim, metric, fingerprint)` (a failed create leaves the directory empty for a retry), `open(dir)`,
 `open_mapped(dir)` (feature `mmap`), `open_for` / `open_mapped_for(dir, embedder)`, `dir()`,
 `vector(id) -> Option<Vec<f32>>`, and the `VectorIndex` impl (`dim`, `metric`, `fingerprint`,
 `add(id, vector)`, `delete(ids)`, `commit()`, `search(query, allowed, k)`, `len()`).
@@ -31,7 +31,12 @@ New:
   `dead / rows` would exceed it is performed *as a rewrite* (the live rows with the pending
   changes folded in, one manifest rename) instead of an append — one protocol, so it fails
   whole or succeeds whole, never as a durable append followed by a separate compaction.
-- `stats(&self) -> DenseStats { rows, live, dead, generation }` for tests and records.
+- `stats(&self) -> DenseStats { rows, live, dead, generation }` for tests and records;
+  `bytes_written(&self)`: bytes this handle wrote (each write counted once it succeeded — a
+  rolled-back append still wrote its rows); `is_sync_pending(&self)`; `is_read_only(&self)`.
+- Every writable `commit` / `compact` first verifies the manifest on disk is the one this
+  handle last saw (generation, rows) and refuses with `Error::Corrupt` "changed by another
+  writer" otherwise.
 
 Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other version →
 `Error::Corrupt` naming the found and the expected version; a header whose `rows × (8 + dim
@@ -41,7 +46,8 @@ Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other versi
 ## Guarantees
 
 1. `commit` writes exactly: the appended rows (`k × row_bytes`), one manifest
-   (16 + header + tombstones bytes), and nothing else; no committed byte changes.
+   (16 + header + tombstones bytes), and nothing else; no committed byte changes
+   (`bytes_written` counts them).
 2. Search results are bit-identical to what version 1 returned for the same committed
    content, filtered or not, all metrics; before and after `compact`.
 3. A crash at any byte boundary of `commit` or `compact` reopens to either the previous

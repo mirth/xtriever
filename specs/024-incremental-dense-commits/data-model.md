@@ -19,6 +19,7 @@ dense/
 | generation | u64 | names the current row file `vectors.<generation>.bin` |
 | rows | u64 | committed rows in the row file (≤ `u32::MAX`); file length ≥ `rows × row_bytes`, else `Corrupt` |
 | live | u64 | `rows − tombstones.len()`; what `len()` returns |
+| ordered | bool | row ids strictly ascending (a fresh or compacted generation, appended to with higher ids only); absent → `false`. With no tombstones, such a file needs no id table |
 | tombstones_len | u64 | bytes of the serialised bitmap that follow the header |
 
 ### Row
@@ -39,7 +40,8 @@ newest row for an id is live unless the id was deleted.
 | header | the manifest header |
 | rows (bytes) | the row file, buffered or mapped, at its committed length |
 | dead | the tombstone bitmap |
-| rows_by_id | `BTreeMap<u32, u32>`: live id → its row; one entry per live row (memory follows rows, not the largest id); ascending iteration is the compaction order |
+| table | `Option<BTreeMap<u32, u32>>`: live id → its row, one entry per live row, only when the file has tombstones or unordered ids; `None` (binary search over the row ids) for an ordered tombstone-free generation — the shipped case, so a read-only mapped open touches nothing beyond the manifest |
+| sync_pending | a manifest switch whose directory `fsync` failed; retried before any later success |
 | pending | `BTreeMap<DocId, Option<Vec<f32>>>` — unchanged |
 | compaction_threshold | `Option<f32>` in `0..=1`; `None` = only on `compact()` |
 

@@ -13,13 +13,10 @@ use xtriever_lexical::TantivyIndex;
 
 use crate::types::OpenOptions;
 
-/// The lexical stage's own refusal, repeated here for the pipeline-level operations that never
-/// reach it (an unstaged `commit`, a `merge`).
+/// The refusal every layer shares (`xtriever_core::Error::read_only`), for the pipeline-level
+/// operations that never reach a stage (an unstaged `commit`, a `merge`).
 fn read_only() -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        "read-only index",
-    ))
+    Error::read_only()
 }
 
 use crate::FORMAT_VERSION;
@@ -466,15 +463,25 @@ impl HybridIndex {
             return Err(read_only());
         }
         if !self.dirty {
-            return Ok(());
+            // Nothing staged — but a dense manifest switch whose directory sync failed earlier
+            // (`is_sync_pending`) is retried by the stage's own empty commit, so a caller's
+            // retry after that error confirms it.
+            return self.dense.commit();
         }
         let generation = self.descriptor.generation + 1;
         // 1. The marker: from here until the descriptor is written, the directory is in flight.
         let marker = self.dir.join(COMMIT_MARKER);
         std::fs::write(&marker, generation.to_string())?;
-        // 2–3. The stages, each durable on its own.
+        // 2–3. The stages, each durable on its own. The dense stage has one non-failure error:
+        //    its manifest switched but the directory sync failed (`is_sync_pending`). Its state
+        //    is the new one, so the protocol continues to a consistent directory and the error
+        //    is returned at the end; the next `commit` on this handle retries the sync.
         self.lexical.commit()?;
-        self.dense.commit()?;
+        let unconfirmed = match self.dense.commit() {
+            Ok(()) => None,
+            Err(e) if self.dense.is_sync_pending() => Some(e),
+            Err(e) => return Err(e),
+        };
         // 4. The passage store (format version 2, ADR-0008): one slot per assigned id.
         self.passages.commit(self.pending_ids.len())?;
         // 5–6. The id map, then the descriptor.
@@ -490,7 +497,7 @@ impl HybridIndex {
         self.descriptor = descriptor;
         self.committed_ids = Arc::clone(&self.pending_ids);
         self.dirty = false;
-        Ok(())
+        unconfirmed.map_or(Ok(()), Err)
     }
 
     pub(crate) fn external_of(&self, id: DocId) -> Result<&str> {

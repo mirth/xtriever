@@ -7,18 +7,15 @@
 
 mod support;
 
+use support::vec_for;
+
 use std::path::Path;
 
 use xtriever_core::{DocId, Metric, VectorIndex};
 use xtriever_dense::{DenseStats, FlatIndex};
 
 const DIM: usize = 4;
-const ROW: u64 = 8 + DIM as u64 * 4;
-
-fn vec_for(i: u32) -> Vec<f32> {
-    let f = i as f32;
-    vec![f + 1.0, (f * 0.7).sin(), (f * 0.3).cos(), 1.0]
-}
+const ROW: u64 = support::row_bytes(DIM);
 
 type Files = Vec<(String, Vec<u8>)>;
 
@@ -68,10 +65,8 @@ fn observe(index: &FlatIndex) -> Observed {
             .map(|q| {
                 index
                     .search(q, None, 100)
+                    .map(|h| support::hit_bits(&h))
                     .unwrap()
-                    .iter()
-                    .map(|h| (h.id.0, h.score.to_bits()))
-                    .collect()
             })
             .collect(),
         vectors: (0..60).map(|i| index.vector(DocId(i))).collect(),

@@ -179,12 +179,19 @@ fn two_live_rows_for_one_id_are_corrupt() {
     let mut twice = one.clone();
     twice.extend_from_slice(&one);
     std::fs::write(&rows, twice).unwrap();
+    // An ordered file needs no id table (ids are unique by construction); this one is not
+    // ordered (1, 1), so the manifest must say so — and the table build then finds the pair.
     rewrite_manifest_header(tmp.path(), |h| {
-        h.replace("\"rows\":1,\"live\":1", "\"rows\":2,\"live\":2")
+        h.replace(
+            "\"rows\":1,\"live\":1,\"ordered\":true",
+            "\"rows\":2,\"live\":2,\"ordered\":false",
+        )
     });
-    match FlatIndex::open(tmp.path()).unwrap_err() {
-        Error::Corrupt(msg) => assert!(msg.contains("two live rows for id 1"), "{msg}"),
-        other => panic!("expected Corrupt, got {other:?}"),
+    for open in [FlatIndex::open, FlatIndex::open_read_only] {
+        match open(tmp.path()).unwrap_err() {
+            Error::Corrupt(msg) => assert!(msg.contains("two live rows for id 1"), "{msg}"),
+            other => panic!("expected Corrupt, got {other:?}"),
+        }
     }
 }
 
@@ -285,6 +292,15 @@ fn bad_magic_and_truncation_are_corrupt() {
     std::fs::write(&rows, &row_bytes[..row_bytes.len() - 1]).unwrap();
     assert!(matches!(
         FlatIndex::open(tmp.path()).unwrap_err(),
+        Error::Corrupt(_)
+    ));
+    assert!(matches!(
+        FlatIndex::open_read_only(tmp.path()).unwrap_err(),
+        Error::Corrupt(_)
+    ));
+    #[cfg(feature = "mmap")]
+    assert!(matches!(
+        FlatIndex::open_mapped_read_only(tmp.path()).unwrap_err(),
         Error::Corrupt(_)
     ));
     std::fs::remove_file(&rows).unwrap();
@@ -461,4 +477,57 @@ fn a_malformed_query_is_an_error_even_when_no_work_would_be_done() {
             .unwrap_err(),
         Error::InvalidQuery(_)
     ));
+}
+
+#[test]
+fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
+    // Two writable handles violate the precondition; the guard turns a silent lost update —
+    // v1 lost it too, v2 would also have cut the other handle's rows in place — into Corrupt.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut a = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
+    a.add(DocId(1), &[1.0, 0.0]).unwrap();
+    a.commit().unwrap();
+    let mut b = FlatIndex::open(tmp.path()).unwrap();
+    b.add(DocId(2), &[0.0, 1.0]).unwrap();
+    b.commit().unwrap();
+    let rows_before = std::fs::read(tmp.path().join("vectors.0.bin")).unwrap();
+    a.add(DocId(3), &[0.5, 0.5]).unwrap();
+    match a.commit().unwrap_err() {
+        Error::Corrupt(msg) => assert!(msg.contains("another writer"), "{msg}"),
+        other => panic!("expected Corrupt, got {other:?}"),
+    }
+    a.delete(&[DocId(1)]).unwrap();
+    assert!(matches!(a.compact().unwrap_err(), Error::Corrupt(_)));
+    assert_eq!(
+        std::fs::read(tmp.path().join("vectors.0.bin")).unwrap(),
+        rows_before,
+        "B's rows are intact"
+    );
+    let fresh = FlatIndex::open(tmp.path()).unwrap();
+    assert_eq!(fresh.len(), 2);
+    assert_eq!(fresh.vector(DocId(2)), Some(vec![0.0, 1.0]));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_create_leaves_the_directory_empty_for_a_retry() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("idx");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+    assert!(matches!(
+        FlatIndex::create(&dir, 3, Metric::Dot, "fp").unwrap_err(),
+        Error::Io(_)
+    ));
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(
+        std::fs::read_dir(&dir).unwrap().next().is_none(),
+        "nothing left behind"
+    );
+    assert_eq!(
+        FlatIndex::create(&dir, 3, Metric::Dot, "fp").unwrap().len(),
+        0
+    );
 }

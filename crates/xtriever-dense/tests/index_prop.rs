@@ -125,9 +125,7 @@ fn op() -> impl Strategy<Value = Op> {
     ]
 }
 
-fn bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
-    hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
-}
+use support::hit_bits as bits;
 
 /// An independent scorer over the reference model: the contract's arithmetic — per-row `f64`
 /// accumulation in index order, the row norm stored as `f32`, one rounding to `f32` — and the
@@ -196,19 +194,49 @@ proptest! {
     ) {
         let tmp = tempfile::tempdir().unwrap();
         let mut index = FlatIndex::create(tmp.path(), 6, metric, "prop").unwrap();
+        // Under `mmap`, the same sequence on a writable mapped handle in a second directory:
+        // every append re-maps the committed prefix and every compaction maps a new
+        // generation — the paths the SAFETY argument rests on, compared bit for bit with the
+        // buffered handle after each commit (ADR-0007 condition 3).
+        #[cfg(feature = "mmap")]
+        let tmp2 = tempfile::tempdir().unwrap();
+        #[cfg(feature = "mmap")]
+        let mut mapped = {
+            drop(FlatIndex::create(tmp2.path(), 6, metric, "prop").unwrap());
+            FlatIndex::open_mapped(tmp2.path()).unwrap()
+        };
         let mut model: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
         for o in &ops {
             match o {
-                Op::Add(id, v) => { index.add(DocId(*id), v).unwrap(); model.insert(*id, v.clone()); }
+                Op::Add(id, v) => {
+                    index.add(DocId(*id), v).unwrap();
+                    #[cfg(feature = "mmap")]
+                    mapped.add(DocId(*id), v).unwrap();
+                    model.insert(*id, v.clone());
+                }
                 Op::Delete(ids) => {
                     let d: Vec<DocId> = ids.iter().map(|&i| DocId(i)).collect();
                     index.delete(&d).unwrap();
+                    #[cfg(feature = "mmap")]
+                    mapped.delete(&d).unwrap();
                     for i in ids { model.remove(i); }
                 }
-                Op::Commit => { index.commit().unwrap(); prop_assert_eq!(index.len(), model.len() as u64); }
+                Op::Commit => {
+                    index.commit().unwrap();
+                    prop_assert_eq!(index.len(), model.len() as u64);
+                    #[cfg(feature = "mmap")]
+                    {
+                        mapped.commit().unwrap();
+                        for (q, _, k) in &queries {
+                            prop_assert_eq!(bits(&mapped.search(q, None, *k).unwrap()), bits(&index.search(q, None, *k).unwrap()), "mapped vs buffered after a commit");
+                        }
+                    }
+                }
             }
         }
         index.commit().unwrap();
+        #[cfg(feature = "mmap")]
+        mapped.commit().unwrap();
         let committed = model;
         prop_assert_eq!(index.len(), committed.len() as u64);
         // Every query, unfiltered and filtered, against the reference scorer: ids and score bits.
@@ -231,6 +259,13 @@ proptest! {
         prop_assert_eq!(index.stats().dead, 0);
         prop_assert_eq!(index.stats().rows, committed.len() as u64);
         prop_assert_eq!(&run(&index), &expected, "after compaction");
+        #[cfg(feature = "mmap")]
+        {
+            prop_assert_eq!(&run(&mapped), &expected, "mapped, before compaction");
+            mapped.compact().unwrap();
+            prop_assert_eq!(&run(&mapped), &expected, "mapped, after compaction");
+            prop_assert_eq!(&run(&FlatIndex::open_mapped(tmp2.path()).unwrap()), &expected, "mapped, reopened");
+        }
         drop(index);
         let reopened = FlatIndex::open(tmp.path()).unwrap();
         prop_assert_eq!(&run(&reopened), &expected, "after reopen");

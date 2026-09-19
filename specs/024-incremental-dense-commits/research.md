@@ -125,8 +125,10 @@ typically far less (roaring compresses runs and sparse sets).
 
 ## D6 — `vector(id)` and `len()`
 
-`rows_by_id: BTreeMap<u32, u32>` — live id → its row — built at open by one pass over the
-rows (dead rows skipped; a second live row for an id is `Corrupt`), O(rows log rows) at open
+`table: Option<BTreeMap<u32, u32>>` — live id → its row — built at open by one pass over the
+rows *only when the file has tombstones or unordered ids* (the manifest's `ordered` flag; an
+ordered, tombstone-free generation binary-searches the row ids and a read-only mapped open
+touches nothing beyond the manifest — `/code-review` finding 5) (dead rows skipped; a second live row for an id is `Corrupt`), O(rows log rows) at open
 (tens of milliseconds for the Wikipedia index; ~15 MB). A map rather than a table sized by
 the largest id, because `FlatIndex::add` accepts any `u32` (review round 4): memory follows
 the row count, a sparse `u32::MAX` costs one entry, and the ascending iteration is the order

@@ -6,11 +6,11 @@ mod format;
 mod search;
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use roaring::RoaringBitmap;
-use xtriever_core::{DocId, DocSet, Embedder, Error, Hit, Metric, Result, VectorIndex};
+use xtriever_core::{DocId, DocSet, Embedder, Error, Hit, Metric, Result, VectorIndex, fs};
 
 use crate::FORMAT_VERSION;
 use crate::LoadPath;
@@ -39,26 +39,29 @@ pub struct DenseStats {
 /// the previous state is never disturbed by either, and a crash at any point leaves either the
 /// previous manifest or the new one — the previous committed state or the fully committed
 /// new one, never a partial state.
-#[derive(Debug)]
+///
+/// One writer at a time: a handle checks at every commit that the manifest on disk is the one
+/// it last saw and refuses (`Corrupt`) otherwise, so two writable handles cannot silently undo
+/// each other's rows — but the precondition every open carries (no other writer while the
+/// handle lives) is still the caller's.
 pub struct FlatIndex {
     dir: PathBuf,
     header: Header,
-    load_path: LoadPath,
-    /// The row file at its committed length (possibly longer on disk after a crash: only
-    /// `layout.count` rows are ever read).
-    rows: Bytes,
+    /// The validated row layout of `header` (`rows × dim`); switched together with it.
     layout: Rows,
+    load_path: LoadPath,
+    /// The row file over exactly its committed length.
+    rows: Bytes,
     dead: RoaringBitmap,
-    /// The live row of every live id. A map, not a table indexed by id: memory follows the
-    /// row count, whatever ids the caller chooses, and it iterates in ascending id order —
-    /// the order a compaction writes.
-    rows_by_id: BTreeMap<u32, u32>,
-    /// Whether the file's ids are strictly ascending (so a compaction with no dead rows would
-    /// write the same rows again — skipped).
-    ascending: bool,
+    /// Live id → its row, built only when the file needs it — tombstones present, or ids not
+    /// in order. An ordered, tombstone-free generation (fresh, compacted, or appended to with
+    /// higher ids — the shipped case) has no table: `vector(id)` is a binary search over the
+    /// row ids, and a read-only open touches nothing beyond the manifest.
+    table: Option<BTreeMap<u32, u32>>,
     /// `Some(vector)` = add or replace, `None` = delete. Invisible until `commit`.
     pending: BTreeMap<DocId, Option<Vec<f32>>>,
-    /// `commit` compacts when `dead / rows` exceeds this (`None` = only on `compact`).
+    /// `commit` rewrites instead of appending when the dead share it would leave exceeds this
+    /// (`None` = only on `compact`).
     compaction_threshold: Option<f32>,
     /// A read-only open: no truncation or sweep at open, every mutation refused.
     read_only: bool,
@@ -66,10 +69,33 @@ pub struct FlatIndex {
     /// durability is unconfirmed. No later `commit` or `compact` returns success until a
     /// directory sync has succeeded.
     sync_pending: bool,
-    /// Bytes this handle has handed to the row files and manifests since it was opened — the
-    /// measure of a commit's write volume (spec FR-001), independent of what the directory's
-    /// size happens to show.
+    /// Bytes this handle has written to the row files and manifests since it was opened —
+    /// counted after each write succeeded (a rolled-back append still wrote its rows).
     written: u64,
+}
+
+impl std::fmt::Debug for FlatIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FlatIndex")
+            .field("dir", &self.dir)
+            .field("header", &self.header)
+            .field("load_path", &self.load_path)
+            .field("dead", &self.dead.len())
+            .field("table", &self.table.as_ref().map(BTreeMap::len))
+            .field("pending", &self.pending.len())
+            .field("read_only", &self.read_only)
+            .field("sync_pending", &self.sync_pending)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The parts of a committed state that switch together.
+struct Committed {
+    header: Header,
+    layout: Rows,
+    rows: Bytes,
+    dead: RoaringBitmap,
+    table: Option<BTreeMap<u32, u32>>,
 }
 
 impl FlatIndex {
@@ -77,7 +103,8 @@ impl FlatIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Corrupt` if `dir` is not empty or `dim == 0`; `Error::Io` otherwise.
+    /// `Error::Corrupt` if `dir` is not empty or `dim == 0`; `Error::Io` otherwise. A failure
+    /// leaves the directory empty, so a corrected retry succeeds.
     pub fn create(dir: &Path, dim: usize, metric: Metric, fingerprint: &str) -> Result<Self> {
         if dim == 0 {
             return Err(corrupt("dim must be at least 1"));
@@ -101,13 +128,36 @@ impl FlatIndex {
             generation: 0,
             rows: 0,
             live: 0,
+            ordered: true,
             tombstones_len: 0,
         };
-        std::fs::File::create(dir.join(format::row_file(0)))?.sync_all()?;
-        sync_dir(dir)?;
-        write_manifest(dir, &header, &RoaringBitmap::new(), &mut 0)
-            .map_err(ManifestFailure::into_error)?;
-        Self::open_with(dir, LoadPath::Buffered, false)
+        let row_file = dir.join(format::row_file(0));
+        let written = (|| -> std::result::Result<(), ManifestFailure> {
+            let before = ManifestFailure::BeforeSwitch;
+            (|| -> Result<()> {
+                std::fs::File::create(&row_file)?.sync_all()?;
+                fs::sync_dir(dir)?;
+                Ok(())
+            })()
+            .map_err(before)?;
+            write_manifest(dir, &header, &RoaringBitmap::new(), &mut 0)
+        })();
+        match written {
+            Ok(()) => Self::open_with(dir, LoadPath::Buffered, false),
+            Err(ManifestFailure::BeforeSwitch(e)) => {
+                // Nothing usable exists: leave the directory as empty as it was found.
+                let _ = std::fs::remove_file(&row_file);
+                let _ = std::fs::remove_file(dir.join(MANIFEST_TMP));
+                Err(e)
+            }
+            // The index is complete; only its entry's durability is unconfirmed — the handle
+            // retries the sync before its first commit.
+            Err(ManifestFailure::AfterSwitch(_)) => {
+                let mut index = Self::open_with(dir, LoadPath::Buffered, false)?;
+                index.sync_pending = true;
+                Ok(index)
+            }
+        }
     }
 
     /// Open, reading the committed rows into memory.
@@ -233,9 +283,10 @@ impl FlatIndex {
         self.read_only
     }
 
-    /// Bytes handed to the row files and manifests by this handle since it was opened: every
-    /// appended row, every manifest, every compaction's new generation — nothing else is ever
-    /// written. A commit's share of it is its write volume.
+    /// Bytes this handle has written to the row files and manifests since it was opened, each
+    /// write counted once it succeeded: every appended row (a later rollback does not uncount
+    /// it), every manifest temporary, every compaction's new generation — nothing else is ever
+    /// written. A successful commit's share of it is its write volume.
     #[must_use]
     pub fn bytes_written(&self) -> u64 {
         self.written
@@ -252,8 +303,28 @@ impl FlatIndex {
         }
     }
 
-    /// Make `commit` compact the row file when the dead-row share it leaves exceeds `share`
-    /// (`0.0..=1.0`; `None`, the default, compacts only on [`compact`](Self::compact)).
+    /// Whether the committed rows are currently a memory map (feature `mmap`). An empty index
+    /// is a heap buffer whatever the load path — a zero-length mapping does not exist — and the
+    /// mapping is (re)made by the first commit that appends and by every compaction.
+    #[cfg(feature = "mmap")]
+    #[must_use]
+    pub fn is_mapped(&self) -> bool {
+        matches!(self.rows, Bytes::Mapped(_))
+    }
+
+    /// Whether the last manifest switch's directory sync failed (`commit` / `compact` returned
+    /// the durability-unconfirmed error): the state on disk is the new one; the next `commit`
+    /// or `compact` retries the sync first and succeeds only once it has. Per handle: a
+    /// dropped handle drops the obligation, which is why the directory is opened for the sync
+    /// *before* the rename — an unopenable directory fails before the switch.
+    #[must_use]
+    pub fn is_sync_pending(&self) -> bool {
+        self.sync_pending
+    }
+
+    /// Make `commit` rewrite the row file (a compaction with the changes folded in) when the
+    /// dead-row share the commit would leave exceeds `share` (`0.0..=1.0`; `None`, the default,
+    /// compacts only on [`compact`](Self::compact)).
     ///
     /// # Errors
     ///
@@ -261,7 +332,7 @@ impl FlatIndex {
     /// read-only handle.
     pub fn set_compaction_threshold(&mut self, share: Option<f32>) -> Result<()> {
         if self.read_only {
-            return Err(read_only());
+            return Err(Error::read_only());
         }
         if let Some(s) = share
             && !(s.is_finite() && (0.0..=1.0).contains(&s))
@@ -284,176 +355,211 @@ impl FlatIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Io`; `Error::Corrupt` if the generation counter cannot advance. A failure before
-    /// the manifest is renamed leaves the previous state on disk and in this handle, pending
+    /// `Error::Io`; `Error::Corrupt` if the generation counter cannot advance or the manifest
+    /// on disk is not the one this handle last saw (another writer). A failure before the
+    /// manifest is renamed leaves the previous state on disk and in this handle, pending
     /// changes included (the partial new file is removed, or swept at the next open). A failure
     /// *after* the rename — only the directory sync — leaves the switched state, adopted by
     /// this handle, and names itself as such.
     pub fn compact(&mut self) -> Result<()> {
         if self.read_only {
-            return Err(read_only());
+            return Err(Error::read_only());
         }
         self.confirm_sync()?;
-        if self.pending.is_empty() && self.dead.is_empty() && self.ascending {
+        if self.pending.is_empty() && self.dead.is_empty() && self.header.ordered {
             return Ok(());
         }
         self.rewrite()
     }
 
-    /// The rewrite protocol: committed live rows ⊕ pending, ascending by id, into a new
-    /// generation; one manifest rename; nothing in memory changes before it. Used by `compact`
-    /// and by `commit` when the configured dead-row share would be exceeded — so a commit is
-    /// always one protocol, never a durable append followed by a separate compaction.
+    /// The rewrite protocol: committed live rows ⊕ pending, ascending by id, streamed into a
+    /// new generation; one manifest rename; nothing in memory changes before it. Used by
+    /// `compact` and by `commit` when the configured dead-row share would be exceeded — so a
+    /// commit is always one protocol, never a durable append followed by a separate compaction.
     fn rewrite(&mut self) -> Result<()> {
+        self.verify_unchanged()?;
         let generation = self.header.generation.checked_add(1).ok_or_else(|| {
             corrupt(format!(
                 "generation {} cannot advance; the row file's generation counter is exhausted",
                 self.header.generation
             ))
         })?;
-        // The new generation's row count, validated against the row-space limit before any
-        // I/O: the committed live rows, minus those a pending change supersedes or deletes,
-        // plus the pending inserts and replacements.
-        let superseded = self
-            .pending
-            .keys()
-            .filter(|id| self.live_row(**id).is_some())
-            .count();
-        let adds = self.pending.values().filter(|c| c.is_some()).count();
-        let total = self.rows_by_id.len() - superseded + adds;
-        row_space(0, total)?;
+        // The new generation's row count, validated before any I/O: the committed live rows,
+        // minus those a pending change supersedes or deletes, plus the pending inserts.
+        let (adds, superseded) = self.pending_counts();
+        let total = self.header.live as usize - superseded + adds;
+        let layout = Rows::for_count(total, self.header.dim)?;
         let old_path = self.dir.join(format::row_file(self.header.generation));
-        let bytes = self.rows.as_slice();
-        let mut buf = Vec::with_capacity(total * self.layout.row_bytes);
-        let mut rows_by_id = BTreeMap::new();
-        let mut committed = self.rows_by_id.iter().peekable();
-        let mut pending = self.pending.iter().peekable();
-        let mut next = 0u32;
-        let mut push = |id: u32, norm: f32, row: &[f32], rows_by_id: &mut BTreeMap<u32, u32>| {
-            format::encode_row(&mut buf, id, norm, row);
-            rows_by_id.insert(id, next);
-            next += 1;
-        };
-        loop {
-            let next_committed = committed.peek().map(|(id, r)| (**id, **r));
-            let next_pending = pending.peek().map(|(id, change)| (id.0, change.as_ref()));
-            match (next_committed, next_pending) {
-                (None, None) => break,
-                // A committed row with no pending change: kept.
-                (Some((id, r)), np) if np.is_none_or(|(pid, _)| pid > id) => {
-                    let r = r as usize;
-                    let row: Vec<f32> = self.layout.row_at(bytes, r).collect();
-                    push(id, self.layout.norm_at(bytes, r), &row, &mut rows_by_id);
-                    committed.next();
-                }
-                // A pending change (a replacement, an insert, or a delete): the change wins.
-                (nc, Some((pid, change))) => {
-                    if let Some(v) = change {
-                        push(
-                            pid,
-                            search::norm_f64(v.iter().copied()) as f32,
-                            v,
-                            &mut rows_by_id,
-                        );
-                    }
-                    if nc.is_some_and(|(id, _)| id == pid) {
-                        committed.next();
-                    }
-                    pending.next();
-                }
-                (Some(_), None) => unreachable!("covered by the first arm"),
-            }
-        }
-        debug_assert_eq!(next as usize, total);
-        let count = u64::from(next);
-        let layout = Rows::new(next as usize, self.header.dim);
         let new_path = self.dir.join(format::row_file(generation));
         let header = Header {
             generation,
-            rows: count,
-            live: count,
+            rows: layout.count as u64,
+            live: layout.count as u64,
+            ordered: true,
             ..self.header.clone()
         };
-        // Write the new generation, make its entry durable, bring it into memory; every
-        // fallible step precedes the rename.
-        let prepared = (|| -> Result<Bytes> {
-            let mut file = std::fs::File::create(&new_path)?;
-            file.write_all(&buf)?;
-            self.written += buf.len() as u64;
-            file.sync_all()?;
-            sync_dir(&self.dir)?;
-            if layout.count == 0 {
-                Ok(Bytes::Owned(Vec::new()))
-            } else {
-                bytes::read_prefix(&new_path, self.load_path, layout.len_bytes())
+        // Stream the merged rows to the new file — a kept row is its committed bytes copied
+        // as they are — keeping a copy in memory only on the buffered path (the memory the new
+        // state needs anyway); the mapped path maps the file afterwards.
+        let prepared = (|| -> Result<(Bytes, u64)> {
+            let file = std::fs::File::create(&new_path)?;
+            let mut out = std::io::BufWriter::new(file);
+            let mut mem: Option<Vec<u8>> = matches!(self.load_path, LoadPath::Buffered)
+                .then(|| Vec::with_capacity(layout.len_bytes()));
+            let mut row_buf = Vec::with_capacity(layout.row_bytes);
+            let mut emitted = 0usize;
+            let bytes = self.rows.as_slice();
+            let old = self.layout;
+            for row in self.merged_rows() {
+                row_buf.clear();
+                match row {
+                    Merged::Kept(r) => {
+                        let at = r * old.row_bytes;
+                        row_buf.extend_from_slice(&bytes[at..at + old.row_bytes]);
+                    }
+                    Merged::Pending(id, v) => {
+                        format::encode_row(&mut row_buf, id, row_norm(v), v);
+                    }
+                }
+                out.write_all(&row_buf)?;
+                if let Some(m) = &mut mem {
+                    m.extend_from_slice(&row_buf);
+                }
+                emitted += 1;
             }
+            debug_assert_eq!(emitted, total);
+            let file = out
+                .into_inner()
+                .map_err(std::io::IntoInnerError::into_error)?;
+            file.sync_all()?;
+            // The new generation's entry must be durable before a manifest names it.
+            fs::sync_dir(&self.dir)?;
+            let rows = match mem {
+                Some(m) => Bytes::Owned(m),
+                None if layout.count == 0 => Bytes::Owned(Vec::new()),
+                None => bytes::read_prefix(&new_path, self.load_path, layout.len_bytes())?,
+            };
+            Ok((rows, layout.len_bytes() as u64))
         })();
-        let rows = match prepared {
-            Ok(rows) => rows,
+        let (rows, wrote) = match prepared {
+            Ok(v) => v,
             Err(e) => {
                 let _ = std::fs::remove_file(&new_path);
                 return Err(e);
             }
         };
-        let switched = write_manifest(&self.dir, &header, &RoaringBitmap::new(), &mut self.written);
-        if let Err(ManifestFailure::BeforeSwitch(e)) = switched {
-            let _ = std::fs::remove_file(&new_path);
-            return Err(e);
-        }
-        self.header = header;
-        self.dead = RoaringBitmap::new();
-        self.rows = rows;
-        self.layout = layout;
-        self.rows_by_id = rows_by_id;
-        self.ascending = true;
+        self.written += wrote;
+        let switched =
+            match write_manifest(&self.dir, &header, &RoaringBitmap::new(), &mut self.written) {
+                Ok(()) => Ok(()),
+                Err(ManifestFailure::BeforeSwitch(e)) => {
+                    let _ = std::fs::remove_file(&new_path);
+                    return Err(e);
+                }
+                Err(ManifestFailure::AfterSwitch(e)) => Err(e),
+            };
+        // The manifest is switched: only infallible adoption follows.
+        self.adopt(Committed {
+            header,
+            layout,
+            rows,
+            dead: RoaringBitmap::new(),
+            table: None,
+        });
         self.pending.clear();
-        match switched {
-            Ok(()) => {
-                // The rename is durable, so the old generation can go; its removal need not
-                // be durable — a survivor is swept at open.
-                let _ = std::fs::remove_file(old_path);
-                Ok(())
-            }
-            // The manifest is switched but its entry's durability is unconfirmed: keep the
-            // old generation (harmless; swept at open), remember to retry the sync, and say
-            // what happened.
-            Err(ManifestFailure::AfterSwitch(e)) => {
-                self.sync_pending = true;
-                Err(e)
-            }
-            Err(ManifestFailure::BeforeSwitch(_)) => unreachable!("handled above"),
+        if switched.is_ok() {
+            // The rename is durable, so the old generation can go; its removal need not be
+            // durable — a survivor is swept at open.
+            let _ = std::fs::remove_file(old_path);
+        } else {
+            // Switched, but its entry's durability is unconfirmed: keep the old generation
+            // (harmless; swept at open) and retry the sync before any later success.
+            self.sync_pending = true;
+        }
+        switched
+    }
+
+    /// The committed live rows ⊕ the pending changes, in ascending id order: a kept committed
+    /// row, or a pending vector (a replacement or insert); deletes and superseded rows are
+    /// skipped.
+    fn merged_rows(&self) -> impl Iterator<Item = Merged<'_>> + '_ {
+        let bytes = self.rows.as_slice();
+        let layout = self.layout;
+        let committed: Box<dyn Iterator<Item = (u32, usize)> + '_> = match &self.table {
+            Some(t) => Box::new(t.iter().map(|(&id, &r)| (id, r as usize))),
+            // Ordered and tombstone-free: the file order is the id order.
+            None => Box::new((0..layout.count).map(move |r| (layout.id_at(bytes, r), r))),
+        };
+        let pending = self.pending.iter().map(|(id, c)| (id.0, c.as_ref()));
+        Merge {
+            committed: committed.peekable(),
+            pending: pending.peekable(),
         }
     }
 
-    /// Whether the committed rows are currently a memory map (feature `mmap`). An empty index
-    /// is a heap buffer whatever the load path — a zero-length mapping does not exist — and the
-    /// mapping is (re)made by the first commit that appends and by every compaction.
-    #[cfg(feature = "mmap")]
-    #[must_use]
-    pub fn is_mapped(&self) -> bool {
-        matches!(self.rows, Bytes::Mapped(_))
+    /// Pending inserts/replacements, and pending ids that supersede or delete a live row.
+    fn pending_counts(&self) -> (usize, usize) {
+        let adds = self.pending.values().filter(|c| c.is_some()).count();
+        let superseded = self
+            .pending
+            .keys()
+            .filter(|id| self.live_row(**id).is_some())
+            .count();
+        (adds, superseded)
     }
 
-    /// Whether the last manifest switch's directory sync failed (`commit` / `compact` returned
-    /// the durability-unconfirmed error): the state on disk is the new one; the next `commit`
-    /// or `compact` retries the sync first and succeeds only once it has.
-    #[must_use]
-    pub fn is_sync_pending(&self) -> bool {
-        self.sync_pending
+    /// The manifest on disk must be the one this handle last saw: another writable handle's
+    /// commit in between would otherwise be silently undone (and its rows cut in place).
+    fn verify_unchanged(&self) -> Result<()> {
+        let manifest = std::fs::read(self.dir.join(MANIFEST))?;
+        let (header, _, _) = format::decode_manifest(&manifest)?;
+        if header.generation != self.header.generation || header.rows != self.header.rows {
+            return Err(corrupt(format!(
+                "the index was changed by another writer (manifest generation {} rows {}, this \
+                 handle saw generation {} rows {}); reopen before writing",
+                header.generation, header.rows, self.header.generation, self.header.rows
+            )));
+        }
+        Ok(())
     }
 
     /// Retry a directory sync an earlier switch left unconfirmed; nothing else proceeds until
     /// it has succeeded, so a later success never hides an unconfirmed one.
     fn confirm_sync(&mut self) -> Result<()> {
         if self.sync_pending {
-            sync_dir(&self.dir)?;
+            fs::sync_dir(&self.dir)?;
             self.sync_pending = false;
         }
         Ok(())
     }
 
+    /// Switch the in-memory state to a committed one — the one place it changes.
+    fn adopt(&mut self, c: Committed) {
+        self.header = c.header;
+        self.layout = c.layout;
+        self.rows = c.rows;
+        self.dead = c.dead;
+        self.table = c.table;
+    }
+
     fn live_row(&self, id: DocId) -> Option<usize> {
-        self.rows_by_id.get(&id.0).map(|&r| r as usize)
+        match &self.table {
+            Some(t) => t.get(&id.0).map(|&r| r as usize),
+            None => {
+                // Ordered, tombstone-free: binary search over the row ids.
+                let bytes = self.rows.as_slice();
+                let (mut lo, mut hi) = (0usize, self.layout.count);
+                while lo < hi {
+                    let mid = lo + (hi - lo) / 2;
+                    match self.layout.id_at(bytes, mid).cmp(&id.0) {
+                        std::cmp::Ordering::Less => lo = mid + 1,
+                        std::cmp::Ordering::Greater => hi = mid,
+                        std::cmp::Ordering::Equal => return Some(mid),
+                    }
+                }
+                None
+            }
+        }
     }
 
     fn open_with(dir: &Path, load_path: LoadPath, read_only: bool) -> Result<Self> {
@@ -464,104 +570,27 @@ impl FlatIndex {
             }
             Err(e) => return Err(e.into()),
         };
-        let (header, dead) = format::decode_manifest(&manifest)?;
+        let (header, layout, dead) = format::decode_manifest(&manifest)?;
+        if !read_only {
+            settle(dir, &header, &layout)?;
+        }
+        let committed = load(dir, header, layout, dead, load_path)?;
         let mut index = Self {
             dir: dir.to_path_buf(),
-            header,
+            header: committed.header.clone(),
+            layout: committed.layout,
             load_path,
             rows: Bytes::Owned(Vec::new()),
-            layout: Rows::new(0, 1),
-            dead,
-            rows_by_id: BTreeMap::new(),
-            ascending: true,
+            dead: RoaringBitmap::new(),
+            table: None,
             pending: BTreeMap::new(),
             compaction_threshold: None,
             read_only,
             sync_pending: false,
             written: 0,
         };
-        if !read_only {
-            index.settle()?;
-        }
-        index.reload()?;
+        index.adopt(committed);
         Ok(index)
-    }
-
-    /// At a writable open only: a crashed append leaves a tail beyond the committed rows — cut
-    /// it (best effort: a read-only file keeps it, and only the committed rows are ever read);
-    /// stale generations and a manifest temporary are swept the same way. Nothing here touches
-    /// a committed byte, and nothing is mapped yet. A read-only open skips this entirely: it
-    /// holds no writer's role, so it alters nothing.
-    fn settle(&self) -> Result<()> {
-        let layout = Rows::new(self.header.rows as usize, self.header.dim);
-        let path = self.dir.join(format::row_file(self.header.generation));
-        let len = std::fs::metadata(&path)?.len();
-        let committed = layout.len_bytes() as u64;
-        if len < committed {
-            return Err(corrupt(format!(
-                "{} is {len} bytes, shorter than the {committed} bytes of {} committed rows",
-                path.display(),
-                self.header.rows
-            )));
-        }
-        if len > committed
-            && let Ok(file) = std::fs::OpenOptions::new().write(true).open(&path)
-        {
-            let _ = file.set_len(committed);
-        }
-        if let Ok(entries) = std::fs::read_dir(&self.dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                let stale = name == MANIFEST_TMP
-                    || format::row_file_generation(&name)
-                        .is_some_and(|g| g != self.header.generation);
-                if stale {
-                    let _ = std::fs::remove_file(entry.path());
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// (Re)read the committed rows from the manifest's generation and rebuild the id table.
-    fn reload(&mut self) -> Result<()> {
-        let layout = Rows::new(self.header.rows as usize, self.header.dim);
-        let path = self.dir.join(format::row_file(self.header.generation));
-        let rows = if layout.count == 0 {
-            // Nothing to read, but the generation the manifest names must be there: a missing
-            // row file is an incomplete directory, whatever the open's mode.
-            std::fs::metadata(&path)?;
-            Bytes::Owned(Vec::new())
-        } else {
-            bytes::read_prefix(&path, self.load_path, layout.len_bytes())?
-        };
-        let bytes = rows.as_slice();
-        let mut rows_by_id: BTreeMap<u32, u32> = BTreeMap::new();
-        let mut ascending = true;
-        let mut last: Option<u32> = None;
-        for r in 0..layout.count {
-            let id = layout.id_at(bytes, r);
-            if last.is_some_and(|l| l >= id) {
-                ascending = false;
-            }
-            last = Some(id);
-            if self.dead.contains(r as u32) {
-                continue;
-            }
-            // One live row per id: a second one is a corrupt file, not a silent overwrite.
-            if let Some(first) = rows_by_id.insert(id, r as u32) {
-                return Err(corrupt(format!(
-                    "{} has two live rows for id {id} (rows {first} and {r})",
-                    path.display()
-                )));
-            }
-        }
-        self.rows = rows;
-        self.layout = layout;
-        self.rows_by_id = rows_by_id;
-        self.ascending = ascending;
-        Ok(())
     }
 
     fn check_agreement(&self, embedder: &dyn Embedder) -> Result<()> {
@@ -629,7 +658,7 @@ impl VectorIndex for FlatIndex {
 
     fn add(&mut self, id: DocId, vector: &[f32]) -> Result<()> {
         if self.read_only {
-            return Err(read_only());
+            return Err(Error::read_only());
         }
         self.validate_vector(id, vector)?;
         self.pending.insert(id, Some(vector.to_vec()));
@@ -638,7 +667,7 @@ impl VectorIndex for FlatIndex {
 
     fn delete(&mut self, ids: &[DocId]) -> Result<()> {
         if self.read_only {
-            return Err(read_only());
+            return Err(Error::read_only());
         }
         for &id in ids {
             self.pending.insert(id, None);
@@ -648,21 +677,17 @@ impl VectorIndex for FlatIndex {
 
     fn commit(&mut self) -> Result<()> {
         if self.read_only {
-            return Err(read_only());
+            return Err(Error::read_only());
         }
         self.confirm_sync()?;
         if self.pending.is_empty() {
             return Ok(());
         }
+        self.verify_unchanged()?;
         // 0. The dead-row share this commit would leave. Over the configured threshold, the
         //    commit *is* a rewrite — one protocol, one rename — never an append followed by a
         //    separate compaction that could fail after the append is durable.
-        let adds = self.pending.values().filter(|c| c.is_some()).count();
-        let superseded = self
-            .pending
-            .keys()
-            .filter(|id| self.live_row(**id).is_some())
-            .count();
+        let (adds, superseded) = self.pending_counts();
         let rows_after = self.layout.count + adds;
         let dead_after = self.dead.len() + superseded as u64;
         if let Some(t) = self.compaction_threshold
@@ -671,61 +696,73 @@ impl VectorIndex for FlatIndex {
         {
             return self.rewrite();
         }
+        let layout = Rows::for_count(rows_after, self.header.dim)?;
         // 1. Resolve the pending changes against the committed state, on copies: nothing in
         //    memory changes until the manifest is renamed, so a failed commit keeps every staged
         //    change for a retry.
         let mut dead = self.dead.clone();
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(adds * layout.row_bytes);
         let mut appended: Vec<(u32, u32)> = Vec::new(); // (id, row)
-        let mut deleted: Vec<u32> = Vec::new();
-        let mut next_row = row_space(self.layout.count, adds)?;
+        let mut removed: Vec<u32> = Vec::new(); // ids whose live row is superseded or deleted
+        let mut next_row = self.layout.count as u32;
         let last_id = (self.layout.count > 0).then(|| {
             self.layout
                 .id_at(self.rows.as_slice(), self.layout.count - 1)
         });
-        let mut ascending = self.ascending;
+        let mut ordered = self.header.ordered;
         for (id, change) in &self.pending {
             if let Some(r) = self.live_row(*id) {
                 dead.insert(r as u32);
+                removed.push(id.0);
             }
-            match change {
-                Some(v) => {
-                    let norm = search::norm_f64(v.iter().copied()) as f32;
-                    format::encode_row(&mut buf, id.0, norm, v);
-                    if appended.is_empty() && last_id.is_some_and(|l| l >= id.0) {
-                        ascending = false;
-                    }
-                    appended.push((id.0, next_row));
-                    next_row += 1;
+            if let Some(v) = change {
+                format::encode_row(&mut buf, id.0, row_norm(v), v);
+                if appended.is_empty() && last_id.is_some_and(|l| l >= id.0) {
+                    ordered = false;
                 }
-                None => deleted.push(id.0),
+                appended.push((id.0, next_row));
+                next_row += 1;
             }
         }
-        // 2. Append the new rows — beyond every live mapping's end (ADR-0013) — and sync.
+        // 2. Append the new rows — beyond every live mapping's end (ADR-0013) — and sync. A
+        //    read+write handle, not an append-only one: the truncation of a stale tail needs
+        //    write access to the end of file on every platform.
         let path = self.dir.join(format::row_file(self.header.generation));
         let committed_len = self.layout.len_bytes() as u64;
         if !buf.is_empty() {
-            let mut file = std::fs::OpenOptions::new().append(true).open(&path)?;
-            // A tail beyond the committed rows (a failed earlier attempt) would shift the row
-            // offsets: cut it first. This handle's mapping, if any, ends at `committed_len`.
-            file.set_len(committed_len)?;
-            let wrote = file.write_all(&buf);
-            self.written += buf.len() as u64;
-            if let Err(e) = wrote.and_then(|()| file.sync_all()) {
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)?;
+            let len = file.metadata()?.len();
+            if len < committed_len {
+                return Err(corrupt(format!(
+                    "{} is {len} bytes, shorter than the {committed_len} committed",
+                    path.display()
+                )));
+            }
+            // A tail beyond the committed rows (a failed earlier attempt of this handle) would
+            // shift the row offsets: cut it first. Mappings cover only the committed length.
+            if len > committed_len {
+                file.set_len(committed_len)?;
+            }
+            file.seek(SeekFrom::Start(committed_len))?;
+            if let Err(e) = file.write_all(&buf).and_then(|()| file.sync_all()) {
                 let _ = file.set_len(committed_len);
                 return Err(e.into());
             }
+            self.written += buf.len() as u64;
         }
         // 3. Bring the appended rows into memory *before* the manifest switches: a buffer grows
-        //    in place (undone by a truncate on failure), a mapping is made anew (nothing is
-        //    read). Then the manifest — the truth — replaced atomically.
-        let rows = u64::from(next_row);
+        //    in place (undone by a truncate on failure), a mapping is made anew over the new
+        //    committed length. Then the manifest — the truth — replaced atomically.
+        let rows_total = u64::from(next_row);
         let header = Header {
-            rows,
-            live: rows - dead.len(),
+            rows: rows_total,
+            live: rows_total - dead.len(),
+            ordered,
             ..self.header.clone()
         };
-        let layout = Rows::new(rows as usize, self.header.dim);
         let undo_file = |path: &Path| {
             if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
                 let _ = file.set_len(committed_len);
@@ -750,43 +787,55 @@ impl VectorIndex for FlatIndex {
                 }
             },
         };
-        let switched = write_manifest(&self.dir, &header, &dead, &mut self.written);
-        if let Err(ManifestFailure::BeforeSwitch(e)) = switched {
-            // The temporary mapping covers the appended bytes: it must be gone before they are
-            // cut (the invariant in `bytes::map_readonly`).
-            drop(remapped);
-            if let Some(v) = self.rows.owned_mut() {
-                v.truncate(committed_len as usize);
-            }
-            if !buf.is_empty() {
-                undo_file(&path);
-            }
-            return Err(e);
-        }
-        // 4. The manifest is switched: the in-memory state follows it — nothing here can fail.
-        if let Some(b) = remapped {
-            self.rows = b;
-        }
-        debug_assert!(self.rows.as_slice().len() >= layout.len_bytes());
-        self.header = header;
-        self.dead = dead;
-        self.layout = layout;
-        self.ascending = ascending;
-        self.pending.clear();
-        for &id in &deleted {
-            self.rows_by_id.remove(&id);
-        }
-        for &(id, r) in &appended {
-            self.rows_by_id.insert(id, r);
-        }
-        match switched {
+        // The table the new state needs, built from the old state (infallible: an ordered,
+        // tombstone-free file has unique ids) before the switch, updated after it.
+        let mut table = if dead.is_empty() && ordered {
+            None
+        } else {
+            Some(self.table.clone().unwrap_or_else(|| self.build_table()))
+        };
+        let switched = match write_manifest(&self.dir, &header, &dead, &mut self.written) {
             Ok(()) => Ok(()),
-            Err(ManifestFailure::AfterSwitch(e)) => {
-                self.sync_pending = true;
-                Err(e)
+            Err(ManifestFailure::BeforeSwitch(e)) => {
+                // The temporary mapping covers the appended bytes: it must be gone before they
+                // are cut (the invariant in `bytes::map_readonly`).
+                drop(remapped);
+                if let Some(v) = self.rows.owned_mut() {
+                    v.truncate(committed_len as usize);
+                }
+                if !buf.is_empty() {
+                    undo_file(&path);
+                }
+                return Err(e);
             }
-            Err(ManifestFailure::BeforeSwitch(_)) => unreachable!("handled above"),
+            Err(ManifestFailure::AfterSwitch(e)) => Err(e),
+        };
+        // 4. The manifest is switched: only infallible adoption follows.
+        if let Some(t) = &mut table {
+            for id in &removed {
+                t.remove(id);
+            }
+            for &(id, r) in &appended {
+                t.insert(id, r);
+            }
         }
+        let rows = match remapped {
+            Some(b) => b,
+            None => std::mem::replace(&mut self.rows, Bytes::Owned(Vec::new())),
+        };
+        debug_assert!(rows.as_slice().len() >= layout.len_bytes());
+        self.adopt(Committed {
+            header,
+            layout,
+            rows,
+            dead,
+            table,
+        });
+        self.pending.clear();
+        if switched.is_err() {
+            self.sync_pending = true;
+        }
+        switched
     }
 
     fn search(&self, query: &[f32], allowed: Option<&DocSet>, k: usize) -> Result<Vec<Hit>> {
@@ -799,9 +848,10 @@ impl VectorIndex for FlatIndex {
         }
         let bytes = self.rows.as_slice();
         let layout = self.layout;
+        let no_dead = self.dead.is_empty();
         let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
         for r in 0..layout.count {
-            if self.dead.contains(r as u32) {
+            if !no_dead && self.dead.contains(r as u32) {
                 continue;
             }
             let id = layout.id_at(bytes, r);
@@ -824,56 +874,208 @@ impl VectorIndex for FlatIndex {
     }
 }
 
-/// The refusal of a mutation on a read-only handle: the same shape the lexical stage uses.
-fn read_only() -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        "read-only index: opened with open_read_only, every mutation is refused",
-    ))
-}
-
-/// The first row index of a commit that appends `adds` rows to `committed` — or the row-space
-/// exhaustion error, before any I/O: row indices are `u32` (the tombstone set's domain).
-fn row_space(committed: usize, adds: usize) -> Result<u32> {
-    let first = u32::try_from(committed).ok();
-    let last = first.and_then(|f| f.checked_add(u32::try_from(adds).ok()?));
-    match (first, last) {
-        (Some(first), Some(_)) => Ok(first),
-        _ => Err(Error::Io(std::io::Error::other(format!(
-            "dense row space exhausted: {committed} committed rows plus {adds} would exceed {} — compact the index first",
-            u32::MAX
-        )))),
+impl FlatIndex {
+    /// Live id → row from the current rows and tombstones. Infallible here: it is only built
+    /// from a state whose ids were validated at open (duplicates are `Corrupt` there).
+    fn build_table(&self) -> BTreeMap<u32, u32> {
+        let bytes = self.rows.as_slice();
+        (0..self.layout.count)
+            .filter(|&r| !self.dead.contains(r as u32))
+            .map(|r| (self.layout.id_at(bytes, r), r as u32))
+            .collect()
     }
 }
 
-/// Write a manifest to `manifest.bin.tmp`, sync, and `rename` it over `manifest.bin`.
+/// A row of the merged (committed ⊕ pending) sequence a rewrite emits.
+enum Merged<'a> {
+    Kept(usize),
+    Pending(u32, &'a [f32]),
+}
+
+/// The ascending merge of the committed live rows with the pending changes.
+struct Merge<C, P>
+where
+    C: Iterator<Item = (u32, usize)>,
+    P: Iterator,
+{
+    committed: std::iter::Peekable<C>,
+    pending: std::iter::Peekable<P>,
+}
+
+impl<'a, C, P> Iterator for Merge<C, P>
+where
+    C: Iterator<Item = (u32, usize)>,
+    P: Iterator<Item = (u32, Option<&'a Vec<f32>>)>,
+{
+    type Item = Merged<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let c = self.committed.peek().copied();
+            let p = self.pending.peek().copied();
+            match (c, p) {
+                (None, None) => return None,
+                (Some((_, r)), None) => {
+                    self.committed.next();
+                    return Some(Merged::Kept(r));
+                }
+                (None, Some((id, change))) => {
+                    self.pending.next();
+                    if let Some(v) = change {
+                        return Some(Merged::Pending(id, v));
+                    }
+                }
+                (Some((cid, r)), Some((pid, change))) => match cid.cmp(&pid) {
+                    std::cmp::Ordering::Less => {
+                        self.committed.next();
+                        return Some(Merged::Kept(r));
+                    }
+                    std::cmp::Ordering::Greater => {
+                        self.pending.next();
+                        if let Some(v) = change {
+                            return Some(Merged::Pending(pid, v));
+                        }
+                    }
+                    // The pending change wins over the committed row for the same id.
+                    std::cmp::Ordering::Equal => {
+                        self.committed.next();
+                        self.pending.next();
+                        if let Some(v) = change {
+                            return Some(Merged::Pending(pid, v));
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
+/// The norm stored beside a row: `f64` accumulation, rounded to `f32` once — the same rounding
+/// everywhere a row is written.
+fn row_norm(v: &[f32]) -> f32 {
+    search::norm_f64(v.iter().copied()) as f32
+}
+
+/// At a writable open only: a crashed append leaves a tail beyond the committed rows — cut it
+/// (best effort: a read-only file keeps it, and only the committed rows are ever read); stale
+/// generations and a manifest temporary are swept the same way. Nothing here touches a
+/// committed byte, and nothing is mapped yet. A read-only open skips this entirely: it holds
+/// no writer's role, so it alters nothing.
+fn settle(dir: &Path, header: &Header, layout: &Rows) -> Result<()> {
+    let path = dir.join(format::row_file(header.generation));
+    let len = std::fs::metadata(&path)?.len();
+    let committed = layout.len_bytes() as u64;
+    if len < committed {
+        return Err(corrupt(format!(
+            "{} is {len} bytes, shorter than the {committed} bytes of {} committed rows",
+            path.display(),
+            header.rows
+        )));
+    }
+    if len > committed
+        && let Ok(file) = std::fs::OpenOptions::new().write(true).open(&path)
+    {
+        let _ = file.set_len(committed);
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let stale = name == MANIFEST_TMP
+                || format::row_file_generation(&name).is_some_and(|g| g != header.generation);
+            if stale {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Read (or map) the committed rows of the manifest's generation and, when the file needs one,
+/// build the id table: a second live row for an id is `Corrupt`.
+fn load(
+    dir: &Path,
+    header: Header,
+    layout: Rows,
+    dead: RoaringBitmap,
+    load_path: LoadPath,
+) -> Result<Committed> {
+    let path = dir.join(format::row_file(header.generation));
+    let rows = if layout.count == 0 {
+        // Nothing to read, but the generation the manifest names must be there: a missing row
+        // file is an incomplete directory, whatever the open's mode.
+        std::fs::metadata(&path)?;
+        Bytes::Owned(Vec::new())
+    } else {
+        bytes::read_prefix(&path, load_path, layout.len_bytes())?
+    };
+    let table = if dead.is_empty() && header.ordered {
+        None
+    } else {
+        let bytes = rows.as_slice();
+        let mut table = BTreeMap::new();
+        for r in 0..layout.count {
+            if dead.contains(r as u32) {
+                continue;
+            }
+            let id = layout.id_at(bytes, r);
+            if let Some(first) = table.insert(id, r as u32) {
+                return Err(corrupt(format!(
+                    "{} has two live rows for id {id} (rows {first} and {r})",
+                    path.display()
+                )));
+            }
+        }
+        Some(table)
+    };
+    Ok(Committed {
+        header,
+        layout,
+        rows,
+        dead,
+        table,
+    })
+}
+
+/// Write a manifest to `manifest.bin.tmp`, sync, `rename` it over `manifest.bin`, and sync
+/// the directory through a handle opened *before* the rename — so an unopenable directory is
+/// a failure before the switch, and only an `fsync` error on an open handle can follow it.
 ///
 /// The rename is the switch. A failure before it leaves the previous manifest; a failure after
-/// it — the directory sync — leaves the new manifest in place with its entry's durability
-/// unconfirmed. Callers roll back on the first and adopt the switched state on the second.
+/// it leaves the new manifest in place with its entry's durability unconfirmed. Callers roll
+/// back on the first and adopt the switched state on the second.
 fn write_manifest(
     dir: &Path,
     header: &Header,
     dead: &RoaringBitmap,
     written: &mut u64,
 ) -> std::result::Result<(), ManifestFailure> {
-    let before = |e: Error| ManifestFailure::BeforeSwitch(e);
+    let before = ManifestFailure::BeforeSwitch;
     let encoded = format::encode_manifest(header, dead).map_err(before)?;
+    let dir_handle = fs::open_dir_for_sync(dir).map_err(|e| before(e.into()))?;
     let tmp = dir.join(MANIFEST_TMP);
-    *written += encoded.len() as u64;
     (|| -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&tmp)?;
-        file.write_all(&encoded)?;
-        file.sync_all()?;
+        {
+            let mut file = std::fs::File::create(&tmp)?;
+            file.write_all(&encoded)?;
+            file.sync_all()?;
+        }
+        *written += encoded.len() as u64;
         std::fs::rename(&tmp, dir.join(MANIFEST))
     })()
     .map_err(|e| before(e.into()))?;
-    sync_dir(dir).map_err(|e| {
-        ManifestFailure::AfterSwitch(Error::Io(std::io::Error::other(format!(
-            "the manifest is switched but the directory sync failed, so its entry's durability \
-             is unconfirmed; the index state is the new one and coherent: {e}"
-        ))))
-    })
+    if let Some(handle) = dir_handle {
+        handle.sync_all().map_err(|e| {
+            ManifestFailure::AfterSwitch(Error::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "the manifest is switched but the directory sync failed, so its entry's \
+                     durability is unconfirmed; the index state is the new one and coherent: {e}"
+                ),
+            )))
+        })?;
+    }
+    Ok(())
 }
 
 /// How a manifest write failed: before the rename (nothing on disk changed) or after it (the
@@ -881,51 +1083,4 @@ fn write_manifest(
 enum ManifestFailure {
     BeforeSwitch(Error),
     AfterSwitch(Error),
-}
-
-impl ManifestFailure {
-    fn into_error(self) -> Error {
-        match self {
-            Self::BeforeSwitch(e) | Self::AfterSwitch(e) => e,
-        }
-    }
-}
-
-/// Make the directory's entries durable (a rename, a new file): on POSIX the entry lives in
-/// the directory, which is synced like any file. Without it a power loss can keep a renamed
-/// manifest that names a row file whose entry never reached disk.
-///
-/// The power-loss ordering guarantee (ADR-0013) is made on the Unix targets the engine ships
-/// to — macOS, iOS, Android, Linux. Elsewhere a directory cannot be opened for `fsync` and this
-/// is a no-op: the crash-at-any-byte guarantee (the manifest is the truth, replaced by rename)
-/// still holds, the ordering of entries across a power loss is the filesystem's.
-fn sync_dir(dir: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        std::fs::File::open(dir)?.sync_all()?;
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = dir;
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn row_space_is_checked_before_any_io() {
-        assert_eq!(row_space(0, 10).unwrap(), 0);
-        assert_eq!(row_space(100, 0).unwrap(), 100);
-        assert_eq!(row_space(u32::MAX as usize - 1, 1).unwrap(), u32::MAX - 1);
-        assert!(matches!(row_space(u32::MAX as usize, 1), Err(Error::Io(_))));
-        assert!(matches!(
-            row_space(u32::MAX as usize - 1, 2),
-            Err(Error::Io(_))
-        ));
-        assert!(matches!(row_space(usize::MAX, 0), Err(Error::Io(_))));
-    }
 }

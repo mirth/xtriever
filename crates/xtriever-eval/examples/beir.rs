@@ -282,7 +282,7 @@ fn cached_index(
         .cloned()
         .context("dataset hashes lack corpus.jsonl")?;
     let key = EmbeddingCacheKey {
-        format_version: 1,
+        format_version: 2,
         config: cfg.name.clone(),
         dataset: dataset.name.clone(),
         embedder_fingerprint: embedder.fingerprint().to_owned(),
@@ -295,12 +295,24 @@ fn cached_index(
             LoadPath::Mmap => FlatIndex::open_mapped_for(dir, embedder)?,
         })
     };
-    if key.matches(&dir)
-        && let Ok(index) = open(&dir)
-        && index.len() == passages.len() as u64
-    {
-        eprintln!("embedded 0 passages (cache hit: {})", dir.display());
-        return Ok(index);
+    if key.matches(&dir) {
+        match open(&dir) {
+            Ok(index) if index.len() == passages.len() as u64 => {
+                eprintln!("embedded 0 passages (cache hit: {})", dir.display());
+                return Ok(index);
+            }
+            Ok(index) => eprintln!(
+                "cache at {} holds {} vectors, not {}; re-embedding",
+                dir.display(),
+                index.len(),
+                passages.len()
+            ),
+            // Never re-embed silently: say why the cache is being rebuilt.
+            Err(e) => eprintln!(
+                "cache at {} cannot be opened ({e}); re-embedding",
+                dir.display()
+            ),
+        }
     }
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
@@ -475,7 +487,7 @@ fn evaluate_hybrid(
         .cloned()
         .context("dataset hashes lack corpus.jsonl")?;
     let key = EmbeddingCacheKey {
-        format_version: 1,
+        format_version: 2,
         config: cfg.dense.name.clone(),
         dataset: dataset.to_owned(),
         embedder_fingerprint: embedder.fingerprint().to_owned(),

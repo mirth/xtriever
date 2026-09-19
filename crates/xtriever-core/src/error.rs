@@ -57,11 +57,30 @@ pub enum Error {
     Backend(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
+/// The message every refused write and every refused mutation on a read-only index carries —
+/// one text across the lexical, dense and pipeline layers, matched by the FFI's read-only
+/// mapping and by tests.
+pub const READ_ONLY_MESSAGE: &str = "read-only index";
+
 impl Error {
     /// Wrap an arbitrary backend error.
     pub fn backend<E: std::error::Error + Send + Sync + 'static>(e: E) -> Self {
         Self::Backend(Box::new(e))
     }
+
+    /// The refusal of a mutation on an index opened read-only: `Io` with
+    /// `ErrorKind::PermissionDenied` and [`READ_ONLY_MESSAGE`].
+    #[must_use]
+    pub fn read_only() -> Self {
+        Self::Io(read_only_io_error())
+    }
+}
+
+/// [`Error::read_only`] as the bare `std::io::Error`, for layers that speak `io::Error` (a
+/// storage backend's directory abstraction).
+#[must_use]
+pub fn read_only_io_error() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::PermissionDenied, READ_ONLY_MESSAGE)
 }
 
 /// Result alias used throughout Xtriever.

@@ -26,3 +26,15 @@ commit_10_rows/v1_rewrite
                         time:   [140.98 ms 144.59 ms 148.46 ms]
 v2_append: 15596 bytes written per 10-row commit (the handle's own count: rows + manifest; 530 commits), net dense/ growth 15440 bytes per commit
 v1_rewrite: 154400101 bytes written per commit
+# full re-run after the /code-review fixes (streaming compaction, no id table for ordered files, the stale-writer manifest check on every commit, the directory handle opened before the rename); run alongside a 1,000-case property test and a wheel build, so absolute times are inflated — the ratios hold: scan v2 within 1 % of the v1 shape, the commit under the 50 ms budget
+scan/v1_shape/100000    time:   [39.978 ms 40.061 ms 40.157 ms]
+scan/v2/100000          time:   [40.103 ms 40.386 ms 40.825 ms]
+scan/v2_filtered_half/100000
+                        time:   [20.205 ms 20.274 ms 20.372 ms]
+commit_10_rows/v2_append
+                        time:   [28.052 ms 28.505 ms 28.946 ms]
+v2_append: 15611 bytes written per 10-row commit (the handle's own count: rows + manifest; 347 commits), net dense/ growth 15440 bytes per commit
+# commit group, idle machine, after the /code-review fixes:
+commit_10_rows/v2_append
+                        time:   [17.497 ms 18.470 ms 19.467 ms]
+v2_append: 15611 bytes written per 10-row commit (the handle's own count: rows + manifest; 585 commits), net dense/ growth 15440 bytes per commit
