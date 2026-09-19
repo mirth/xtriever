@@ -193,6 +193,20 @@ fn two_live_rows_for_one_id_are_corrupt() {
             other => panic!("expected Corrupt, got {other:?}"),
         }
     }
+    // A manifest that *lies* about the order: a read-only open trusts it (as it trusts every
+    // manifest field — it reads nothing beyond the manifest), a writable handle verifies the
+    // ids before its first write and refuses to build on the lie.
+    rewrite_manifest_header(tmp.path(), |h| {
+        h.replace("\"ordered\":false", "\"ordered\":true")
+    });
+    assert_eq!(FlatIndex::open_read_only(tmp.path()).unwrap().len(), 2);
+    let mut index = FlatIndex::open(tmp.path()).unwrap();
+    index.add(DocId(9), &[0.0, 0.0, 1.0]).unwrap();
+    match index.commit().unwrap_err() {
+        Error::Corrupt(msg) => assert!(msg.contains("not ordered"), "{msg}"),
+        other => panic!("expected Corrupt, got {other:?}"),
+    }
+    assert!(matches!(index.compact().unwrap_err(), Error::Corrupt(_)));
 }
 
 #[test]
@@ -506,6 +520,21 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     let fresh = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(fresh.len(), 2);
     assert_eq!(fresh.vector(DocId(2)), Some(vec![0.0, 1.0]));
+
+    // The check applies to no-ops too: a stale handle never reports success over another
+    // writer's state.
+    let mut idle = FlatIndex::open(tmp.path()).unwrap();
+    let mut other = FlatIndex::open(tmp.path()).unwrap();
+    other.add(DocId(4), &[0.1, 0.9]).unwrap();
+    other.commit().unwrap();
+    assert!(
+        matches!(idle.commit().unwrap_err(), Error::Corrupt(_)),
+        "an empty commit"
+    );
+    assert!(
+        matches!(idle.compact().unwrap_err(), Error::Corrupt(_)),
+        "a no-op compact"
+    );
 
     // A delete-only commit by another handle changes neither generation nor rows — only the
     // live count and the tombstone set — and must be caught the same way, or the stale

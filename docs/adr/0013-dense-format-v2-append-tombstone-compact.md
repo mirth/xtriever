@@ -70,10 +70,16 @@ dense/
   obligation is per handle: a dropped handle drops it. The pipeline's `commit` treats that
   outcome as switched — it finishes its own protocol so the directory is consistent, returns
   the error, and its next `commit` retries the sync through the stage's empty commit.
-- **One writer at a time, checked**: a writable handle verifies at every commit that the
-  manifest on disk is the one it last saw (generation and rows) and refuses with `Corrupt`
-  otherwise, so a stale handle cannot cut another writer's rows in place or silently undo
-  its commit. The no-concurrent-writer precondition of every open is still the caller's.
+- **One writer at a time, checked**: a writable handle verifies at every `commit` and
+  `compact` — no-ops included — that the manifest on disk is the one it last saw (generation,
+  rows, live count and tombstone set) and refuses with `Corrupt` otherwise, so a stale handle
+  cannot cut another writer's rows in place, resurrect its deletes or silently undo its
+  commit. The no-concurrent-writer precondition of every open is still the caller's.
+- **`ordered` is trusted by readers, verified by writers**: a read-only open takes the
+  manifest's word for it like every other field (nothing beyond the manifest is read — the
+  point of the flag); a writable handle scans the ids once before its first write and
+  refuses (`Corrupt`) to build on a manifest that lied. A lying flag is corruption of the
+  same class as a lying row count; the format carries no checksums.
 - **Read-only opens** (`open_read_only*`, the pipeline's `OpenOptions { read_only }`) alter
   nothing — no tail cut, no sweep — and refuse every mutation with the workspace's one
   read-only error (`Error::read_only`).

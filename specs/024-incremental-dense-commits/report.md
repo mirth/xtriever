@@ -259,3 +259,12 @@ manifest, goldens reproduce, the committed file kept); the bench re-recorded.
 2. The pipeline's commit marker is written atomically and the directory synced before any
    stage commits, and synced again after its removal — the marker's presence and absence are
    both durable, as `xtriever_core::fs`'s module doc claimed.
+
+### Review round 13 (Copilot, two comments — one applied, one applied in part)
+
+1. The stale-writer check runs before the no-op shortcuts of `commit` and `compact`, so an
+   idle stale handle never reports success over another writer's state; tested.
+2. Validating `ordered` at every open would be the full id scan the table-free path exists to
+   avoid, so the flag stays trusted by read-only handles (like `rows` or the tombstone set —
+   the format has no checksums); a writable handle verifies it once, before its first write,
+   and refuses to build on a lying manifest (`Corrupt` "not ordered"); tested both ways.

@@ -57,6 +57,8 @@ exactly the committed bytes.
 
 **Review round 12** (two comments, applied): the stale-writer check compares the live count and tombstones too (delete-only commits), and the pipeline's commit marker is durable on creation and removal.
 
+**Review round 13** (two comments): the stale-writer check covers no-op commits/compacts; the `ordered` flag is trusted by read-only handles and verified by writable handles before their first write (a full scan at every open would forfeit the mapped-open goal).
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

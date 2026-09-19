@@ -72,6 +72,10 @@ pub struct FlatIndex {
     /// Bytes this handle has written to the row files and manifests since it was opened —
     /// counted after each write succeeded (a rolled-back append still wrote its rows).
     written: u64,
+    /// A writable handle on a table-free (ordered, tombstone-free) generation has verified the
+    /// manifest's `ordered` claim against the row ids before its first write; a read-only
+    /// handle trusts the manifest, as it trusts every other field.
+    order_verified: bool,
 }
 
 impl std::fmt::Debug for FlatIndex {
@@ -366,6 +370,9 @@ impl FlatIndex {
             return Err(Error::read_only());
         }
         self.confirm_sync()?;
+        // Even a no-op answers for the state on disk: a stale handle must not report success
+        // over another writer's changes.
+        self.verify_unchanged()?;
         if self.pending.is_empty() && self.dead.is_empty() && self.header.ordered {
             return Ok(());
         }
@@ -378,6 +385,7 @@ impl FlatIndex {
     /// commit is always one protocol, never a durable append followed by a separate compaction.
     fn rewrite(&mut self) -> Result<()> {
         self.verify_unchanged()?;
+        self.verify_order()?;
         let generation = self.header.generation.checked_add(1).ok_or_else(|| {
             corrupt(format!(
                 "generation {} cannot advance; the row file's generation counter is exhausted",
@@ -466,6 +474,7 @@ impl FlatIndex {
             dead: RoaringBitmap::new(),
             table: None,
         });
+        self.order_verified = true; // ascending by construction
         self.pending.clear();
         if switched.is_ok() {
             // The rename is durable, so the old generation can go; its removal need not be
@@ -534,6 +543,31 @@ impl FlatIndex {
         Ok(())
     }
 
+    /// Before a writable handle builds on a table-free generation — `live_row` by binary
+    /// search, the rewrite's file-order merge — the manifest's `ordered` claim is checked once
+    /// against the row ids: strictly ascending, hence unique. A manifest that lies is
+    /// `Corrupt` here, before anything is written; the cost (one pass over the ids) falls on
+    /// the first write of a handle, never on a read-only open — the mapped-open goal.
+    fn verify_order(&mut self) -> Result<()> {
+        if self.order_verified || self.table.is_some() {
+            return Ok(());
+        }
+        let bytes = self.rows.as_slice();
+        let layout = self.layout;
+        for r in 1..layout.count {
+            if layout.id_at(bytes, r - 1) >= layout.id_at(bytes, r) {
+                return Err(corrupt(format!(
+                    "{} is not ordered at row {r} although its manifest says so",
+                    self.dir
+                        .join(format::row_file(self.header.generation))
+                        .display()
+                )));
+            }
+        }
+        self.order_verified = true;
+        Ok(())
+    }
+
     /// Retry a directory sync an earlier switch left unconfirmed; nothing else proceeds until
     /// it has succeeded, so a later success never hides an unconfirmed one.
     fn confirm_sync(&mut self) -> Result<()> {
@@ -599,6 +633,7 @@ impl FlatIndex {
             read_only,
             sync_pending: false,
             written: 0,
+            order_verified: false,
         };
         index.adopt(committed);
         Ok(index)
@@ -691,10 +726,12 @@ impl VectorIndex for FlatIndex {
             return Err(Error::read_only());
         }
         self.confirm_sync()?;
+        // Even a no-op answers for the state on disk (see `compact`).
+        self.verify_unchanged()?;
         if self.pending.is_empty() {
             return Ok(());
         }
-        self.verify_unchanged()?;
+        self.verify_order()?;
         // 0. The dead-row share this commit would leave. Over the configured threshold, the
         //    commit *is* a rewrite — one protocol, one rename — never an append followed by a
         //    separate compaction that could fail after the append is durable.
@@ -1025,6 +1062,8 @@ fn load(
     } else {
         bytes::read_prefix(&path, load_path, layout.len_bytes())?
     };
+    // `ordered` is trusted here like every other manifest field (a read-only open touches
+    // nothing beyond the manifest); a writable handle verifies it before its first write.
     let table = if dead.is_empty() && header.ordered {
         None
     } else {
