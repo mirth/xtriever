@@ -44,8 +44,9 @@ Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other versi
    (16 + header + tombstones bytes), and nothing else; no committed byte changes.
 2. Search results are bit-identical to what version 1 returned for the same committed
    content, filtered or not, all metrics; before and after `compact`.
-3. A crash at any byte boundary of `commit` or `compact` reopens to the previous committed
-   state. An error from either leaves the handle coherent with the disk: before the manifest
+3. A crash at any byte boundary of `commit` or `compact` reopens to either the previous
+   committed state or the fully committed new one — the manifest rename is the switch — never
+   to a partial state; consumers cannot rely on a rollback after the switch. An error from either leaves the handle coherent with the disk: before the manifest
    rename nothing changed and the pending changes are kept for a retry; after it (only the
    directory sync can fail there) the new state is adopted, the error says so,
    `is_sync_pending()` is true, and no later `commit` or `compact` returns success until a

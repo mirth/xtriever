@@ -1,6 +1,6 @@
 # Report: Incremental Dense Commits
 
-**Status**: in progress — red checkpoint reached (PR A).
+**Status**: PR A (the format, `xtriever-dense`) complete and green — gate, bench, fixture regenerated, ten review rounds applied — awaiting merge; PR B (the pipeline's `merge` → `compact`, the threshold knob through config/descriptor/FFI, the Wikipedia artefact regeneration) not started.
 
 ## The oracle (T002)
 
@@ -45,8 +45,8 @@ no device job here.)
 |---|---|---|---|
 | unfiltered scan | 32.8 ms | **31.6 ms** (−4 %) | within 5 % |
 | scan, `allowed` = every other id | — | 16.2 ms | reported |
-| 10-row commit, bytes written | 154,400,101 | **15,440** (+ a manifest under 1 KB) | < 100 KB |
-| 10-row commit, time | 175 ms (134 ms in the first run) | **17.5 ms** (12.9 ms before the directory fsyncs of review round 4; three `fsync`s now) | < 50 ms |
+| 10-row commit, bytes written | 154,400,101 | **15,596** (ten rows + one manifest, by the handle's own counter; net growth 15,440) | < 100 KB |
+| 10-row commit, time | 145–176 ms across runs | **17.5–18.2 ms** (12.9 ms before the directory fsyncs of review round 4; three `fsync`s now) | < 50 ms |
 
 The first commit run measured 37.6 ms: `commit` re-read the whole row file after each
 append. Fixed (`absorb`: the in-memory buffer grows by the appended bytes; a mapping is
@@ -207,3 +207,18 @@ open exposes the committed rows only; the next writable open cleans up.
 4. The spec's manifest entity describes the embedded tombstone set (no tombstone file).
 5. The FFI `LoadPath::Mmap` doc names `dense/vectors.<g>.bin` (a doc-only change in
    `crates/xtriever-ffi`, pulled into PR A); T024 notes it.
+
+### Review round 11 (Copilot, six comments — all applied)
+
+1–2. Write volume is now measured, not inferred from directory growth: `FlatIndex::bytes_written()`
+   counts every byte the handle hands to the row files and manifests (appended rows, every
+   manifest, a compaction's new generation — nothing else is ever written). The append test
+   asserts the counter's delta is exactly ten rows plus one manifest (a delete-only commit:
+   one manifest) and reports net growth beside it; the bench prints both figures.
+3. A read-only handle refuses every mutation — `add`, `delete`, `set_compaction_threshold`
+   as well as `commit` and `compact` — so the doc's promise is true; the test covers all five.
+4. The contract's guarantee 3 states the old-or-new boundary (no rollback after the switch).
+5. This report's status line distinguishes PR A (complete, green) from PR B (not started).
+6. Research D3's commit *and* compact steps, and T013, record the landed protocol (the new
+   rows or generation in memory before the rename, the directory sync, the two failure
+   kinds, infallible adoption after) — two further comments in the same round.

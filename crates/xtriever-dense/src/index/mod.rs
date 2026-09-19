@@ -66,6 +66,10 @@ pub struct FlatIndex {
     /// durability is unconfirmed. No later `commit` or `compact` returns success until a
     /// directory sync has succeeded.
     sync_pending: bool,
+    /// Bytes this handle has handed to the row files and manifests since it was opened — the
+    /// measure of a commit's write volume (spec FR-001), independent of what the directory's
+    /// size happens to show.
+    written: u64,
 }
 
 impl FlatIndex {
@@ -101,7 +105,8 @@ impl FlatIndex {
         };
         std::fs::File::create(dir.join(format::row_file(0)))?.sync_all()?;
         sync_dir(dir)?;
-        write_manifest(dir, &header, &RoaringBitmap::new()).map_err(ManifestFailure::into_error)?;
+        write_manifest(dir, &header, &RoaringBitmap::new(), &mut 0)
+            .map_err(ManifestFailure::into_error)?;
         Self::open_with(dir, LoadPath::Buffered, false)
     }
 
@@ -116,8 +121,9 @@ impl FlatIndex {
     }
 
     /// Open read-only, reading the committed rows into memory: nothing in the directory is
-    /// touched — no crashed tail is cut, no stale generation swept — and `commit` / `compact`
-    /// are refused. For a directory that is read-only by construction (an app bundle) or one
+    /// touched — no crashed tail is cut, no stale generation swept — and every mutation
+    /// (`add`, `delete`, `commit`, `compact`, `set_compaction_threshold`) is refused with
+    /// `Error::Io` "read-only index". For a directory that is read-only by construction (an app bundle) or one
     /// this handle must not alter. The precondition every open has stands: no writer changes
     /// the directory while the handle lives — a concurrent compaction could switch the
     /// manifest and remove the generation between the manifest and the row file being read.
@@ -220,11 +226,19 @@ impl FlatIndex {
         Some(self.layout.row_at(self.rows.as_slice(), r).collect())
     }
 
-    /// Whether this handle was opened read-only (`open_read_only*`): mutations are refused and
-    /// the directory is never touched.
+    /// Whether this handle was opened read-only (`open_read_only*`): every mutation is refused
+    /// and the directory is never touched.
     #[must_use]
     pub fn is_read_only(&self) -> bool {
         self.read_only
+    }
+
+    /// Bytes handed to the row files and manifests by this handle since it was opened: every
+    /// appended row, every manifest, every compaction's new generation — nothing else is ever
+    /// written. A commit's share of it is its write volume.
+    #[must_use]
+    pub fn bytes_written(&self) -> u64 {
+        self.written
     }
 
     /// What the manifest says: rows, live, dead, generation.
@@ -243,8 +257,12 @@ impl FlatIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Schema` for a share outside `0.0..=1.0` or not finite.
+    /// `Error::Schema` for a share outside `0.0..=1.0` or not finite; `Error::Io` on a
+    /// read-only handle.
     pub fn set_compaction_threshold(&mut self, share: Option<f32>) -> Result<()> {
+        if self.read_only {
+            return Err(read_only());
+        }
         if let Some(s) = share
             && !(s.is_finite() && (0.0..=1.0).contains(&s))
         {
@@ -361,6 +379,7 @@ impl FlatIndex {
         let prepared = (|| -> Result<Bytes> {
             let mut file = std::fs::File::create(&new_path)?;
             file.write_all(&buf)?;
+            self.written += buf.len() as u64;
             file.sync_all()?;
             sync_dir(&self.dir)?;
             if layout.count == 0 {
@@ -376,7 +395,7 @@ impl FlatIndex {
                 return Err(e);
             }
         };
-        let switched = write_manifest(&self.dir, &header, &RoaringBitmap::new());
+        let switched = write_manifest(&self.dir, &header, &RoaringBitmap::new(), &mut self.written);
         if let Err(ManifestFailure::BeforeSwitch(e)) = switched {
             let _ = std::fs::remove_file(&new_path);
             return Err(e);
@@ -459,6 +478,7 @@ impl FlatIndex {
             compaction_threshold: None,
             read_only,
             sync_pending: false,
+            written: 0,
         };
         if !read_only {
             index.settle()?;
@@ -608,12 +628,18 @@ impl VectorIndex for FlatIndex {
     }
 
     fn add(&mut self, id: DocId, vector: &[f32]) -> Result<()> {
+        if self.read_only {
+            return Err(read_only());
+        }
         self.validate_vector(id, vector)?;
         self.pending.insert(id, Some(vector.to_vec()));
         Ok(())
     }
 
     fn delete(&mut self, ids: &[DocId]) -> Result<()> {
+        if self.read_only {
+            return Err(read_only());
+        }
         for &id in ids {
             self.pending.insert(id, None);
         }
@@ -683,7 +709,9 @@ impl VectorIndex for FlatIndex {
             // A tail beyond the committed rows (a failed earlier attempt) would shift the row
             // offsets: cut it first. This handle's mapping, if any, ends at `committed_len`.
             file.set_len(committed_len)?;
-            if let Err(e) = file.write_all(&buf).and_then(|()| file.sync_all()) {
+            let wrote = file.write_all(&buf);
+            self.written += buf.len() as u64;
+            if let Err(e) = wrote.and_then(|()| file.sync_all()) {
                 let _ = file.set_len(committed_len);
                 return Err(e.into());
             }
@@ -722,7 +750,7 @@ impl VectorIndex for FlatIndex {
                 }
             },
         };
-        let switched = write_manifest(&self.dir, &header, &dead);
+        let switched = write_manifest(&self.dir, &header, &dead, &mut self.written);
         if let Err(ManifestFailure::BeforeSwitch(e)) = switched {
             // The temporary mapping covers the appended bytes: it must be gone before they are
             // cut (the invariant in `bytes::map_readonly`).
@@ -800,7 +828,7 @@ impl VectorIndex for FlatIndex {
 fn read_only() -> Error {
     Error::Io(std::io::Error::new(
         std::io::ErrorKind::PermissionDenied,
-        "read-only index: opened with open_read_only, mutations are refused",
+        "read-only index: opened with open_read_only, every mutation is refused",
     ))
 }
 
@@ -827,10 +855,12 @@ fn write_manifest(
     dir: &Path,
     header: &Header,
     dead: &RoaringBitmap,
+    written: &mut u64,
 ) -> std::result::Result<(), ManifestFailure> {
     let before = |e: Error| ManifestFailure::BeforeSwitch(e);
     let encoded = format::encode_manifest(header, dead).map_err(before)?;
     let tmp = dir.join(MANIFEST_TMP);
+    *written += encoded.len() as u64;
     (|| -> std::io::Result<()> {
         let mut file = std::fs::File::create(&tmp)?;
         file.write_all(&encoded)?;

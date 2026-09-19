@@ -252,8 +252,8 @@ fn a_mapping_covers_only_the_committed_rows() {
 #[test]
 fn a_read_only_open_touches_nothing_and_refuses_mutations() {
     // A logical read-only open holds no writer's role: a crashed tail, a manifest temporary and
-    // a stale generation all survive it (it alters nothing it did not write), and `commit` /
-    // `compact` are refused — the state is still the committed one.
+    // a stale generation all survive it (it alters nothing it did not write), and every
+    // mutation is refused — the state is still the committed one.
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), 2, Metric::Dot, "fp").unwrap();
     index.add(DocId(1), &[1.0, 0.0]).unwrap();
@@ -277,8 +277,14 @@ fn a_read_only_open_touches_nothing_and_refuses_mutations() {
     assert!(tmp.path().join("vectors.9.bin").exists());
     assert_eq!(ro.len(), 1);
     assert_eq!(ro.vector(DocId(1)), Some(vec![1.0, 0.0]));
-    ro.add(DocId(2), &[0.0, 1.0]).unwrap(); // staging is allowed; committing is not
-    for err in [ro.commit().unwrap_err(), ro.compact().unwrap_err()] {
+    let refused = [
+        ro.add(DocId(2), &[0.0, 1.0]).unwrap_err(),
+        ro.delete(&[DocId(1)]).unwrap_err(),
+        ro.set_compaction_threshold(Some(0.5)).unwrap_err(),
+        ro.commit().unwrap_err(),
+        ro.compact().unwrap_err(),
+    ];
+    for err in refused {
         match err {
             xtriever_core::Error::Io(e) => {
                 assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);

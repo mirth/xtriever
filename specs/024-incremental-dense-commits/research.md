@@ -50,11 +50,17 @@ mappable, appendable f32 matrix. What is reused: `roaring` (the tombstones), `me
 1. Resolve pending against the committed state: for each pending id, if a live row exists
    for it (`rows_by_id`, D6), that row index goes into `dead`; if the change is `Some(v)`,
    the row is appended (id, norm, v).
-2. Append the new rows to `vectors.<g>.bin` (`OpenOptions::append`), `sync_all`.
-3. Encode the manifest with `rows += appended`, `live = rows − dead.len()`, the new
-   tombstone set; write `manifest.bin.tmp`, `sync_all`, rename over `manifest.bin`.
-4. Re-read the committed state (the row file re-mapped or re-read at its new committed
-   length; the bitmap; `rows_by_id` updated incrementally), clear pending.
+2. Append the new rows to `vectors.<g>.bin` (`OpenOptions::append`, after cutting any tail
+   beyond the committed length), `sync_all`.
+3. Bring the appended rows into memory *before* the switch (as landed after review rounds
+   2–4): the buffer grows in place, or a new mapping is made over the committed prefix; then
+   encode the manifest with `rows += appended`, `live = rows − dead.len()`, the new tombstone
+   set; write `manifest.bin.tmp`, `sync_all`, rename over `manifest.bin`, `fsync` the
+   directory. A failure before the rename rolls back (rows cut, buffer truncated, pending
+   kept); a failure of the directory sync after it adopts the switched state and is
+   remembered (`is_sync_pending`) until a later sync succeeds.
+4. After the rename only infallible assignments: the header, the bitmap, the layout,
+   `rows_by_id` for the appended and deleted ids, pending cleared.
 5. (Decided *before* step 1.) If a compaction threshold is set and the share this commit
    would leave — `(dead + superseded) / (rows + adds)` — exceeds it, the commit is the rewrite
    protocol below with the pending changes folded in, not the append: one rename, so it
@@ -66,11 +72,20 @@ complete commit. Nothing in steps 1–3 modifies a byte a reader could have mapp
 
 **compact** (inherent `FlatIndex::compact`; a no-op when nothing is pending, `dead` is empty *and* ids are
 already ascending — i.e. the file was produced by a compaction and only appended to with
-fresh, higher ids, which is the common build case): write the live rows in ascending id
-order to `vectors.<g+1>.bin` (`sync_all`), write the manifest with `generation g+1`,
-`rows = live`, an empty tombstone set (rename), remove `vectors.<g>.bin`, re-read. This is
-the current `commit` algorithm, moved. The pipeline's `merge` calls it after `commit` and
-before the lexical merge.
+fresh, higher ids, which is the common build case): the `rewrite` protocol, as landed —
+(1) the new generation's row count checked against the row-space limit; (2) the committed
+live rows ⊕ pending, merged in ascending id order, encoded into `vectors.<g+1>.bin`,
+`sync_all`, the directory `fsync`ed so the entry is durable before a manifest names it;
+(3) the new generation **brought into memory before the switch** (buffer, or a mapping over
+its committed length) — so no fallible read remains after it; (4) the manifest with
+`generation g+1`, `rows = live = count`, an empty tombstone set, renamed and the directory
+synced; (5) after the rename only infallible assignments (header, bitmap, rows, layout,
+`rows_by_id`, pending cleared), then `vectors.<g>.bin` removed (a removal need not be
+durable; a survivor is swept at open). A failure before the rename removes the partial new
+file and leaves the previous state, pending kept; a directory-sync failure after it adopts
+the switched state, keeps the old generation, and is remembered until a sync succeeds. This
+is the version-1 `commit` algorithm, moved and made single-switch. The pipeline's `merge`
+will call it before the lexical merge (PR B).
 
 **open** (writable): read the manifest (version check → the existing `Corrupt` error for
 any other version, naming both); if `vectors.<g>.bin` is longer than `rows × row_bytes`,

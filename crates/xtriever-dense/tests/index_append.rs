@@ -151,8 +151,10 @@ fn a_delete_only_commit_appends_nothing() {
 
 #[test]
 fn bytes_written_are_proportional_to_the_change() {
-    // SC-001 at test scale: 1,000 rows of dim 32, then 10 more — dense/ grows by the ten rows
-    // plus the manifest's own change, and the manifest stays small.
+    // SC-001 at test scale: 1,000 rows of dim 32, then 10 more. The write volume is the
+    // handle's own count of the bytes it handed to the files (`bytes_written`) — exactly the
+    // ten rows plus one manifest, so a same-length rewrite of the row file could not hide —
+    // and the directory's net growth is reported beside it.
     const D: usize = 32;
     let row = 8 + D as u64 * 4;
     let tmp = tempfile::tempdir().unwrap();
@@ -164,7 +166,8 @@ fn bytes_written_are_proportional_to_the_change() {
         index.add(DocId(i), &v).unwrap();
     }
     index.commit().unwrap();
-    let before = dir_bytes(tmp.path());
+    let written_before = index.bytes_written();
+    let growth_before = dir_bytes(tmp.path());
     let manifest_before = file_len(&tmp.path().join("manifest.bin"));
     for i in 1000..1010u32 {
         let v: Vec<f32> = (0..D)
@@ -175,8 +178,22 @@ fn bytes_written_are_proportional_to_the_change() {
     index.commit().unwrap();
     let manifest_after = file_len(&tmp.path().join("manifest.bin"));
     assert_eq!(
-        dir_bytes(tmp.path()) - before,
-        10 * row + manifest_after - manifest_before
+        index.bytes_written() - written_before,
+        10 * row + manifest_after,
+        "the commit wrote the ten rows and one manifest, nothing else"
+    );
+    assert_eq!(
+        dir_bytes(tmp.path()) - growth_before,
+        10 * row + manifest_after - manifest_before,
+        "net growth: the rows plus the manifest's own change"
     );
     assert!(manifest_after < 1024, "manifest is {manifest_after} bytes");
+    // A delete-only commit writes one manifest and nothing else.
+    let written_before = index.bytes_written();
+    index.delete(&[DocId(3)]).unwrap();
+    index.commit().unwrap();
+    assert_eq!(
+        index.bytes_written() - written_before,
+        file_len(&tmp.path().join("manifest.bin"))
+    );
 }

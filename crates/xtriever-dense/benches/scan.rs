@@ -198,7 +198,8 @@ fn bench_commit(c: &mut Criterion) {
 
     let mut g = c.benchmark_group("commit_10_rows");
     g.sample_size(10);
-    let before = dir_bytes(&dir);
+    let growth_before = dir_bytes(&dir);
+    let written_before = index.bytes_written();
     g.bench_function("v2_append", |b| {
         b.iter(|| {
             for _ in 0..10 {
@@ -208,11 +209,12 @@ fn bench_commit(c: &mut Criterion) {
             index.commit().unwrap();
         })
     });
-    let per_commit = (dir_bytes(&dir) - before) / u64::from(next - ROWS) * 10;
+    let commits = u64::from(next - ROWS) / 10;
     eprintln!(
-        "v2_append: ~{per_commit} bytes written per 10-row commit (dense/ grew by {} over {} rows)",
-        dir_bytes(&dir) - before,
-        next - ROWS
+        "v2_append: {} bytes written per 10-row commit (the handle's own count: rows + manifest; {} commits), net dense/ growth {} bytes per commit",
+        (index.bytes_written() - written_before) / commits,
+        commits,
+        (dir_bytes(&dir) - growth_before) / commits
     );
     g.bench_function("v1_rewrite", |b| {
         b.iter(|| columnar.rewrite(black_box(&v1_path)))

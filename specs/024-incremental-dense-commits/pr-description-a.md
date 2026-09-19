@@ -17,7 +17,7 @@ goldens and the Swift fixture goldens reproduce (the fixture's `expected.json` d
 in its `generated_by` commit hash); 1,000 random property cases survive `compact` and reopen.
 
 **Bench** (`MacBookPro18,3`, 100k × 384): scan 31.6 ms vs 32.8 ms for the version-1 shape;
-a 10-row commit writes **15.4 KB in 17.5 ms** (three fsyncs: rows, manifest, directory) instead of **154 MB in 175 ms**.
+a 10-row commit writes **15.6 KB in ~18 ms** (ten rows + one manifest, counted by the handle; three fsyncs: rows, manifest, directory) instead of **154 MB in ~150 ms**.
 
 **Review round 1** (six comments, all applied): checked layout arithmetic in the manifest
 decoder, a duplicate-live-id check at open, the property test honouring `PROPTEST_CASES`
@@ -50,6 +50,8 @@ exactly the committed bytes.
 **Review round 9** (five comments, applied): `create` validates the layout before writing, the crash guarantee is stated as old-or-new (never partial), the crate docs defer `merge` compaction to PR B, and the completed tasks record the protocols as landed.
 
 **Review round 10** (five comments, applied): an unconfirmed post-rename directory sync blocks every later success until retried, versioned future magic is recognised, the property test compares against an independent reference scorer with and without filters, and two stale docs (the spec's manifest entity, the FFI `LoadPath::Mmap` path) are fixed.
+
+**Review round 11** (six comments, applied): write volume is measured by a per-handle byte counter (test and bench), a read-only handle refuses every mutation, and the contract, report status and research D3 describe the protocol as landed.
 
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob

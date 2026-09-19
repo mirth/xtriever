@@ -19,3 +19,10 @@ commit_10_rows/v1_rewrite
                         time:   [173.61 ms 175.91 ms 178.25 ms]
 v2_append: ~15440 bytes written per 10-row commit (dense/ grew by 8183200 over 5300 rows)
 v1_rewrite: 154400101 bytes written per commit
+# commit group, re-run after review round 11 (bytes written now from the handle's own counter — rows + manifest — with net directory growth beside it):
+commit_10_rows/v2_append
+                        time:   [17.403 ms 18.243 ms 19.140 ms]
+commit_10_rows/v1_rewrite
+                        time:   [140.98 ms 144.59 ms 148.46 ms]
+v2_append: 15596 bytes written per 10-row commit (the handle's own count: rows + manifest; 530 commits), net dense/ growth 15440 bytes per commit
+v1_rewrite: 154400101 bytes written per commit
