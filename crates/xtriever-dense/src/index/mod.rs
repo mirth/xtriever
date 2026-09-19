@@ -508,16 +508,27 @@ impl FlatIndex {
         (adds, superseded)
     }
 
-    /// The manifest on disk must be the one this handle last saw: another writable handle's
-    /// commit in between would otherwise be silently undone (and its rows cut in place).
+    /// The manifest on disk must be the one this handle last saw — generation, rows, live
+    /// count *and* the tombstone set (a delete-only commit changes only the last two): another
+    /// writable handle's commit in between would otherwise be silently undone, its deletes
+    /// resurrected or its rows cut in place.
     fn verify_unchanged(&self) -> Result<()> {
         let manifest = std::fs::read(self.dir.join(MANIFEST))?;
-        let (header, _, _) = format::decode_manifest(&manifest)?;
-        if header.generation != self.header.generation || header.rows != self.header.rows {
+        let (header, _, dead) = format::decode_manifest(&manifest)?;
+        if header.generation != self.header.generation
+            || header.rows != self.header.rows
+            || header.live != self.header.live
+            || dead != self.dead
+        {
             return Err(corrupt(format!(
-                "the index was changed by another writer (manifest generation {} rows {}, this \
-                 handle saw generation {} rows {}); reopen before writing",
-                header.generation, header.rows, self.header.generation, self.header.rows
+                "the index was changed by another writer (manifest generation {} rows {} live \
+                 {}, this handle saw generation {} rows {} live {}); reopen before writing",
+                header.generation,
+                header.rows,
+                header.live,
+                self.header.generation,
+                self.header.rows,
+                self.header.live
             )));
         }
         Ok(())
@@ -741,13 +752,15 @@ impl VectorIndex for FlatIndex {
                     path.display()
                 )));
             }
-            // A tail beyond the committed rows (a failed earlier attempt of this handle) would
-            // shift the row offsets: cut it first. Mappings cover only the committed length.
-            if len > committed_len {
-                file.set_len(committed_len)?;
-            }
+            // A tail beyond the committed rows (a failed earlier attempt) is *overwritten*, not
+            // cut: the append starts at the committed length, which every mapping ends at and
+            // every reader stops at, so the tail is unobservable — and a truncation is not
+            // portable while a mapping is open (Windows refuses `SetEndOfFile` on a mapped
+            // file whatever the range). Whatever is left beyond the new length after a
+            // shorter append is ignored the same way and cut at the next writable open.
             file.seek(SeekFrom::Start(committed_len))?;
             if let Err(e) = file.write_all(&buf).and_then(|()| file.sync_all()) {
+                // Best effort: the partial tail is unobservable either way.
                 let _ = file.set_len(committed_len);
                 return Err(e.into());
             }
@@ -763,6 +776,9 @@ impl VectorIndex for FlatIndex {
             ordered,
             ..self.header.clone()
         };
+        // Best effort, never relied on: the appended tail lies beyond every mapping and beyond
+        // the manifest's rows, so a tail that cannot be cut (a mapping open on Windows) is
+        // simply overwritten by the next append.
         let undo_file = |path: &Path| {
             if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
                 let _ = file.set_len(committed_len);

@@ -55,6 +55,8 @@ exactly the committed bytes.
 
 **`/code-review`** (16 findings, applied): a stale-writer guard on every commit, the layout validated on every write path, the directory handle opened before the manifest rename (an unopenable directory fails before the switch; the pipeline finishes its protocol on the remaining after-switch case), no `unreachable!` in library code, no id table for ordered tombstone-free generations (a mapped read-only open touches nothing beyond the manifest), streaming compaction, `create` cleanup, the eval cache key bumped, a Windows-safe append, `bytes_written` counted after success, the rollback / read-only / owned-vs-mapped tests, one atomic-write and one read-only error in `xtriever_core`, a Python generator for the oracle (`reference/gen_024_fixtures.py`, 0 mismatches), and the derivable-state cleanups.
 
+**Review round 12** (two comments, applied): the stale-writer check compares the live count and tombstones too (delete-only commits), and the pipeline's commit marker is durable on creation and removal.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

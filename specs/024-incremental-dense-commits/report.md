@@ -250,3 +250,12 @@ buffered / 72 with `mmap`; the oracle bit-identical; the reference-scorer proper
 `PROPTEST_CASES=1000` on the buffered *and* the writable mapped handle; the Python surface 33;
 `reference/gen_024_fixtures.py --check` 0 mismatches; the fixture regenerated (`ordered`
 manifest, goldens reproduce, the committed file kept); the bench re-recorded.
+
+### Review round 12 (Copilot, two comments — both applied)
+
+1. The stale-writer check also compares the live count and the tombstone set, so a
+   delete-only commit by another handle (generation and rows unchanged) is caught too; the
+   test covers a delete after an add and two delete-only commits with equal live counts.
+2. The pipeline's commit marker is written atomically and the directory synced before any
+   stage commits, and synced again after its removal — the marker's presence and absence are
+   both durable, as `xtriever_core::fs`'s module doc claimed.

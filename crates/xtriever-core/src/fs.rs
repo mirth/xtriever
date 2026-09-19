@@ -1,7 +1,8 @@
 //! The two durable-write primitives every stage's on-disk protocol is built from, so there is
 //! one definition of "atomic replace" and one of "the directory entry is durable" across the
-//! workspace (Feature 024 review): the pipeline's descriptor, id map and commit marker, the
-//! lexical descriptor and the dense manifest all go through here.
+//! workspace (Feature 024 review): the pipeline's descriptor, id map and commit marker (its
+//! creation and its removal both synced), the lexical descriptor and the dense manifest all go
+//! through here.
 //!
 //! `std`-only, as everything in this crate.
 

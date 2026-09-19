@@ -470,8 +470,15 @@ impl HybridIndex {
         }
         let generation = self.descriptor.generation + 1;
         // 1. The marker: from here until the descriptor is written, the directory is in flight.
+        //    Durable before any stage commits (atomic write, directory synced), so a power loss
+        //    cannot keep a stage's new generation while losing the marker that says so.
         let marker = self.dir.join(COMMIT_MARKER);
-        std::fs::write(&marker, generation.to_string())?;
+        xtriever_core::fs::write_atomically(
+            &marker,
+            &self.dir.join(format!("{COMMIT_MARKER}.tmp")),
+            generation.to_string().as_bytes(),
+        )?;
+        xtriever_core::fs::sync_dir(&self.dir)?;
         // 2–3. The stages, each durable on its own. The dense stage has one non-failure error:
         //    its manifest switched but the directory sync failed (`is_sync_pending`). Its state
         //    is the new one, so the protocol continues to a consistent directory and the error
@@ -492,8 +499,11 @@ impl HybridIndex {
             ..self.descriptor.clone()
         };
         descriptor.write(&self.dir)?;
-        // 7. Only now is the generation complete.
+        // 7. Only now is the generation complete — and its completion durable, so a power loss
+        //    after a finished commit cannot leave the marker behind to refuse a consistent
+        //    directory.
         std::fs::remove_file(&marker)?;
+        xtriever_core::fs::sync_dir(&self.dir)?;
         self.descriptor = descriptor;
         self.committed_ids = Arc::clone(&self.pending_ids);
         self.dirty = false;

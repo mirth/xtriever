@@ -506,6 +506,36 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     let fresh = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(fresh.len(), 2);
     assert_eq!(fresh.vector(DocId(2)), Some(vec![0.0, 1.0]));
+
+    // A delete-only commit by another handle changes neither generation nor rows — only the
+    // live count and the tombstone set — and must be caught the same way, or the stale
+    // handle's next commit would resurrect the deleted document.
+    let mut c = FlatIndex::open(tmp.path()).unwrap();
+    let mut d = FlatIndex::open(tmp.path()).unwrap();
+    d.delete(&[DocId(2)]).unwrap();
+    d.commit().unwrap();
+    c.add(DocId(5), &[1.0, 1.0]).unwrap();
+    assert!(matches!(c.commit().unwrap_err(), Error::Corrupt(_)));
+    assert_eq!(
+        FlatIndex::open(tmp.path()).unwrap().vector(DocId(2)),
+        None,
+        "the delete stands"
+    );
+    // Two delete-only commits with the same live count but different tombstones, likewise.
+    let mut e = FlatIndex::open(tmp.path()).unwrap();
+    e.add(DocId(6), &[0.5, 0.5]).unwrap();
+    e.add(DocId(7), &[0.25, 0.75]).unwrap();
+    e.commit().unwrap();
+    let mut f2 = FlatIndex::open(tmp.path()).unwrap();
+    f2.delete(&[DocId(6)]).unwrap();
+    f2.commit().unwrap();
+    e.delete(&[DocId(7)]).unwrap();
+    assert!(matches!(e.commit().unwrap_err(), Error::Corrupt(_)));
+    let fresh = FlatIndex::open(tmp.path()).unwrap();
+    assert_eq!(
+        (fresh.vector(DocId(6)), fresh.vector(DocId(7)).is_some()),
+        (None, true)
+    );
 }
 
 #[cfg(unix)]
