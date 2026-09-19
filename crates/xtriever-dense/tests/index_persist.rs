@@ -319,6 +319,36 @@ fn a_mapped_read_only_open_exposes_the_committed_rows_only() {
     assert_eq!(ro.search(&[1.0, 0.0], None, 5).unwrap().len(), 1);
 }
 
+#[cfg(unix)]
+#[test]
+fn an_unconfirmed_directory_sync_is_retried_before_any_later_success() {
+    // A directory without read permission cannot be opened for `fsync`, so the manifest rename
+    // succeeds and the directory sync fails: the commit reports a durability-unconfirmed
+    // success, adopts the new state, and no later commit — even an empty one — succeeds until
+    // a sync has.
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("idx");
+    let mut index = FlatIndex::create(&dir, 2, Metric::Dot, "fp").unwrap();
+    index.add(DocId(1), &[1.0, 0.0]).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o300)).unwrap();
+    let err = index.commit().unwrap_err();
+    assert!(err.to_string().contains("durability"), "{err}");
+    assert!(index.is_sync_pending());
+    assert_eq!(index.len(), 1, "the switched state is adopted");
+    assert!(
+        index.commit().is_err(),
+        "an empty commit retries the sync and fails again"
+    );
+    assert!(index.compact().is_err());
+    assert!(index.is_sync_pending());
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    index.commit().unwrap();
+    assert!(!index.is_sync_pending());
+    assert_eq!(FlatIndex::open(&dir).unwrap().len(), 1);
+}
+
 #[test]
 fn a_sparse_id_costs_one_entry_not_a_table() {
     // `add` accepts any id (review round 4 #1): the live-row table is keyed by id, so

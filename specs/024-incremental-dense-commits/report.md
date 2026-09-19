@@ -188,3 +188,22 @@ open exposes the committed rows only; the next writable open cleans up.
 4. T011 and T013's completed descriptions record the protocols as landed (rows in memory
    before the rename; the threshold decided up front as one rewrite; pending folded into
    `compact`), so an audit cannot recreate the superseded crash window.
+
+### Review round 10 (Copilot, five comments — all applied)
+
+1. A post-rename directory-sync failure is remembered (`sync_pending`): every later `commit`
+   or `compact` — an empty one included — retries the sync first and succeeds only once it
+   has, so a later success never hides an unconfirmed switch (`is_sync_pending()` tells).
+   Test: a directory without read permission makes the sync fail; the commit reports the
+   unconfirmed switch, an empty commit and a compact fail the same way, and once the
+   permission is back the next commit succeeds.
+2. The manifest decoder recognises versioned magic (`XTDENSE<digit>`) before the generic
+   bad-magic rejection, so a genuine future format names both versions; the tests write the
+   actual `XTDENSE3` magic (and, separately, a bumped JSON header).
+3. The 024 property test now compares every query — unfiltered and with an `allowed` set,
+   `k` ∈ {3, 64} — against an independent reference scorer over the model (the contract's
+   arithmetic, written in the test), ids and score bits, before compaction, after, and after
+   a reopen; re-run with `PROPTEST_CASES=1000`.
+4. The spec's manifest entity describes the embedded tombstone set (no tombstone file).
+5. The FFI `LoadPath::Mmap` doc names `dense/vectors.<g>.bin` (a doc-only change in
+   `crates/xtriever-ffi`, pulled into PR A); T024 notes it.

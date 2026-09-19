@@ -129,6 +129,61 @@ fn bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
     hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
 }
 
+/// An independent scorer over the reference model: the contract's arithmetic — per-row `f64`
+/// accumulation in index order, the row norm stored as `f32`, one rounding to `f32` — and the
+/// total `(score DESC, id ASC)` order, truncated to `k`. Nothing here comes from the crate.
+fn reference(
+    metric: Metric,
+    model: &BTreeMap<u32, Vec<f32>>,
+    allowed: Option<&[u32]>,
+    q: &[f32],
+    k: usize,
+) -> Vec<(u32, u32)> {
+    let q_norm: f64 = q
+        .iter()
+        .map(|x| f64::from(*x) * f64::from(*x))
+        .sum::<f64>()
+        .sqrt();
+    let mut scored: Vec<(f32, u32)> = model
+        .iter()
+        .filter(|(id, _)| allowed.is_none_or(|a| a.contains(id)))
+        .map(|(id, row)| {
+            let dot: f64 = q
+                .iter()
+                .zip(row)
+                .map(|(a, b)| f64::from(*a) * f64::from(*b))
+                .sum();
+            let score = match metric {
+                Metric::Dot => dot,
+                Metric::Cosine => {
+                    let row_norm = row
+                        .iter()
+                        .map(|x| f64::from(*x) * f64::from(*x))
+                        .sum::<f64>()
+                        .sqrt() as f32;
+                    dot / (q_norm * f64::from(row_norm))
+                }
+                Metric::Euclidean => -q
+                    .iter()
+                    .zip(row)
+                    .map(|(a, b)| {
+                        let d = f64::from(*a) - f64::from(*b);
+                        d * d
+                    })
+                    .sum::<f64>()
+                    .sqrt(),
+            };
+            (score as f32, *id)
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap().then(a.1.cmp(&b.1)));
+    scored.truncate(k);
+    scored
+        .into_iter()
+        .map(|(s, id)| (id, s.to_bits()))
+        .collect()
+}
+
 proptest! {
     // The default case count honours `PROPTEST_CASES` (SC-002's 1,000-sequence run).
     #![proptest_config(ProptestConfig::default())]
@@ -137,7 +192,7 @@ proptest! {
     fn compact_and_reopen_preserve_every_bit(
         metric in metric(),
         ops in prop::collection::vec(op(), 1..200),
-        queries in prop::collection::vec(finite_vec(6), 1..4),
+        queries in prop::collection::vec((finite_vec(6), prop::collection::vec(0u32..44, 0..12), prop_oneof![Just(3usize), Just(64)]), 1..4),
     ) {
         let tmp = tempfile::tempdir().unwrap();
         let mut index = FlatIndex::create(tmp.path(), 6, metric, "prop").unwrap();
@@ -156,12 +211,18 @@ proptest! {
         index.commit().unwrap();
         let committed = model;
         prop_assert_eq!(index.len(), committed.len() as u64);
-        let before: Vec<Vec<(u32, u32)>> = queries.iter().map(|q| bits(&index.search(q, None, 64).unwrap())).collect();
-        // Dead rows never surface, live rows always do, vectors are the model's.
-        for hits in &before {
-            let ids: Vec<u32> = { let mut v: Vec<u32> = hits.iter().map(|h| h.0).collect(); v.sort_unstable(); v };
-            prop_assert_eq!(&ids, &committed.keys().copied().collect::<Vec<_>>());
-        }
+        // Every query, unfiltered and filtered, against the reference scorer: ids and score bits.
+        let run = |index: &FlatIndex| -> Vec<Vec<(u32, u32)>> {
+            queries.iter().flat_map(|(q, allowed, k)| {
+                let set = support::doc_set(allowed);
+                [bits(&index.search(q, None, *k).unwrap()), bits(&index.search(q, Some(&set), *k).unwrap())]
+            }).collect()
+        };
+        let expected: Vec<Vec<(u32, u32)>> = queries.iter().flat_map(|(q, allowed, k)| {
+            [reference(metric, &committed, None, q, *k), reference(metric, &committed, Some(allowed), q, *k)]
+        }).collect();
+        let before = run(&index);
+        prop_assert_eq!(&before, &expected, "against the reference scorer");
         for (id, v) in &committed {
             let got = index.vector(DocId(*id));
             prop_assert_eq!(got.as_deref(), Some(v.as_slice()));
@@ -169,12 +230,10 @@ proptest! {
         index.compact().unwrap();
         prop_assert_eq!(index.stats().dead, 0);
         prop_assert_eq!(index.stats().rows, committed.len() as u64);
-        let after: Vec<Vec<(u32, u32)>> = queries.iter().map(|q| bits(&index.search(q, None, 64).unwrap())).collect();
-        prop_assert_eq!(&after, &before);
+        prop_assert_eq!(&run(&index), &expected, "after compaction");
         drop(index);
         let reopened = FlatIndex::open(tmp.path()).unwrap();
-        let again: Vec<Vec<(u32, u32)>> = queries.iter().map(|q| bits(&reopened.search(q, None, 64).unwrap())).collect();
-        prop_assert_eq!(&again, &before);
+        prop_assert_eq!(&run(&reopened), &expected, "after reopen");
         prop_assert_eq!(reopened.len(), committed.len() as u64);
     }
 }

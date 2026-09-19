@@ -49,6 +49,8 @@ exactly the committed bytes.
 
 **Review round 9** (five comments, applied): `create` validates the layout before writing, the crash guarantee is stated as old-or-new (never partial), the crate docs defer `merge` compaction to PR B, and the completed tasks record the protocols as landed.
 
+**Review round 10** (five comments, applied): an unconfirmed post-rename directory sync blocks every later success until retried, versioned future magic is recognised, the property test compares against an independent reference scorer with and without filters, and two stale docs (the spec's manifest entity, the FFI `LoadPath::Mmap` path) are fixed.
+
 **Version 1 is not read**: `open` refuses `index.bin` naming both versions (owner decision).
 The fixture index is regenerated here; the shipped Wikipedia artefact and the pipeline knob
 (`dense_compact_dead_share`) follow in PR B.

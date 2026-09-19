@@ -31,7 +31,9 @@ use crate::FORMAT_VERSION;
 use crate::error::corrupt;
 
 const MAGIC: &[u8; 8] = b"XTDENSE2";
-const V1_MAGIC: &[u8; 8] = b"XTDENSE1";
+/// Every dense format's magic is `XTDENSE` followed by one version digit; a manifest whose
+/// magic carries another digit is a *versioned* refusal naming both versions, not bad magic.
+const MAGIC_PREFIX: &[u8; 7] = b"XTDENSE";
 
 pub(crate) const MANIFEST: &str = "manifest.bin";
 pub(crate) const MANIFEST_TMP: &str = "manifest.bin.tmp";
@@ -183,8 +185,18 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, RoaringBitmap)> {
             bytes.len()
         )));
     };
-    if magic == V1_MAGIC {
-        return Err(version_1_error());
+    if magic != MAGIC
+        && let [prefix @ .., digit] = magic
+        && prefix == MAGIC_PREFIX
+        && digit.is_ascii_digit()
+    {
+        if *digit == b'1' {
+            return Err(version_1_error());
+        }
+        return Err(corrupt(format!(
+            "dense index is format version {}, this build reads {FORMAT_VERSION}",
+            char::from(*digit)
+        )));
     }
     if magic != MAGIC {
         return Err(corrupt(format!(
@@ -377,8 +389,16 @@ mod tests {
             decode_manifest(&bytes),
             Err(xtriever_core::Error::Corrupt(_))
         ));
+        // a future versioned magic names both versions
+        let mut v3 = b"XTDENSE3".to_vec();
+        v3.extend_from_slice(&0u64.to_le_bytes());
+        let msg = match decode_manifest(&v3).unwrap_err() {
+            xtriever_core::Error::Corrupt(m) => m,
+            other => panic!("{other:?}"),
+        };
+        assert!(msg.contains("version 3") && msg.contains('2'), "{msg}");
         // version 1 magic
-        let mut v1 = V1_MAGIC.to_vec();
+        let mut v1 = b"XTDENSE1".to_vec();
         v1.extend_from_slice(&0u64.to_le_bytes());
         let msg = match decode_manifest(&v1).unwrap_err() {
             xtriever_core::Error::Corrupt(m) => m,

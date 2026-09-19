@@ -62,6 +62,10 @@ pub struct FlatIndex {
     compaction_threshold: Option<f32>,
     /// A read-only open: no truncation or sweep at open, every mutation refused.
     read_only: bool,
+    /// A manifest rename whose directory sync failed: the state is switched but its entry's
+    /// durability is unconfirmed. No later `commit` or `compact` returns success until a
+    /// directory sync has succeeded.
+    sync_pending: bool,
 }
 
 impl FlatIndex {
@@ -271,6 +275,7 @@ impl FlatIndex {
         if self.read_only {
             return Err(read_only());
         }
+        self.confirm_sync()?;
         if self.pending.is_empty() && self.dead.is_empty() && self.ascending {
             return Ok(());
         }
@@ -391,8 +396,12 @@ impl FlatIndex {
                 Ok(())
             }
             // The manifest is switched but its entry's durability is unconfirmed: keep the
-            // old generation (harmless; swept at open) and say what happened.
-            Err(ManifestFailure::AfterSwitch(e)) => Err(e),
+            // old generation (harmless; swept at open), remember to retry the sync, and say
+            // what happened.
+            Err(ManifestFailure::AfterSwitch(e)) => {
+                self.sync_pending = true;
+                Err(e)
+            }
             Err(ManifestFailure::BeforeSwitch(_)) => unreachable!("handled above"),
         }
     }
@@ -404,6 +413,24 @@ impl FlatIndex {
     #[must_use]
     pub fn is_mapped(&self) -> bool {
         matches!(self.rows, Bytes::Mapped(_))
+    }
+
+    /// Whether the last manifest switch's directory sync failed (`commit` / `compact` returned
+    /// the durability-unconfirmed error): the state on disk is the new one; the next `commit`
+    /// or `compact` retries the sync first and succeeds only once it has.
+    #[must_use]
+    pub fn is_sync_pending(&self) -> bool {
+        self.sync_pending
+    }
+
+    /// Retry a directory sync an earlier switch left unconfirmed; nothing else proceeds until
+    /// it has succeeded, so a later success never hides an unconfirmed one.
+    fn confirm_sync(&mut self) -> Result<()> {
+        if self.sync_pending {
+            sync_dir(&self.dir)?;
+            self.sync_pending = false;
+        }
+        Ok(())
     }
 
     fn live_row(&self, id: DocId) -> Option<usize> {
@@ -431,6 +458,7 @@ impl FlatIndex {
             pending: BTreeMap::new(),
             compaction_threshold: None,
             read_only,
+            sync_pending: false,
         };
         if !read_only {
             index.settle()?;
@@ -596,6 +624,7 @@ impl VectorIndex for FlatIndex {
         if self.read_only {
             return Err(read_only());
         }
+        self.confirm_sync()?;
         if self.pending.is_empty() {
             return Ok(());
         }
@@ -724,7 +753,10 @@ impl VectorIndex for FlatIndex {
         }
         match switched {
             Ok(()) => Ok(()),
-            Err(ManifestFailure::AfterSwitch(e)) => Err(e),
+            Err(ManifestFailure::AfterSwitch(e)) => {
+                self.sync_pending = true;
+                Err(e)
+            }
             Err(ManifestFailure::BeforeSwitch(_)) => unreachable!("handled above"),
         }
     }

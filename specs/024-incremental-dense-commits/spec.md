@@ -200,7 +200,8 @@ dead share to 20 %, then exactly 25 %, then 26 %: no compaction on the first two
 - **Tombstone set**: the dead row indices (a `roaring` bitmap, the workspace's bitset),
   rewritten whole each commit (tens of KB at most for the full Wikipedia index).
 - **Manifest**: format version, dim, metric, fingerprint, committed row count, live count,
-  and which tombstone file is current — written last, atomically, so it is the truth.
+  and the tombstone set itself, embedded after the header — written last, atomically, so it
+  is the truth.
 - **Compaction**: the rewrite `merge` performs — the current commit's algorithm, moved —
   also run by `commit` when the configured dead-row share is exceeded.
 - **Dead-row share**: `dead rows / committed rows` after a commit; the configured threshold

@@ -47,7 +47,9 @@ Errors: a version-1 `index.bin` directory (no `manifest.bin`) or any other versi
 3. A crash at any byte boundary of `commit` or `compact` reopens to the previous committed
    state. An error from either leaves the handle coherent with the disk: before the manifest
    rename nothing changed and the pending changes are kept for a retry; after it (only the
-   directory sync can fail there) the new state is adopted and the error says so. On Unix targets (the engine's shipping targets) the directory is fsynced at the
+   directory sync can fail there) the new state is adopted, the error says so,
+   `is_sync_pending()` is true, and no later `commit` or `compact` returns success until a
+   directory sync has succeeded (each retries it first). On Unix targets (the engine's shipping targets) the directory is fsynced at the
    protocol's ordering points, so a power loss keeps the manifest and the row file it names
    consistent; on other targets that ordering is the filesystem's.
 4. A mapped byte is never modified or truncated by this crate; the row file is only extended

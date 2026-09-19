@@ -117,11 +117,25 @@ fn rewrite_manifest_header(dir: &std::path::Path, edit: impl Fn(&str) -> String)
 fn a_future_format_version_is_rejected_naming_both_versions() {
     let tmp = tempfile::tempdir().unwrap();
     drop(small(tmp.path()));
-    rewrite_manifest_header(tmp.path(), |h| {
+    // A genuine future format carries its own versioned magic (XTDENSE1, XTDENSE2, …) as well
+    // as its header version: both spellings must name both versions.
+    let path = tmp.path().join("manifest.bin");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes[..8].copy_from_slice(b"XTDENSE3");
+    std::fs::write(&path, &bytes).unwrap();
+    match FlatIndex::open(tmp.path()).unwrap_err() {
+        Error::Corrupt(msg) => {
+            assert!(msg.contains("version 3"), "{msg}");
+            assert!(msg.contains(&FORMAT_VERSION.to_string()), "{msg}");
+        }
+        other => panic!("expected Corrupt, got {other:?}"),
+    }
+    drop(small(&tmp.path().join("again")));
+    rewrite_manifest_header(&tmp.path().join("again"), |h| {
         assert!(h.contains("\"format_version\":2"), "{h}");
         h.replace("\"format_version\":2", "\"format_version\":3")
     });
-    let err = FlatIndex::open(tmp.path()).unwrap_err();
+    let err = FlatIndex::open(&tmp.path().join("again")).unwrap_err();
     match err {
         Error::Corrupt(msg) => {
             assert!(msg.contains('3'), "{msg}");
