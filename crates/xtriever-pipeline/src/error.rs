@@ -12,16 +12,15 @@ pub(crate) fn corrupt(message: impl Into<String>) -> Error {
     Error::Corrupt(message.into())
 }
 
-/// Write `bytes` to `<path>.tmp`, sync, and `rename` over `path` — never modify in place.
+/// Write `bytes` to `<path>.json.tmp`, sync, `rename` over `path`, and sync the directory —
+/// `xtriever_core::fs`'s definition, so the descriptor, the id map and the dense manifest are
+/// durable the same way (Feature 024).
 pub(crate) fn write_atomically(path: &std::path::Path, bytes: &[u8]) -> xtriever_core::Result<()> {
-    use std::io::Write;
     let tmp = path.with_extension("json.tmp");
-    {
-        let mut file = std::fs::File::create(&tmp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
+    xtriever_core::fs::write_atomically(path, &tmp, bytes)?;
+    if let Some(dir) = path.parent() {
+        xtriever_core::fs::sync_dir(dir)?;
     }
-    std::fs::rename(&tmp, path)?;
     Ok(())
 }
 

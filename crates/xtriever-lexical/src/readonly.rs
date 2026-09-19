@@ -21,11 +21,10 @@ use tantivy::directory::{
     Directory, DirectoryLock, FileHandle, Lock, MmapDirectory, WatchCallback, WatchHandle, WritePtr,
 };
 
-/// The message every refused write and every refused mutation carries.
-pub(crate) const READ_ONLY_MESSAGE: &str = "read-only index";
-
+/// The refusal every layer shares: `xtriever_core::error::read_only_io_error` (permission
+/// denied, "read-only index").
 pub(crate) fn read_only_io_error() -> io::Error {
-    io::Error::new(io::ErrorKind::PermissionDenied, READ_ONLY_MESSAGE)
+    xtriever_core::error::read_only_io_error()
 }
 
 /// [`MmapDirectory`] for reads; no lock file; every write refused.

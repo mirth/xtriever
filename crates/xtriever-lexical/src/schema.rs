@@ -204,13 +204,14 @@ impl Descriptor {
         }
     }
 
-    /// Write-then-rename so a crash never leaves a half-written descriptor.
+    /// Write, sync, rename, sync the directory (`xtriever_core::fs`) so a crash never leaves a
+    /// half-written descriptor and a power loss keeps the renamed one.
     pub fn write(&self, dir: &Path) -> Result<()> {
         let tmp = dir.join(format!("{DESCRIPTOR_FILE}.tmp"));
         let body = serde_json::to_vec_pretty(self)
             .map_err(|e| corrupt(format!("descriptor encode: {e}")))?;
-        std::fs::write(&tmp, body)?;
-        std::fs::rename(&tmp, dir.join(DESCRIPTOR_FILE))?;
+        xtriever_core::fs::write_atomically(&dir.join(DESCRIPTOR_FILE), &tmp, &body)?;
+        xtriever_core::fs::sync_dir(dir)?;
         Ok(())
     }
 

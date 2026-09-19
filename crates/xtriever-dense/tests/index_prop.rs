@@ -1,5 +1,7 @@
 //! Property tests for the index invariants (Principle II): results ⊆ allowed, total ordering,
-//! `len` round-trips through add/delete/commit, and (under `mmap`) owned ≡ mapped. Offline.
+//! `len` round-trips through add/delete/commit, (under `mmap`) owned ≡ mapped, and — Feature
+//! 024 — random add/replace/delete/commit sequences whose results survive `compact` and a
+//! reopen bit for bit, with no dead row ever surfacing. Offline.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
@@ -104,6 +106,170 @@ proptest! {
         let all = reopened.search(&[1.0, 1.0, 1.0, 1.0], None, 100).unwrap();
         let got: Vec<u32> = { let mut v: Vec<u32> = all.iter().map(|h| h.id.0).collect(); v.sort_unstable(); v };
         prop_assert_eq!(got, model.keys().copied().collect::<Vec<_>>());
+    }
+}
+
+/// One step of a random mutation sequence (Feature 024).
+#[derive(Debug, Clone)]
+enum Op {
+    Add(u32, Vec<f32>),
+    Delete(Vec<u32>),
+    Commit,
+}
+
+fn op() -> impl Strategy<Value = Op> {
+    prop_oneof![
+        5 => (0u32..40, finite_vec(6)).prop_map(|(id, v)| Op::Add(id, v)),
+        2 => prop::collection::vec(0u32..44, 1..4).prop_map(Op::Delete),
+        2 => Just(Op::Commit),
+    ]
+}
+
+use support::hit_bits as bits;
+
+/// An independent scorer over the reference model: the contract's arithmetic — per-row `f64`
+/// accumulation in index order, the row norm stored as `f32`, one rounding to `f32` — and the
+/// total `(score DESC, id ASC)` order, truncated to `k`. Nothing here comes from the crate.
+fn reference(
+    metric: Metric,
+    model: &BTreeMap<u32, Vec<f32>>,
+    allowed: Option<&[u32]>,
+    q: &[f32],
+    k: usize,
+) -> Vec<(u32, u32)> {
+    let q_norm: f64 = q
+        .iter()
+        .map(|x| f64::from(*x) * f64::from(*x))
+        .sum::<f64>()
+        .sqrt();
+    let mut scored: Vec<(f32, u32)> = model
+        .iter()
+        .filter(|(id, _)| allowed.is_none_or(|a| a.contains(id)))
+        .map(|(id, row)| {
+            let dot: f64 = q
+                .iter()
+                .zip(row)
+                .map(|(a, b)| f64::from(*a) * f64::from(*b))
+                .sum();
+            let score = match metric {
+                Metric::Dot => dot,
+                Metric::Cosine => {
+                    let row_norm = row
+                        .iter()
+                        .map(|x| f64::from(*x) * f64::from(*x))
+                        .sum::<f64>()
+                        .sqrt() as f32;
+                    dot / (q_norm * f64::from(row_norm))
+                }
+                Metric::Euclidean => -q
+                    .iter()
+                    .zip(row)
+                    .map(|(a, b)| {
+                        let d = f64::from(*a) - f64::from(*b);
+                        d * d
+                    })
+                    .sum::<f64>()
+                    .sqrt(),
+            };
+            (score as f32, *id)
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap().then(a.1.cmp(&b.1)));
+    scored.truncate(k);
+    scored
+        .into_iter()
+        .map(|(s, id)| (id, s.to_bits()))
+        .collect()
+}
+
+proptest! {
+    // The default case count honours `PROPTEST_CASES` (SC-002's 1,000-sequence run).
+    #![proptest_config(ProptestConfig::default())]
+
+    #[test]
+    fn compact_and_reopen_preserve_every_bit(
+        metric in metric(),
+        ops in prop::collection::vec(op(), 1..200),
+        queries in prop::collection::vec((finite_vec(6), prop::collection::vec(0u32..44, 0..12), prop_oneof![Just(3usize), Just(64)]), 1..4),
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut index = FlatIndex::create(tmp.path(), 6, metric, "prop").unwrap();
+        // Under `mmap`, the same sequence on a writable mapped handle in a second directory:
+        // every append re-maps the committed prefix and every compaction maps a new
+        // generation — the paths the SAFETY argument rests on, compared bit for bit with the
+        // buffered handle after each commit (ADR-0007 condition 3).
+        #[cfg(feature = "mmap")]
+        let tmp2 = tempfile::tempdir().unwrap();
+        #[cfg(feature = "mmap")]
+        let mut mapped = {
+            drop(FlatIndex::create(tmp2.path(), 6, metric, "prop").unwrap());
+            FlatIndex::open_mapped(tmp2.path()).unwrap()
+        };
+        let mut model: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
+        for o in &ops {
+            match o {
+                Op::Add(id, v) => {
+                    index.add(DocId(*id), v).unwrap();
+                    #[cfg(feature = "mmap")]
+                    mapped.add(DocId(*id), v).unwrap();
+                    model.insert(*id, v.clone());
+                }
+                Op::Delete(ids) => {
+                    let d: Vec<DocId> = ids.iter().map(|&i| DocId(i)).collect();
+                    index.delete(&d).unwrap();
+                    #[cfg(feature = "mmap")]
+                    mapped.delete(&d).unwrap();
+                    for i in ids { model.remove(i); }
+                }
+                Op::Commit => {
+                    index.commit().unwrap();
+                    prop_assert_eq!(index.len(), model.len() as u64);
+                    #[cfg(feature = "mmap")]
+                    {
+                        mapped.commit().unwrap();
+                        for (q, _, k) in &queries {
+                            prop_assert_eq!(bits(&mapped.search(q, None, *k).unwrap()), bits(&index.search(q, None, *k).unwrap()), "mapped vs buffered after a commit");
+                        }
+                    }
+                }
+            }
+        }
+        index.commit().unwrap();
+        #[cfg(feature = "mmap")]
+        mapped.commit().unwrap();
+        let committed = model;
+        prop_assert_eq!(index.len(), committed.len() as u64);
+        // Every query, unfiltered and filtered, against the reference scorer: ids and score bits.
+        let run = |index: &FlatIndex| -> Vec<Vec<(u32, u32)>> {
+            queries.iter().flat_map(|(q, allowed, k)| {
+                let set = support::doc_set(allowed);
+                [bits(&index.search(q, None, *k).unwrap()), bits(&index.search(q, Some(&set), *k).unwrap())]
+            }).collect()
+        };
+        let expected: Vec<Vec<(u32, u32)>> = queries.iter().flat_map(|(q, allowed, k)| {
+            [reference(metric, &committed, None, q, *k), reference(metric, &committed, Some(allowed), q, *k)]
+        }).collect();
+        let before = run(&index);
+        prop_assert_eq!(&before, &expected, "against the reference scorer");
+        for (id, v) in &committed {
+            let got = index.vector(DocId(*id));
+            prop_assert_eq!(got.as_deref(), Some(v.as_slice()));
+        }
+        index.compact().unwrap();
+        prop_assert_eq!(index.stats().dead, 0);
+        prop_assert_eq!(index.stats().rows, committed.len() as u64);
+        prop_assert_eq!(&run(&index), &expected, "after compaction");
+        #[cfg(feature = "mmap")]
+        {
+            prop_assert_eq!(&run(&mapped), &expected, "mapped, before compaction");
+            mapped.compact().unwrap();
+            prop_assert_eq!(&run(&mapped), &expected, "mapped, after compaction");
+            prop_assert_eq!(&run(&FlatIndex::open_mapped(tmp2.path()).unwrap()), &expected, "mapped, reopened");
+        }
+        drop(index);
+        let reopened = FlatIndex::open(tmp.path()).unwrap();
+        prop_assert_eq!(&run(&reopened), &expected, "after reopen");
+        prop_assert_eq!(reopened.len(), committed.len() as u64);
     }
 }
 
