@@ -47,6 +47,16 @@ def chunker_label(block: dict) -> str:
     return "(unknown)"
 
 
+def compaction_label(info) -> str:
+    """The dense compaction share the index recorded (Feature 024): a commit that would leave
+    more than this share of the vectors dead rewrites the file; unset, only ``merge`` compacts
+    — what every shipped artefact says, since a build commits once and merges."""
+    share = info.dense_compact_dead_share
+    if share is None:
+        return "on merge only (no share recorded)"
+    return f"within a commit over {share:.0%} dead rows ({share})"
+
+
 def about_lines(opened: Opened, sidecar: dict | None, attribution: str | None, licence: str) -> list[str]:
     info = opened.info
     lines = [open_line(opened), ""]
@@ -74,6 +84,7 @@ def about_lines(opened: Opened, sidecar: dict | None, attribution: str | None, l
         f"re-ranker: {info.reranker_model_id}",
         f"candidate depth: {info.candidate_depth}",
         f"rrf k: {info.rrf_k}",
+        f"dense compaction: {compaction_label(info)}",
         f"re-rank depth (engine default): {info.rerank_depth}",
         f"re-rank depth (demo default): {DEFAULT_DEPTH}",
         f"re-rank mode (recorded): {recorded_mode_label(info)}",

@@ -36,8 +36,16 @@ open apps/ios-wiki-demo/XtrieverWikiDemo.xcodeproj      # run on a device (Relea
 ```
 
 `--with-wiki` needs the 008 artefact at `target/xt-wiki/` (`xtriever wiki build …`, minutes from
-the cache once built). Without it the app runs against the 40-document 007 fixture
+the cache once built); `--with-wiki-dev` stages a `--limit` build from `target/xt-wiki-dev/`
+for simulator work. Without either the app runs against the 40-document 007 fixture
 (`--with-fixtures`) and says so in About. The `.xcodeproj` is generated and gitignored.
+
+Since Feature 024 the dense vectors are format 2 — `index/dense/manifest.bin` with one row
+file per generation (`vectors.<generation>.bin`) instead of `index/dense/index.bin`. An index
+staged from an artefact built before that feature is refused at open with the rebuild
+instruction; rebuild it (`xtriever wiki build …`) rather than re-staging. About shows the
+compaction share the index recorded, unset on every shipped artefact — those are built with
+one commit and a merge.
 
 ## Tests
 

@@ -37,6 +37,7 @@ struct AboutView: View {
                     row("re-rank depth (app default)", "\(Settings().rerankDepth)")
                     Text("The app re-ranks fewer candidates than the engine's default; see Settings.").font(.footnote).foregroundStyle(.secondary)
                     row("rrf k", "\(info.info.rrfK)")
+                    row("dense compaction", info.info.denseCompactDeadShare.map { "over \(Int($0 * 100))% dead rows" } ?? "on merge only")
                     VStack(alignment: .leading) {
                         Text("embedder").font(.footnote)
                         Text(info.info.embedderFingerprint).font(.caption.monospaced()).textSelection(.enabled)

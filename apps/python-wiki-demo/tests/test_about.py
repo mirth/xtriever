@@ -9,7 +9,7 @@ import pytest
 
 from conftest import EMBEDDER, RERANKER, WIKI_ARTEFACT, run_cli
 from wikidemo import DEFAULT_DEPTH
-from wikidemo.about import about_lines, read_attribution, read_sidecar
+from wikidemo.about import about_lines, compaction_label, read_attribution, read_sidecar
 from wikidemo.inputs import resolve
 from wikidemo.search import open_artefact
 
@@ -40,6 +40,10 @@ def test_about_fields_equal_info_and_sidecar(artefact):
     i = lines.index(f"re-rank depth (engine default): {info.rerank_depth}")
     assert lines[i + 1] == f"re-rank depth (demo default): {DEFAULT_DEPTH}"
     assert "re-rank mode (recorded): interpolate α 0.5" in text
+    # Feature 024: the dense compaction share the descriptor recorded. Every built artefact
+    # leaves it unset — the build commits once and merges — so the line says "on merge only".
+    assert info.dense_compact_dead_share is None
+    assert "dense compaction: on merge only (no share recorded)" in text
     assert f"open: {opened.open_ms} ms" in text and f"embedder load: {info.embedder_load_ms} ms" in text
     if sidecar is None:
         assert "corpus identity: (no corpus sidecar)" in text
@@ -50,6 +54,14 @@ def test_about_fields_equal_info_and_sidecar(artefact):
         assert f"articles: {raw['counts']['articles']:,} read, {raw['counts']['selected']:,} selected, {raw['counts']['passages']:,} passages" in text
         assert ("partial:" in text) == ("partial" in raw)
     assert lines[-1] == "licence: https://creativecommons.org/licenses/by-sa/4.0/"
+
+
+@pytest.mark.parametrize(
+    ("share", "expected"),
+    [(None, "on merge only (no share recorded)"), (0.25, "within a commit over 25% dead rows (0.25)")],
+)
+def test_compaction_label_reads_the_recorded_share(share, expected):
+    assert compaction_label(SimpleNamespace(dense_compact_dead_share=share)) == expected
 
 
 def test_attribution_verbatim(artefact):
