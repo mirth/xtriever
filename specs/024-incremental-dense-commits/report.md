@@ -1,6 +1,6 @@
 # Report: Incremental Dense Commits
 
-**Status**: PR A (the format, `xtriever-dense`) complete and green — gate, bench, fixture regenerated, eleven Copilot rounds and one `/code-review` (16 findings) applied — awaiting merge; PR B (the pipeline's `merge` → `compact`, the threshold knob through config/descriptor/FFI, the Wikipedia artefact regeneration) not started.
+**Status**: PR A (the format, `xtriever-dense`) merged after fourteen Copilot rounds and one `/code-review`; PR B (the pipeline's `merge` → `compact`, `dense_compact_dead_share` through config / descriptor / FFI / Python, the shipped Wikipedia artefact converted and proven) complete and green — awaiting merge.
 
 ## The oracle (T002)
 
@@ -279,3 +279,132 @@ manifest, goldens reproduce, the committed file kept); the bench re-recorded.
    commit of a freshly opened handle (see the bench record).
 2. `bytes_written` counts a manifest right after its `write_all` succeeds, before the sync,
    as the append path does.
+
+## PR B — the pipeline, the knob, the artefacts (2026-09-19)
+
+**Red checkpoint (C-B1, folded into one commit at the owner's pace)**: `compact_threshold.rs`
+(six tests) did not compile — `HybridConfig` had no `dense_compact_dead_share`; the Python
+knob test would fail on the attribute.
+
+**Landed**:
+- `HybridIndex::merge` = `commit` → `dense.compact()` → lexical merge. The dense file is
+  compacted to the live rows in id order (`rows == live`, `generation + 1`, `ordered`);
+  the dense stage's scores are bit-identical across it by construction and the test compares
+  every live row's dense score by id; a merge that drops no lexical document keeps every
+  fused bit while compacting the dense file. **Finding, with evidence (corrected by the
+  `/code-review`)**: a merge that physically drops deleted or replaced documents moves BM25
+  bits — tantivy's statistics are deletion-inclusive until then (002 FR-025). First
+  attributed to "deletes" by assertion, then (after Copilot's round objected, Rule 6) to
+  "replacements only", because the plain-delete probe ran on a one-segment fixture whose
+  merge is a no-op; the review caught the dichotomy, and a 1-vs-3-segment lexical probe
+  showed deletes move the bits too once there is something to merge. The lexical crate's
+  `merge_after_deletes_moves_bm25_bits_only_when_it_drops_documents` now pins the boundary
+  (the only lexical change on the branch). Pre-existing lexical behaviour; FR-005 revised to
+  scope the guarantee (dense bit-identical; fused bit-identical across a merge that drops
+  nothing) and the rest left for a lexical spec. **Owner's decision (2026-09-19)**: revise
+  FR-005 and SC-002 consistently (the recommended option) rather than change the lexical
+  stage here.
+- `HybridConfig::dense_compact_dead_share: Option<f32>` (default `None`; `0..=1` else
+  `Error::Schema` at create), recorded in the descriptor with a serde default (pipeline
+  format version unchanged — an index without the key reads `None`), applied to the dense
+  stage at create and at every writable open, exposed as the FFI `IndexConfig` field with a
+  uniffi default (`None`) so existing Python and Swift callers are unaffected; a commit that
+  crosses the share is a rewrite (tested at 20 % → exactly 25 % → over).
+- The shipped Wikipedia artefact converted, not re-embedded (`reference/convert_dense_v1_to_v2.py`,
+  two tests; 427,947 rows × 1,544 B; the v1 copy kept beside it under `target/xt-wiki-v1`).
+  **Proof**: `wikidemo measure` over the host goldens — parity **PASS, 800/800 score bits**
+  on every run. Peak RSS (`ru_maxrss`, a memory-mapped 660 MB row file): the committed record
+  (`runs/measure-…-idle.json`) is the controlled run — fused median 250 ms, as the 019
+  record's 246 ms — at **1,062,453,248 B (1,013 MB), below the 019 record's 1,079,508,992 B
+  (1,029 MB)**; two contended runs (an eval embedding SciFact, then the workspace test suite,
+  alongside) peaked at 1,085,849,600 and 1,120,124,928 B with fused medians of 319–325 ms —
+  page-cache pressure, not the format. SC-004 holds on the controlled measurement. **The SciFact baselines reproduce exactly** through the
+  rebuilt (format 2) dense cache: hybrid-baseline-v2 nDCG@10 0.7143693584 / Recall@100 0.955
+  and dense-baseline-v1 0.6450816521 / 0.925, every Δ 0.0 against the committed files.
+- Docs: the dense crate's `merge` sentence back, the 008 artefact tree, both demos' `merge`
+  line, the pipeline's `merge` doc.
+- The eval cache: the pre-PR SciFact cache (key version 1) was refused by the hybrid path with
+  the reason and rebuilt through the dense baseline, whose key-mismatch path now also names
+  why it re-embeds (it had printed only the progress lines).
+
+**Deliberately not done**: no device re-measurement (no device job); the demo slices under
+`target/` are not converted (rebuilt when next needed); no automatic compaction by default.
+
+**Gate (PR B, re-run after the `/code-review` fixes)**: fmt, clippy (workspace with
+`-D warnings`; dense with all features), deny, the three cross-target checks; `cargo nextest
+run --workspace` 321 passed; the Python surface 34 on a rebuilt wheel (the knob test reads
+`info()`); the converter's two tests; `wikidemo measure` parity PASS 800/800 and the SciFact
+hybrid and dense baselines Δ 0.0 (measured on the same artefact and cache before the review
+fixes, which touch no scoring path).
+
+### Review round B1 (Copilot, four comments)
+
+1. FR-005 / T020 — not weakened silently: probed and formally revised (above), with the
+   lexical-only evidence and the no-diff-against-`main` check; a new test pinned the
+   plain-delete case bit-identical while the dense file compacts (a single-segment fixture,
+   as the `/code-review` later established — the test is now named for that).
+2. A persisted `dense_compact_dead_share` outside `0..=1` is `Corrupt` at every open,
+   read-only included; the value is installed on the dense stage only for writable handles.
+   Tested through `open` and `open_with(read_only)`.
+3. `HybridIndex::merge`'s doc scopes the guarantee: dense bit-identical; fused bit-identical
+   across a merge that drops no lexical document (as finally worded — the round's own
+   "plain deletes keep, replacements move" reading was corrected by the `/code-review`).
+4. Peak RSS: the first recorded 1,085,849,600 B was measured with an eval embedding SciFact
+   in parallel. Re-measured twice more; the idle run — the one whose fused median matches the
+   019 record — peaks at 1,062,453,248 B, below the 019 record's 1,079,508,992 B, and is now
+   the committed record; the contended runs are reported beside it. SC-004 met.
+
+### Review round B2 (Copilot, four comments — all applied; one by the owner's decision)
+
+1. The merge test enumerates the row files (exactly `vectors.1.bin`), decodes the manifest's
+   tombstone payload (the empty roaring bitmap's eight bytes) and checks the file's exact size.
+2. The dense-score comparison is the stage's *complete* answer — every live row's
+   `(DocId, score bits)` through a read-only `FlatIndex` handle on `dense/` with the fixture
+   embedder's query vector — before and after the merge and after a reopen; no intersection.
+3. FR-005 and SC-002 revised together, by the owner's explicit decision (recorded in the spec):
+   dense bit-identical across every compaction; fused bit-identical across a merge that
+   physically drops no document; a merge that drops deleted or replaced documents is the
+   lexical stage's and left for a lexical spec (the final wording — this round's
+   "plain deletes keep, replacements move" boundary was corrected by the `/code-review`).
+4. `HybridIndex::merge`'s doc no longer contradicts itself: the every-bit claim is scoped to
+   merges that drop nothing; the segment layout decides whether a merge drops anything.
+
+### Review round B3 (Copilot, one comment — applied)
+
+The Python knob test decodes the dense manifest after the crossing commit (`generation 1`,
+`rows == live == 10`, the empty tombstone bytes, exactly `vectors.1.bin`) and checks the
+no-share index stayed at generation 0 — the live count alone could not tell a compaction from
+thirty tombstoned rows, so a dropped FFI mapping now fails the test.
+
+### `/code-review` (PR B; 12 findings, all applied)
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | a failed `confirm_sync` retry inside `merge`/`commit` was classified "switched" (its stats had not changed) and the protocol went on | `dense_step` compares the stage's `stats()` before and after: after-switch only when `is_sync_pending()` **and** the stats moved; otherwise the error returns at once |
+| 2 | the "replacements move bits, plain deletes do not" dichotomy was false — the delete probe ran on a single-segment fixture | corrected everywhere (spec FR-005/SC-002, ADR-0013, the `merge` docs, this report, the PR text); the lexical test pins 1 batch → unchanged, 3 batches → moved |
+| 3 | the dead-row share was compared in f64 with an f32 configuration, so `0.7` with 14 of 20 dead fired or not depending on the widening | compared in f32 (`dead as f32 / rows as f32 > t`); `validate_compaction_threshold` is the one validator, shared by the pipeline; a test over four boundary shares |
+| 4 | `compact`'s after-switch error left `merge` half done (no lexical merge) | `merge` finishes the protocol on an after-switch error from either dense step and returns the first unconfirmed error at the end; a before-switch error still returns at once |
+| 5 | `merge` wrote pending rows twice — an append, then a compaction rewrote them | `merge` commits with the share temporarily `Some(0.0)` so staged changes rewrite directly (one generation advance), then restores the configured share; test `merge_with_staged_changes_is_one_dense_protocol` |
+| 6 | `DenseStats` did not expose `ordered`, so tests hand-parsed the manifest | `DenseStats.ordered`; the pipeline and Python tests read the stage's own state through a read-only handle |
+| 7 | the eval cache said only "mismatch" | `EmbeddingCacheKey::mismatch` names the field that differs; both `beir` callers print it |
+| 8 | `IndexInfo` did not report the share the descriptor recorded | `IndexInfo.dense_compact_dead_share`; the Python knob test asserts `info()` reports `None` and `0.5` |
+| 9 | the pipeline test hand-parsed the manifest, ran a vacuous explain loop (an intersection that could be empty), pinned a single-segment no-op under a misleading name and duplicated helpers from `open_with.rs` | `tests/support`: `build_from_fixture_with`, `fixture_embedder`, `fused_bits`, `dense_stats` (read-only `FlatIndex`); the merge test compares every live row's dense score (a complete map) and the live handle's fused answers against a fresh open; the delete case is named for what it measures (`merge_on_a_single_segment_…`) and points at the lexical test |
+| 10 | the converter seeked three times per chunk and its dry run returned a different shape | ids and norms read once, vectors streamed front to back; one summary shape with `written: bool`; `reference/tests_024/conftest.py` as the other reference suites |
+| 11 | the descriptor field carried a redundant `#[serde(default)]` (an `Option` already defaults) | removed |
+| 12 | the PR text did not say whether the change is ranking-affecting or why SciFact suffices, and the merge doc called the segment layout irrelevant | the PR text states it (dense bit-identical by construction, lexical crate unchanged but for a test, SciFact reproduced Δ 0.0 as the proof) and cites the 709-line run record precedent; the `merge` doc scopes the claim |
+
+Gate re-run after the fixes — see "Gate (PR B)" below.
+
+### Review round B4 (Copilot, three comments — all applied)
+
+1. `merge` deferred a failed commit whenever the dense stage's `is_sync_pending()` was true —
+   also when the commit had stopped short (a rejected sync retry, a failed passage or id-map
+   write). The completion signal is `commit`'s own: it clears `dirty` only once its protocol
+   is complete, and the one error it returns from that state is the unconfirmed dense sync;
+   `merge` now defers only when `!dirty`, and stops on any other error. Test: an id-map
+   temporary path that is a directory fails the merge's commit after the stages committed;
+   the merge returns at once (no compaction, no lexical merge, the changes still staged) and
+   a retry completes it.
+2. and 3. The B1 and B2 entries still recorded the discarded "plain deletes keep,
+   replacements move" boundary; reworded to the final contract (identity across a merge that
+   drops nothing), noting the correction.

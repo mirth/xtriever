@@ -214,16 +214,43 @@ pub fn fixture_config(h: &Hybrid) -> HybridConfig {
 /// Every fixture document added in order, one commit.
 pub fn build_from_fixture(dir: &Path) -> (Hybrid, HybridIndex) {
     let h = hybrid();
-    let mut index = HybridIndex::create(
-        dir,
-        fixture_config(&h),
-        Box::new(TableEmbedder::from_fixture(&h)),
-    )
-    .expect("create");
+    let index = build_from_fixture_with(dir, &h, fixture_config(&h));
+    (h, index)
+}
+
+/// As [`build_from_fixture`], with the caller's configuration and fixture (Feature 024).
+pub fn build_from_fixture_with(dir: &Path, h: &Hybrid, config: HybridConfig) -> HybridIndex {
+    let mut index = HybridIndex::create(dir, config, fixture_embedder(h)).expect("create");
     let docs: Vec<SourceDocument> = h.documents.iter().map(FixtureDoc::source).collect();
     index.add(&docs).expect("add");
     index.commit().expect("commit");
-    (h, index)
+    index
+}
+
+/// The fixture's table embedder, boxed for `HybridIndex`.
+pub fn fixture_embedder(h: &Hybrid) -> Box<dyn xtriever_core::Embedder> {
+    Box::new(TableEmbedder::from_fixture(h))
+}
+
+/// A query's fused hits as `(external id, score bits)` — the "same result" snapshot the merge
+/// tests compare (`k = 10`, default options).
+pub fn fused_bits(index: &HybridIndex, text: &str) -> Vec<(String, u64)> {
+    index
+        .search(text, None, 10, &xtriever_pipeline::SearchOptions::default())
+        .expect("search")
+        .hits
+        .iter()
+        .map(|h| (h.external_id.clone(), h.score.to_bits()))
+        .collect()
+}
+
+/// The dense stage's committed state, read through a read-only handle that alters nothing in
+/// a directory a `HybridIndex` may still hold (the stage's own `stats()`, not a hand-parsed
+/// manifest).
+pub fn dense_stats(dir: &Path) -> xtriever_dense::DenseStats {
+    FlatIndex::open_read_only(&dir.join("dense"))
+        .expect("open dense read-only")
+        .stats()
 }
 
 /// The two stages opened directly, bypassing the pipeline (composition check).

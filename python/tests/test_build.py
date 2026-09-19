@@ -3,6 +3,7 @@ documents through the wire types, committed, searched — equal to the 007 golde
 from the Rust-built fixture index. Red until PR B lands the builder exports."""
 
 import json
+import struct
 
 import pytest
 
@@ -148,3 +149,45 @@ def test_a_failed_model_load_at_create_leaves_nothing_behind(tmp_path):
     assert not target.exists()
     handle = xtriever.IndexHandle.create(str(target), config(h), str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP)
     assert handle.info().documents == 0 and handle.info().reranker_model_id is not None
+
+
+def dense_manifest(index_dir):
+    """The dense stage's manifest: (JSON header, tombstone payload)."""
+    raw = (index_dir / "dense" / "manifest.bin").read_bytes()
+    assert raw[:8] == b"XTDENSE2"
+    hdr_len = struct.unpack("<Q", raw[8:16])[0]
+    return json.loads(raw[16 : 16 + hdr_len]), raw[16 + hdr_len :]
+
+
+def test_dense_compact_dead_share_is_optional_and_recorded(tmp_path):
+    """Feature 024 (PR B): the compaction knob is an optional field of ``IndexConfig`` with no
+    default (``None`` = compact only on ``merge``); a value outside 0..1 is refused at create."""
+    h = fixture()
+    c = config(h)
+    assert c.dense_compact_dead_share is None
+    handle = xtriever.IndexHandle.create(str(tmp_path / "a"), c, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+    handle.add([document(d) for d in h["documents"]])
+    handle.commit()
+    assert handle.info().documents == 40
+    assert handle.info().dense_compact_dead_share is None
+    c2 = config(h)
+    c2.dense_compact_dead_share = 0.5
+    handle2 = xtriever.IndexHandle.create(str(tmp_path / "b"), c2, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+    handle2.add([document(d) for d in h["documents"]])
+    handle2.commit()
+    assert handle2.info().dense_compact_dead_share == pytest.approx(0.5), "recorded and reported"
+    handle2.delete([d["external_id"] for d in h["documents"][:30]])
+    handle2.commit()  # 75 % dead: compacted within the commit
+    assert handle2.info().documents == 10
+    # The count alone cannot tell a compaction from 30 tombstoned rows: the dense manifest and
+    # the row files must show the compaction, or the FFI field never reached the pipeline.
+    header, tombstones = dense_manifest(tmp_path / "b")
+    assert (header["generation"], header["rows"], header["live"]) == (1, 10, 10)
+    assert tombstones == bytes.fromhex("3a30000000000000"), "an empty tombstone set"
+    assert sorted(p.name for p in (tmp_path / "b" / "dense").iterdir() if p.name.startswith("vectors.")) == ["vectors.1.bin"]
+    header, _ = dense_manifest(tmp_path / "a")
+    assert (header["generation"], header["rows"], header["live"]) == (0, 40, 40), "no share: nothing compacted"
+    c3 = config(h)
+    c3.dense_compact_dead_share = 1.5
+    with pytest.raises(xtriever.XtrieverError):
+        xtriever.IndexHandle.create(str(tmp_path / "c"), c3, str(EMBEDDER), None, xtriever.LoadPath.MMAP)

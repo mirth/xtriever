@@ -39,6 +39,10 @@ pub struct HybridConfig {
     /// How the re-ranked head is ordered unless the caller overrides (Feature 015; recorded in
     /// the descriptor).
     pub rerank_mode: RerankMode,
+    /// Compact the dense file within a commit that would leave more than this share of its
+    /// rows dead (`0.0..=1.0`); `None` (the default) compacts only on `merge` (Feature 024;
+    /// recorded in the descriptor).
+    pub dense_compact_dead_share: Option<f32>,
 }
 
 impl HybridConfig {
@@ -53,6 +57,7 @@ impl HybridConfig {
             rrf_k: 60,
             rerank_depth: 20,
             rerank_mode: RerankMode::default(),
+            dense_compact_dead_share: None,
         }
     }
 }

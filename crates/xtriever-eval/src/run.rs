@@ -402,10 +402,52 @@ impl EmbeddingCacheKey {
     /// Whether `dir/cache.json` exists, parses, and equals `self` in every field.
     #[must_use]
     pub fn matches(&self, dir: &Path) -> bool {
-        std::fs::read_to_string(dir.join(Self::FILE))
-            .ok()
-            .and_then(|text| serde_json::from_str::<Self>(&text).ok())
-            .is_some_and(|stored| stored == *self)
+        self.mismatch(dir).is_none()
+    }
+
+    /// Why the cache at `dir` does not answer to this key — the missing key file, its parse
+    /// error, or the first differing field with both values — or `None` when it matches. The
+    /// text callers print before re-embedding, so nobody chases a phantom change.
+    pub fn mismatch(&self, dir: &Path) -> Option<String> {
+        let path = dir.join(Self::FILE);
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => return Some(format!("no key file at {} ({e})", path.display())),
+        };
+        let stored: Self = match serde_json::from_str(&text) {
+            Ok(k) => k,
+            Err(e) => return Some(format!("key file {} is unreadable ({e})", path.display())),
+        };
+        let fields: [(&str, String, String); 6] = [
+            (
+                "format_version",
+                stored.format_version.to_string(),
+                self.format_version.to_string(),
+            ),
+            ("config", stored.config.clone(), self.config.clone()),
+            ("dataset", stored.dataset.clone(), self.dataset.clone()),
+            (
+                "embedder_fingerprint",
+                stored.embedder_fingerprint.clone(),
+                self.embedder_fingerprint.clone(),
+            ),
+            (
+                "corpus_sha256",
+                stored.corpus_sha256.clone(),
+                self.corpus_sha256.clone(),
+            ),
+            (
+                "documents",
+                stored.documents.to_string(),
+                self.documents.to_string(),
+            ),
+        ];
+        fields
+            .into_iter()
+            .find(|(_, was, now)| was != now)
+            .map(|(name, was, now)| {
+                format!("{name} differs: cache has {was}, this run needs {now}")
+            })
     }
 }
 

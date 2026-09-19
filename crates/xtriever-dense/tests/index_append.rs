@@ -50,7 +50,8 @@ fn commit_appends_only_the_new_rows() {
             rows: 110,
             live: 110,
             dead: 0,
-            generation: 0
+            generation: 0,
+            ordered: true
         }
     );
     assert_eq!(index.len(), 110);
@@ -89,7 +90,8 @@ fn replace_and_delete_never_touch_committed_bytes() {
             rows: 111,
             live: 109,
             dead: 2,
-            generation: 0
+            generation: 0,
+            ordered: false
         }
     );
     assert_eq!(index.len(), 109);

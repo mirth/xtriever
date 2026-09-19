@@ -182,6 +182,8 @@ pub struct IndexInfo {
     pub rerank_mode: RerankMode,
     /// Reciprocal rank fusion constant.
     pub rrf_k: u32,
+    /// The recorded dense compaction share (`None` = compact only on `merge`; Feature 024).
+    pub dense_compact_dead_share: Option<f32>,
     /// Wall time the embedder took to load, in milliseconds.
     pub embedder_load_ms: u64,
     /// Wall time the re-ranker took to load, in milliseconds, if one was loaded.
@@ -265,6 +267,10 @@ pub struct IndexConfig {
     /// default (`Interpolate { alpha: 0.5 }`), recorded in the index (Feature 015).
     #[uniffi(default = None)]
     pub rerank_mode: Option<RerankMode>,
+    /// Compact the dense vectors within a commit that would leave more than this share of
+    /// them dead (`0.0..=1.0`); `None` = compact only on `merge` (Feature 024).
+    #[uniffi(default = None)]
+    pub dense_compact_dead_share: Option<f32>,
 }
 
 /// A field's value — `xtriever_core::Value` on the wire. The kind must match the field's.

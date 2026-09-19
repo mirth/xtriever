@@ -149,7 +149,9 @@ index.search("blue sky", xtriever.SearchOptions(k=3))
 - **Reopen and extend**: `IndexHandle.open(...)` on an existing index is writable when the
   directory can be locked; a directory the process cannot write opens read-only and every
   write raises `XtrieverError.Io` ("read-only index").
-- **Ship**: `index.merge()` commits and folds the lexical stage into one segment.
+- **Ship**: `index.merge()` commits, compacts the dense vectors (live rows only) and folds the
+  lexical stage into one segment; after deletes or replacements the lexical statistics move
+  across it, so fused scores can change (dense scores never do).
 - **Refusals** are the engine's: a non-empty directory at `create` is `Corrupt`; a dense
   field missing from the schema, a non-text dense field, an unknown analyzer or an empty
   external id is `Schema`.
