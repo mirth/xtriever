@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 99ffe37431db0f084bd8356fb980d58d331939f3f37c92ceccfb0f1c80ce2669 # shrinks to metric = Cosine, ops = [Add(13, [0.0, 0.0, 0.0, 0.0, 0.0, -0.76039577]), Commit, Add(13, [0.0, 0.0, 0.0, 0.0, 0.0, -2.8310993])], queries = [[0.0, 0.0, 0.0, 0.0, 0.0, -1.2377412]]

@@ -28,14 +28,50 @@ impl Bytes {
     }
 }
 
-/// Read `path` through `load_path`.
+/// Read `path` through `load_path`, whole.
 pub(crate) fn read(path: &Path, load_path: LoadPath) -> Result<Bytes> {
     match load_path {
         LoadPath::Buffered => Ok(Bytes::Owned(std::fs::read(path)?)),
         #[cfg(feature = "mmap")]
         LoadPath::Mmap => {
             let file = std::fs::File::open(path)?;
-            Ok(Bytes::Mapped(map_readonly(&file)?))
+            Ok(Bytes::Mapped(map_readonly(&file, None)?))
+        }
+    }
+}
+
+/// Read exactly the first `len` bytes of `path` through `load_path` (`len > 0`): the committed
+/// rows of a vector file, so a mapping never covers bytes a later append or a crashed-tail
+/// truncation may touch. `Error::Corrupt` if the file is shorter than `len`.
+pub(crate) fn read_prefix(path: &Path, load_path: LoadPath, len: usize) -> Result<Bytes> {
+    let actual = std::fs::metadata(path)?.len();
+    if actual < len as u64 {
+        return Err(crate::error::corrupt(format!(
+            "{} is {actual} bytes, shorter than the {len} committed",
+            path.display()
+        )));
+    }
+    match load_path {
+        LoadPath::Buffered => {
+            // Exactly `len` bytes: a crashed tail beyond them is never read, let alone kept.
+            use std::io::Read;
+            let mut v = Vec::with_capacity(len);
+            std::fs::File::open(path)?
+                .take(len as u64)
+                .read_to_end(&mut v)?;
+            if v.len() != len {
+                return Err(crate::error::corrupt(format!(
+                    "{} yielded {} bytes of the {len} committed",
+                    path.display(),
+                    v.len()
+                )));
+            }
+            Ok(Bytes::Owned(v))
+        }
+        #[cfg(feature = "mmap")]
+        LoadPath::Mmap => {
+            let file = std::fs::File::open(path)?;
+            Ok(Bytes::Mapped(map_readonly(&file, Some(len))?))
         }
     }
 }
@@ -50,15 +86,26 @@ pub(crate) fn read(path: &Path, load_path: LoadPath) -> Result<Bytes> {
 /// mmap-backed store (tantivy's `MmapDirectory` included) offers behind a safe API.
 #[cfg(feature = "mmap")]
 #[allow(unsafe_code)]
-pub(crate) fn map_readonly(file: &std::fs::File) -> std::io::Result<memmap2::Mmap> {
-    // SAFETY (ADR-0007 condition 2). Requirement: the mapped file is not modified or truncated
-    // for the lifetime of the map. What this crate guarantees: it never writes either file in
-    // place — the weights are opened read-only after `model::verify_files`, and `index.bin` is
-    // only ever *replaced* by `FlatIndex::commit` (`index.bin.tmp` written in full, then
-    // `rename`), so an inode that has been mapped keeps its bytes until the last reference is
-    // dropped. What this crate cannot guarantee and documents as the caller's precondition on
+pub(crate) fn map_readonly(
+    file: &std::fs::File,
+    len: Option<usize>,
+) -> std::io::Result<memmap2::Mmap> {
+    // SAFETY (ADR-0007 condition 2, as amended by ADR-0013). Requirement: the mapped bytes are
+    // not modified or truncated for the lifetime of the map. What this crate guarantees: it
+    // never modifies a mapped byte — the weights are opened read-only after
+    // `model::verify_files`; a row file `vectors.<g>.bin` is mapped over exactly its committed
+    // rows (`len` = the manifest's `rows × row_bytes`, never the file's length), and the crate
+    // only ever *extends* it past that committed length (`FlatIndex::commit`) or *replaces* it
+    // by `rename` (`FlatIndex::compact`), so an inode that has been mapped keeps its mapped
+    // bytes until the last reference is dropped. The truncations this crate performs — cutting
+    // a crashed append's tail at open or before an append — touch only bytes beyond the
+    // committed length, which no mapping covers. What this crate cannot guarantee and documents as the caller's precondition on
     // `LoadPath::Mmap`, `FlatIndex::open_mapped` and `FlatIndex::open_mapped_for`: that no
     // *other* process modifies or truncates the file meanwhile. The handle is read-only, so
     // nothing through it can write.
-    unsafe { memmap2::MmapOptions::new().map(file) }
+    let mut options = memmap2::MmapOptions::new();
+    if let Some(len) = len {
+        options.len(len);
+    }
+    unsafe { options.map(file) }
 }

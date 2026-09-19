@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod fs;
 pub mod traits;
 pub mod types;
 

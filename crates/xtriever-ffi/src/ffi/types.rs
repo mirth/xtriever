@@ -194,7 +194,8 @@ pub enum LoadPath {
     /// Heap buffers — the safe default.
     Buffered,
     /// Read-only memory maps (ADR-0007, ADR-0009) for both models' weight files **and** the
-    /// dense index's vectors (`dense/index.bin`, via `HybridIndex::open_mapped`). The caller
+    /// dense index's committed rows (`dense/vectors.<g>.bin`, via `HybridIndex::open_mapped`;
+    /// Feature 024). The caller
     /// owns the precondition that no other process modifies or truncates any of those files
     /// while the handle lives.
     Mmap,

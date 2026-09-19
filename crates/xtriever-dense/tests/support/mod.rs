@@ -210,3 +210,64 @@ pub fn assert_hits(hits: &[xtriever_core::Hit], expected: &[Expected], tol: f64,
         );
     }
 }
+
+// ── Feature 024 helpers: one definition of "same result", one row layout, one generator ─────
+
+/// A hit list as `(id, score bits)` — the comparison every 024 suite makes.
+pub fn hit_bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
+    hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
+}
+
+/// Bytes per row of dense format version 2: `id u32 · norm f32 · vector dim × f32`.
+pub const fn row_bytes(dim: usize) -> u64 {
+    8 + dim as u64 * 4
+}
+
+/// The row file of generation `g` under `dir`.
+pub fn row_file(dir: &Path, generation: u64) -> PathBuf {
+    dir.join(format!("vectors.{generation}.bin"))
+}
+
+/// The same 4-dim test vector for an id across the append / compact / crash suites.
+pub fn vec_for(i: u32) -> Vec<f32> {
+    let f = i as f32;
+    vec![f + 1.0, (f * 0.7).sin(), (f * 0.3).cos(), 1.0]
+}
+
+/// The bytes of every file directly under `dir`.
+pub fn dir_bytes(dir: &Path) -> u64 {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().metadata().unwrap().len())
+        .sum()
+}
+
+/// A 64-bit LCG (Knuth's MMIX constants): reproducible test data without a dependency. The
+/// oracle (`index_oracle.rs`) and the bench share it, so a seed describes the same data in both.
+pub struct Lcg(pub u64);
+
+impl Lcg {
+    pub fn next_u64(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        self.0
+    }
+
+    pub fn below(&mut self, n: usize) -> usize {
+        (self.next_u64() >> 33) as usize % n
+    }
+
+    /// A vector of `dim` components in roughly [-1, 1], never all-zero (cosine needs a norm).
+    pub fn vector(&mut self, dim: usize) -> Vec<f32> {
+        loop {
+            let v: Vec<f32> = (0..dim)
+                .map(|_| ((self.next_u64() >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0)
+                .collect();
+            if v.iter().any(|x| *x != 0.0) {
+                return v;
+            }
+        }
+    }
+}
