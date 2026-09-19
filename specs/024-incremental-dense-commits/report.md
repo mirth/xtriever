@@ -340,13 +340,15 @@ fixes, which touch no scoring path).
 ### Review round B1 (Copilot, four comments)
 
 1. FR-005 / T020 — not weakened silently: probed and formally revised (above), with the
-   lexical-only evidence and the no-diff-against-`main` check; a new test pins the
-   plain-delete case bit-identical while the dense file compacts.
+   lexical-only evidence and the no-diff-against-`main` check; a new test pinned the
+   plain-delete case bit-identical while the dense file compacts (a single-segment fixture,
+   as the `/code-review` later established — the test is now named for that).
 2. A persisted `dense_compact_dead_share` outside `0..=1` is `Corrupt` at every open,
    read-only included; the value is installed on the dense stage only for writable handles.
    Tested through `open` and `open_with(read_only)`.
 3. `HybridIndex::merge`'s doc scopes the guarantee: dense bit-identical; fused bit-identical
-   after adds and plain deletes; replacements move the lexical statistics.
+   across a merge that drops no lexical document (as finally worded — the round's own
+   "plain deletes keep, replacements move" reading was corrected by the `/code-review`).
 4. Peak RSS: the first recorded 1,085,849,600 B was measured with an eval embedding SciFact
    in parallel. Re-measured twice more; the idle run — the one whose fused median matches the
    019 record — peaks at 1,062,453,248 B, below the 019 record's 1,079,508,992 B, and is now
@@ -360,10 +362,12 @@ fixes, which touch no scoring path).
    `(DocId, score bits)` through a read-only `FlatIndex` handle on `dense/` with the fixture
    embedder's query vector — before and after the merge and after a reopen; no intersection.
 3. FR-005 and SC-002 revised together, by the owner's explicit decision (recorded in the spec):
-   dense bit-identical across every compaction; fused bit-identical after adds and plain
-   deletes; the replacement case is the lexical stage's and left for a lexical spec.
-4. `HybridIndex::merge`'s doc no longer contradicts itself: the segment-layout independence
-   and the every-bit claim are scoped to merges without replacements.
+   dense bit-identical across every compaction; fused bit-identical across a merge that
+   physically drops no document; a merge that drops deleted or replaced documents is the
+   lexical stage's and left for a lexical spec (the final wording — this round's
+   "plain deletes keep, replacements move" boundary was corrected by the `/code-review`).
+4. `HybridIndex::merge`'s doc no longer contradicts itself: the every-bit claim is scoped to
+   merges that drop nothing; the segment layout decides whether a merge drops anything.
 
 ### Review round B3 (Copilot, one comment — applied)
 
@@ -390,3 +394,17 @@ thirty tombstoned rows, so a dropped FFI mapping now fails the test.
 | 12 | the PR text did not say whether the change is ranking-affecting or why SciFact suffices, and the merge doc called the segment layout irrelevant | the PR text states it (dense bit-identical by construction, lexical crate unchanged but for a test, SciFact reproduced Δ 0.0 as the proof) and cites the 709-line run record precedent; the `merge` doc scopes the claim |
 
 Gate re-run after the fixes — see "Gate (PR B)" below.
+
+### Review round B4 (Copilot, three comments — all applied)
+
+1. `merge` deferred a failed commit whenever the dense stage's `is_sync_pending()` was true —
+   also when the commit had stopped short (a rejected sync retry, a failed passage or id-map
+   write). The completion signal is `commit`'s own: it clears `dirty` only once its protocol
+   is complete, and the one error it returns from that state is the unconfirmed dense sync;
+   `merge` now defers only when `!dirty`, and stops on any other error. Test: an id-map
+   temporary path that is a directory fails the merge's commit after the stages committed;
+   the merge returns at once (no compaction, no lexical merge, the changes still staged) and
+   a retry completes it.
+2. and 3. The B1 and B2 entries still recorded the discarded "plain deletes keep,
+   replacements move" boundary; reworded to the final contract (identity across a merge that
+   drops nothing), noting the correction.

@@ -218,6 +218,50 @@ fn merge_with_staged_changes_is_one_dense_protocol() {
 }
 
 #[test]
+fn a_commit_that_fails_inside_merge_stops_the_merge() {
+    // The merge's own commit fails after the stages committed (the id map's temporary path is
+    // a directory, so its atomic write cannot complete): the merge returns that error at once
+    // — no dense compaction, no lexical merge, the changes still staged — instead of carrying
+    // on over an incomplete commit. Only a *completed* commit's unconfirmed dense sync defers.
+    let tmp = tempfile::tempdir().unwrap();
+    let h = support::hybrid();
+    let mut index = build_from_fixture_with(tmp.path(), &h, support::fixture_config(&h));
+    let ids = external_ids(&h);
+    index.delete(&ids[..5]).unwrap();
+    let blocker = tmp.path().join("ids.json.tmp");
+    std::fs::create_dir(&blocker).unwrap();
+    let err = index.merge().unwrap_err();
+    assert!(matches!(err, Error::Io(_)), "{err}");
+    std::fs::remove_dir(&blocker).unwrap();
+    // The dense stage's commit ran (its rewrite is the merge's one protocol) but nothing
+    // followed it: no second generation from a compaction, and the pipeline's own state is
+    // the previous generation with the changes still staged.
+    assert_eq!(
+        counts(tmp.path()),
+        (1, 35, 35),
+        "the dense commit itself, nothing after it"
+    );
+    assert_eq!(
+        index.len(),
+        40,
+        "the pipeline did not adopt the failed commit"
+    );
+    assert_eq!(
+        index.config().dense_compact_dead_share,
+        None,
+        "the configured share is restored"
+    );
+    // Retrying completes the protocol from where it stopped.
+    index.merge().unwrap();
+    assert_eq!(index.len(), 35);
+    assert_eq!(
+        counts(tmp.path()),
+        (1, 35, 35),
+        "the retry has nothing dense left to rewrite"
+    );
+}
+
+#[test]
 fn a_dead_share_compacts_on_the_crossing_commit_and_not_before() {
     let tmp = tempfile::tempdir().unwrap();
     let h = support::hybrid();

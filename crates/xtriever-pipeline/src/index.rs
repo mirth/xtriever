@@ -466,8 +466,10 @@ impl HybridIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Io` "read-only index" on a read-only open; otherwise as [`commit`](Self::commit),
-    /// the dense compaction (`Error::Corrupt` if another writer changed the dense stage; the
+    /// `Error::Io` "read-only index" on a read-only open; otherwise as [`commit`](Self::commit)
+    /// (a commit that fails before completing stops the merge — nothing is compacted or
+    /// merged over an incomplete commit; only a completed commit's unconfirmed dense sync is
+    /// carried to the end), the dense compaction (`Error::Corrupt` if another writer changed the dense stage; the
     /// durability-unconfirmed `Error::Io` when the compaction switched but its directory sync
     /// failed — the lexical merge still runs and the error is returned at the end) and the
     /// lexical merge.
@@ -484,7 +486,12 @@ impl HybridIndex {
             self.dense.set_compaction_threshold(configured)?;
             match committed {
                 Ok(()) => {}
-                Err(e) if self.dense.is_sync_pending() => unconfirmed = Some(e),
+                // `commit` clears `dirty` only once its protocol is complete; the one error it
+                // returns from that state is the dense stage's unconfirmed directory sync, and
+                // only that may defer. A commit that failed earlier — a rejected sync retry, a
+                // failed passage or id-map write — leaves `dirty` set and stops the merge here,
+                // whatever the dense stage's `is_sync_pending()` says.
+                Err(e) if !self.dirty => unconfirmed = Some(e),
                 Err(e) => return Err(e),
             }
         }
