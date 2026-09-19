@@ -357,3 +357,10 @@ two tests; `wikidemo measure` parity PASS 800/800; SciFact hybrid and dense base
    deletes; the replacement case is the lexical stage's and left for a lexical spec.
 4. `HybridIndex::merge`'s doc no longer contradicts itself: the segment-layout independence
    and the every-bit claim are scoped to merges without replacements.
+
+### Review round B3 (Copilot, one comment — applied)
+
+The Python knob test decodes the dense manifest after the crossing commit (`generation 1`,
+`rows == live == 10`, the empty tombstone bytes, exactly `vectors.1.bin`) and checks the
+no-share index stayed at generation 0 — the live count alone could not tell a compaction from
+thirty tombstoned rows, so a dropped FFI mapping now fails the test.
