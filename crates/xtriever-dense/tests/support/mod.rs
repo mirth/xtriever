@@ -218,13 +218,52 @@ pub fn hit_bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
     hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
 }
 
+// ── Feature 026: the eight-bit scheme, restated once for every suite ────────────────────────
+
+/// The scheme as `src/quantise.rs` implements it, restated here rather than imported: the
+/// module is private on purpose, and a reference that called the crate's own code would prove
+/// nothing. One scale per vector — `max|component| / 127`, floored at `f32::MIN_POSITIVE` so a
+/// denormal peak never stores a zero scale — and codes rounded half away from zero and clamped
+/// to ±127. `reference/gen_026_fixtures.py` restates the same rule in Python.
+pub fn quantise(vector: &[f32]) -> (Vec<i8>, f32) {
+    let peak = vector.iter().fold(0.0f32, |p, v| p.max(v.abs()));
+    let scale = if peak > 0.0 {
+        (peak / 127.0).max(f32::MIN_POSITIVE)
+    } else {
+        1.0
+    };
+    let codes = vector
+        .iter()
+        .map(|v| (v / scale).round().clamp(-127.0, 127.0) as i8)
+        .collect();
+    (codes, scale)
+}
+
+/// `code × scale` per component.
+pub fn recover(codes: &[i8], scale: f32) -> Vec<f32> {
+    codes.iter().map(|c| f32::from(*c) * scale).collect()
+}
+
+/// What the stage recovers for a stored row.
+pub fn recovered(vector: &[f32]) -> Vec<f32> {
+    let (codes, scale) = quantise(vector);
+    recover(&codes, scale)
+}
+
+/// The norm a stored row carries — of the row as stored, `sqrt(Σ code²) × scale`, the sum
+/// exact in integers — which is what cosine divides by (Feature 026 review, finding 6).
+pub fn recovered_norm(codes: &[i8], scale: f32) -> f64 {
+    let sum: i64 = codes.iter().map(|c| i64::from(*c) * i64::from(*c)).sum();
+    (sum as f64).sqrt() * f64::from(scale)
+}
+
 /// Assert that `got` is what dense format 3 recovers for `expected`: every component within
 /// half a quantisation step (Feature 026, ADR-0015). A committed row is eight-bit codes and a
 /// scale, so it never returns the bytes that were added — that is the format, not a defect.
 #[track_caller]
 pub fn assert_recovered(got: Option<Vec<f32>>, expected: &[f32], label: &str) {
     let got = got.unwrap_or_else(|| panic!("{label}: no vector"));
-    let step = expected.iter().fold(0.0f32, |p, v| p.max(v.abs())) / 127.0;
+    let (_, step) = quantise(expected);
     assert_eq!(got.len(), expected.len(), "{label}: width");
     for (i, (recovered, original)) in got.iter().zip(expected).enumerate() {
         assert!(
@@ -232,6 +271,22 @@ pub fn assert_recovered(got: Option<Vec<f32>>, expected: &[f32], label: &str) {
             "{label}: component {i} recovered {recovered}, added {original}, step {step}"
         );
     }
+}
+
+/// Rewrite `manifest.bin`'s JSON header in place (magic · hdr_len · JSON · tombstones), for
+/// the refusal suites.
+pub fn rewrite_manifest_header(dir: &Path, edit: impl Fn(&str) -> String) {
+    let path = dir.join("manifest.bin");
+    let bytes = std::fs::read(&path).unwrap();
+    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
+    let header = std::str::from_utf8(&bytes[16..16 + hdr_len]).unwrap();
+    let edited = edit(header);
+    let mut out = Vec::new();
+    out.extend_from_slice(&bytes[..8]);
+    out.extend_from_slice(&(edited.len() as u64).to_le_bytes());
+    out.extend_from_slice(edited.as_bytes());
+    out.extend_from_slice(&bytes[16 + hdr_len..]);
+    std::fs::write(&path, out).unwrap();
 }
 
 /// Bytes per row of dense format version 3: `id u32 · norm f32 · scale f32 · codes dim × i8`

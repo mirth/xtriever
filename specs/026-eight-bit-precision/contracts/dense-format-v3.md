@@ -15,27 +15,46 @@ dense/
 
 ## The header
 
-`format_version` is `3`. The header additionally names the quantisation scheme, so that reading
-code never has to infer it. Everything else — dimension, metric, fingerprint, generation, row
-count, live count, ordering, tombstone length — keeps its version-2 meaning.
+`format_version` is `3`. The header additionally names the quantisation scheme — the key
+`scheme`, whose value for this feature is `i8-symmetric-per-vector` — so that reading code never
+has to infer it. Everything else — dimension, metric, fingerprint, generation, row count, live
+count, ordering, tombstone length — keeps its version-2 meaning. The dimension is at most
+133,144, the widest row whose integer dot product fits the accumulator.
 
 ## A row
 
 `id u32 · norm f32 · scale f32 · codes dim×i8`, little-endian, fixed width, 396 bytes at
 dimension 384.
 
-- `scale` is strictly positive.
-- `codes` lie in [−127, 127]; −128 is never written.
-- `component ≈ code × scale`. The stage does not promise exactness and does not keep the floats.
+- `scale` is `max|component| / 127`, floored at the smallest normal `f32` (about 1.2e-38) so
+  that it is always a normal, strictly positive number: a denormal peak would otherwise store a
+  zero scale that no reader could tell from corruption.
+- `codes` are `component / scale` rounded **half away from zero** and clamped to [−127, 127];
+  −128 is never written.
+- `norm` is the norm of the row **as stored** — `sqrt(Σ code²) × scale` — not of the floats that
+  were added, which are not kept. Cosine divides by it and by the same norm of the quantised
+  query, so it is the cosine of what is actually compared: a row's cosine with itself is one,
+  and no cosine exceeds one beyond the final rounding to `f32`.
+- `component ≈ code × scale`, within half a scale. The stage does not promise exactness and does
+  not keep the floats.
+- A vector whose every component is below half the scale floor is zero at eight-bit precision.
+  Under Cosine it is refused at `add`, as a zero vector is; under Dot and Euclidean it is stored
+  as all-zero codes.
 
 ## Refusals
 
 | Situation | Behaviour |
 |---|---|
-| `format_version` 1 or 2 | refused by name at open, with the rebuild instruction |
-| an unknown quantisation scheme | refused by name |
-| a row count inconsistent with the file length | refused as corrupt, as in version 2 |
-| a scale of zero | refused as corrupt: it cannot have been written by this engine |
+| `format_version` 1 or 2 — by the magic (`XTDENSE1`, `XTDENSE2`) or by the header | refused by name at open, with the rebuild instruction |
+| an unknown quantisation scheme, or none | refused by name at open, naming the scheme this build reads |
+| a dimension beyond 133,144 | refused at create and at open |
+| a row count inconsistent with the file length | refused as corrupt at open, as in version 2 |
+| a scale that is not a normal positive number (zero, denormal, negative, infinite, NaN) | refused as corrupt **by the first search that reaches the row**: it cannot have been written by this engine, and a NaN score would make the order arbitrary |
+| a norm that is not finite, or under Cosine not positive | the same |
+
+The last two are caught by the scan rather than at open because an open reads nothing beyond
+the manifest (Feature 024): a read-only open of a shipped index must not page in every row. A
+search whose filter never reaches the damaged row is unaffected.
 
 ## What the stage promises
 

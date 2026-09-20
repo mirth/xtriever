@@ -154,7 +154,7 @@ def test_a_failed_model_load_at_create_leaves_nothing_behind(tmp_path):
 def dense_manifest(index_dir):
     """The dense stage's manifest: (JSON header, tombstone payload)."""
     raw = (index_dir / "dense" / "manifest.bin").read_bytes()
-    assert raw[:8] == b"XTDENSE2"
+    assert raw[:8] == b"XTDENSE3"
     hdr_len = struct.unpack("<Q", raw[8:16])[0]
     return json.loads(raw[16 : 16 + hdr_len]), raw[16 + hdr_len :]
 

@@ -3,8 +3,12 @@
 
 Principle II says a golden comes from `reference/`, not from the implementation it checks. This
 recomputes, in Python, every expectation the dense stage's tests replay, under the scheme
-ADR-0015 fixes: one scale per vector (`max|component| / 127`), codes rounded and clamped to
-±127, the dot product accumulated exactly in integers and multiplied by the two scales once.
+ADR-0015 fixes: one scale per vector (`max|component| / 127`, floored at the smallest normal
+`f32`), codes rounded **half away from zero** in `f32` arithmetic and clamped to ±127, the dot
+product accumulated exactly in integers and multiplied by the two scales once, and cosine over
+the norms of the two quantised vectors (the row's stored as `f32`). Every operation the engine
+does in `f32` is done here in `f64` and rounded to `f32` — which is the same result for one
+division, one multiplication or one square root (double rounding is innocuous at 53 bits).
 
 It rewrites, in place:
 
@@ -33,8 +37,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "reference/fixtures/004"
 PIPELINE = ROOT / "reference/fixtures/005/hybrid.json"
-ORACLE_IN = ROOT / "crates/xtriever-dense/tests/support/v1_oracle.json"
 ORACLE_OUT = ROOT / "crates/xtriever-dense/tests/support/v3_oracle.json"
+F32_MIN_POSITIVE = 2.0 ** -126
 
 
 def f32(x: float) -> float:
@@ -42,13 +46,23 @@ def f32(x: float) -> float:
     return struct.unpack("<f", struct.pack("<f", x))[0]
 
 
+def round_half_away(q: float) -> int:
+    """`f32::round`: half-way cases go away from zero. Python's `round` goes to even."""
+    magnitude = math.floor(abs(q) + 0.5)
+    return int(magnitude if q >= 0.0 else -magnitude)
+
+
 def quantise(vector: list[float]) -> tuple[list[int], float]:
-    """The scheme, restated: symmetric, one scale per vector, never code −128."""
+    """The scheme, restated: symmetric, one scale per vector, never code −128.
+
+    Every step is the engine's `f32` step: the scale is the `f32` quotient floored at the
+    smallest normal `f32`; each code is the `f32` quotient rounded half away from zero.
+    """
     peak = max((abs(x) for x in vector), default=0.0)
-    scale = f32(peak / 127.0) if peak > 0.0 else 1.0
+    scale = max(f32(peak / 127.0), F32_MIN_POSITIVE) if peak > 0.0 else 1.0
     codes = []
     for x in vector:
-        code = round(x / scale)
+        code = round_half_away(f32(x / scale))
         codes.append(max(-127, min(127, code)))
     return codes, scale
 
@@ -58,27 +72,41 @@ def recovered(vector: list[float]) -> list[float]:
     return [f32(c * scale) for c in codes]
 
 
+def recovered_norm(codes: list[int], scale: float) -> float:
+    """The norm a row stores (as `f64`; the engine rounds it to `f32` on the way to disk):
+    `sqrt(Σ code²) × scale`, the sum exact in integers."""
+    return math.sqrt(sum(c * c for c in codes)) * scale
+
+
 def norm_f64(v: list[float]) -> float:
     return math.sqrt(sum(x * x for x in v))
 
 
-def score(metric: str, q: list[float], q_norm: float, row: list[float], row_norm_f32: float) -> float:
+class Prepared:
+    """A vector as the stage scores it: its floats, its codes, its scale and its stored norm."""
+
+    def __init__(self, vector: list[float]) -> None:
+        self.vector = [f32(x) for x in vector]
+        self.codes, self.scale = quantise(self.vector)
+        self.norm = recovered_norm(self.codes, self.scale)      # f64, the query's form
+        self.norm_f32 = f32(self.norm)                          # the row's form
+
+
+def score(metric: str, q: Prepared, row: Prepared) -> float:
     """One row's score, over what the stage stores rather than what was added."""
     if metric == "euclidean":
-        # A distance is not a dot product: it works on the recovered components.
+        # A distance is not a dot product: the float query against the recovered row.
         acc = 0.0
-        for a, b in zip(q, recovered(row)):
-            d = a - b
+        for a, c in zip(q.vector, row.codes):
+            d = a - f32(c * row.scale)
             acc += d * d
         return f32(-math.sqrt(acc))
-    q_codes, q_scale = quantise(q)
-    row_codes, row_scale = quantise(row)
-    accumulator = sum(a * b for a, b in zip(q_codes, row_codes))   # exact, in integers
-    dot = accumulator * q_scale * row_scale
+    accumulator = sum(a * b for a, b in zip(q.codes, row.codes))   # exact, in integers
+    dot = accumulator * q.scale * row.scale
     if metric == "dot":
         return f32(dot)
     if metric == "cosine":
-        return f32(dot / (q_norm * row_norm_f32))
+        return f32(dot / (q.norm * row.norm_f32))
     raise ValueError(metric)
 
 
@@ -94,12 +122,10 @@ def rescore_search(document: dict) -> int:
     changed = 0
     for group in document["sets"]:
         metric = group["metric"]
-        rows = {row["id"]: [f32(x) for x in row["vector"]] for row in group["rows"]}
-        norms = {i: f32(norm_f64(v)) for i, v in rows.items()}
+        rows = {row["id"]: Prepared(row["vector"]) for row in group["rows"]}
         for query in group["queries"]:
-            q = [f32(x) for x in query["vector"]]
-            q_norm = norm_f64(q)
-            scores = {i: score(metric, q, q_norm, v, norms[i]) for i, v in rows.items()}
+            q = Prepared(query["vector"])
+            scores = {i: score(metric, q, v) for i, v in rows.items()}
             for case in query["cases"]:
                 allowed = None if case["allowed"] is None else set(case["allowed"])
                 if case["k"] == 0 or allowed == set():
@@ -135,10 +161,8 @@ def rescore_mutations(document: dict) -> int:
             # step 21's expect, which is why the script has it).
             live = dict(committed)
         elif op == "expect":
-            q = [f32(x) for x in step["query"]]
-            q_norm = norm_f64(q)
-            norms = {i: f32(norm_f64(v)) for i, v in committed.items()}
-            scores = {i: score(metric, q, q_norm, v, norms[i]) for i, v in committed.items()}
+            q = Prepared(step["query"])
+            scores = {i: score(metric, q, Prepared(v)) for i, v in committed.items()}
             results = [
                 {"id": i, "score": s} for i, s in ranked(scores, None)[: step["k"]]
             ]
@@ -160,13 +184,11 @@ def rescore_pipeline(document: dict) -> int:
     fusion reads ranks, not scores, so the fused expectations move only if a rank moves — and
     the test asserts that too, which is the point of recomputing rather than loosening.
     """
-    rows = {doc["external_id"]: [f32(x) for x in doc["vector"]] for doc in document["documents"]}
-    norms = {i: f32(norm_f64(v)) for i, v in rows.items()}
+    rows = {doc["external_id"]: Prepared(doc["vector"]) for doc in document["documents"]}
     changed = 0
     for query in document["queries"]:
-        q = [f32(x) for x in query["vector"]]
-        q_norm = norm_f64(q)
-        scores = {i: score("cosine", q, q_norm, v, norms[i]) for i, v in rows.items()}
+        q = Prepared(query["vector"])
+        scores = {i: score("cosine", q, v) for i, v in rows.items()}
         wanted = [entry["id"] for entry in query["expected_dense"]]
         recomputed = [
             {"id": i, "score": s} for i, s in ranked(scores, set(wanted))[: len(wanted)]
@@ -181,21 +203,23 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def refresh_manifest() -> None:
-    """Keep `manifest.json` honest: the files' hashes, and which generator recomputed them.
+def refresh_manifest(directory: Path) -> None:
+    """Keep a fixture directory's `manifest.json` honest: the files' hashes, and which generator
+    recomputed them.
 
-    `generator_sha256` still names the Feature 004 generator that produced the rows, the queries
-    and the mutation script; `rescored_by` names this file, which recomputed the expectations
-    under format 3. Neither claim is the other's.
+    `generator_sha256` still names the Feature 004 (or 005) generator that produced the rows,
+    the queries and the mutation script; `rescored_by` names this file, which recomputed the
+    expectations under format 3. Neither claim is the other's. Both directories' tests hash
+    every file against the manifest, so a rescored fixture without a refreshed manifest fails.
     """
-    path = FIXTURES / "manifest.json"
+    path = directory / "manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     for name in manifest["files"]:
-        manifest["files"][name] = sha256_file(FIXTURES / name)
+        manifest["files"][name] = sha256_file(directory / name)
     manifest["rescored_by"] = "reference/gen_026_fixtures.py"
     manifest["rescored_by_sha256"] = sha256_file(Path(__file__))
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"  manifest.json: hashes refreshed, rescored_by recorded")
+    print(f"  {directory.name}/manifest.json: hashes refreshed, rescored_by recorded")
 
 
 def check_oracle(path: Path) -> int:
@@ -228,11 +252,10 @@ def check_oracle(path: Path) -> int:
                     raise SystemExit(
                         f"{path.name}: expected {step['len']} live rows, model holds {len(committed)}"
                     )
-                norms = {i: f32(norm_f64(v)) for i, v in committed.items()}
+                rows = {i: Prepared(v) for i, v in committed.items()}
                 for query in step["queries"]:
-                    q = [f32(x) for x in query["vector"]]
-                    q_norm = norm_f64(q)
-                    scores = {i: score(metric, q, q_norm, v, norms[i]) for i, v in committed.items()}
+                    q = Prepared(query["vector"])
+                    scores = {i: score(metric, q, v) for i, v in rows.items()}
                     allowed = None if query.get("allowed") is None else set(query["allowed"])
                     hits = [
                         [i, struct.unpack("<I", struct.pack("<f", s))[0]]
@@ -274,7 +297,8 @@ def main() -> int:
         if args.write and changed:
             path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     if args.write:
-        refresh_manifest()
+        refresh_manifest(FIXTURES)
+        refresh_manifest(PIPELINE.parent)
     else:
         print(f"{total} expectations differ from the committed goldens (run with --write)")
     return 0

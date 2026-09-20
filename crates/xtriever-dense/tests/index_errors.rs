@@ -98,27 +98,14 @@ fn dim_or_metric_disagreement_with_the_embedder_is_corrupt() {
     assert!(matches!(err, Error::Corrupt(_)), "{err:?}");
 }
 
-/// Rewrite `manifest.bin`'s JSON header in place (magic · hdr_len · JSON · tombstones).
-fn rewrite_manifest_header(dir: &std::path::Path, edit: impl Fn(&str) -> String) {
-    let path = dir.join("manifest.bin");
-    let bytes = std::fs::read(&path).unwrap();
-    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
-    let header = std::str::from_utf8(&bytes[16..16 + hdr_len]).unwrap();
-    let edited = edit(header);
-    let mut out = Vec::new();
-    out.extend_from_slice(&bytes[..8]);
-    out.extend_from_slice(&(edited.len() as u64).to_le_bytes());
-    out.extend_from_slice(edited.as_bytes());
-    out.extend_from_slice(&bytes[16 + hdr_len..]);
-    std::fs::write(&path, out).unwrap();
-}
+use support::rewrite_manifest_header;
 
 #[test]
 fn a_future_format_version_is_rejected_naming_both_versions() {
     let tmp = tempfile::tempdir().unwrap();
     drop(small(tmp.path()));
-    // A genuine future format carries its own versioned magic (XTDENSE1, XTDENSE2, …) as well
-    // as its header version: both spellings must name both versions.
+    // A genuine future format carries its own versioned magic (XTDENSE1, XTDENSE2, XTDENSE3, …)
+    // as well as its header version: both spellings must name both versions.
     let path = tmp.path().join("manifest.bin");
     let mut bytes = std::fs::read(&path).unwrap();
     bytes[..8].copy_from_slice(b"XTDENSE4");

@@ -11,8 +11,8 @@
 //! The version-1 *scan shape* is kept here as bench-local code (three columns, the same `f64`
 //! accumulation and the same total order) so SC-004's comparison outlives the format's removal;
 //! it is a comparison, not an assertion — the product kernel may change. The version-1 write
-//! volume needs no measurement: a rewrite is `rows × (8 + 4·dim)` bytes per commit by
-//! construction (154 MB at 100k × 384), stated in ADR-0013.
+//! volume needs no measurement: a version-1 rewrite was `rows × (8 + 4·dim)` bytes per commit
+//! by construction (154 MB at 100k × 384, ADR-0013); a format-3 row is `12 + dim` bytes.
 //!
 //! ```sh
 //! cargo bench -p xtriever-dense --bench scan

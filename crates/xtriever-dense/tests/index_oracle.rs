@@ -5,9 +5,11 @@
 //! version-1 implementation, and `replay` proved that the append/tombstone/compact format could
 //! not change a single bit. Format 3 stores eight-bit codes and *does* change the scores, by
 //! design (ADR-0015, spec FR-003), so pretending the old numbers still hold would be a lie.
-//! The oracle was re-minted for format 3 into `tests/support/v3_oracle.json`, and what `replay`
-//! now proves is narrower but still worth having: that the same scripted sequence gives the same
-//! results on every run, through appends, compactions and reopens.
+//! The oracle was re-minted for format 3 into `tests/support/v3_oracle.json` (and once more in
+//! the same feature, when review made cosine divide by the stored row's norm rather than the
+//! float's), and what `replay` now proves is narrower but still worth having: that the same
+//! scripted sequence gives the same results on every run, through appends, compactions and
+//! reopens.
 //!
 //! The generator is a fixed-seed LCG (`support::Lcg`): deterministic without a dependency. What
 //! keeps the file honest is `reference/gen_026_fixtures.py --check-oracle`, which recomputes

@@ -36,9 +36,13 @@ go/no-go signal rather than as the gate:
 ### 1. Dense format version 3
 
 A row becomes `id u32 · norm f32 · scale f32 · codes dim×i8` — 396 bytes at dimension 384,
-against 1,544 — with `scale = max|component| / 127` per vector and `code = round(component /
-scale)` clamped to [−127, 127]. Scoring accumulates the integer products and dequantises once per
-row.
+against 1,544 — with `scale = max|component| / 127` per vector, floored at the smallest normal
+`f32`, and `code = round(component / scale)` (half away from zero) clamped to [−127, 127].
+Scoring accumulates the integer products and dequantises once per row. The stored `norm` is the
+norm of the row as stored, `sqrt(Σ code²) × scale`, so that cosine — over the quantised query's
+norm and the row's — is the cosine of the two vectors actually compared, bounded by one. The
+manifest header names the scheme (`i8-symmetric-per-vector`), so a future scheme is a header
+change rather than a guess.
 
 Everything ADR-0013 established stays: the manifest is the truth, tombstones are an embedded
 bitmap, generations advance on compaction, and commits are write, sync, rename. Only the row body

@@ -2,29 +2,19 @@
 //! (spec FR-001, data-model "Invariants"; ADR-0015).
 //!
 //! The unit tests in `src/quantise.rs` pin the shapes that matter — the peak, the zero vector,
-//! the forbidden code. These check that nothing else drifts: that recovery stays within half a
-//! step everywhere, that the scheme is idempotent on its own output, and that the cosine between
+//! the forbidden code, the half-way rounding, the denormal peak. These check that nothing else
+//! drifts: that recovery stays within half a step everywhere, that the scheme is idempotent on
+//! its own output, that the stored norm is the recovered vector's, and that the cosine between
 //! a vector and its recovery stays above what the study measured, which is the property the
 //! ranking actually depends on.
+//!
+//! The scheme is restated once, in `support`, for every suite that scores against it.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod support;
+
 use proptest::prelude::*;
-
-/// The scheme, as `src/quantise.rs` implements it. Duplicated here rather than exported: the
-/// module is private on purpose, and a test that re-states the rule catches a change to it.
-fn quantise(vector: &[f32]) -> (Vec<i8>, f32) {
-    let peak = vector.iter().fold(0.0f32, |peak, v| peak.max(v.abs()));
-    let scale = if peak > 0.0 { peak / 127.0 } else { 1.0 };
-    let codes = vector
-        .iter()
-        .map(|v| (v / scale).round().clamp(-127.0, 127.0) as i8)
-        .collect();
-    (codes, scale)
-}
-
-fn recover(codes: &[i8], scale: f32) -> Vec<f32> {
-    codes.iter().map(|c| f32::from(*c) * scale).collect()
-}
+use support::{quantise, recover, recovered_norm};
 
 fn cosine(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
@@ -49,12 +39,21 @@ proptest! {
         }
     }
 
-    /// The scale is usable and no code is the value that would make negation asymmetric.
+    /// The scale is a normal positive number and no code is the value that would make negation
+    /// asymmetric — including for vectors whose peak is below the floor (review finding 2).
     #[test]
-    fn the_scale_is_positive_and_no_code_is_the_minimum(vector in prop::collection::vec(-2.0f32..2.0, 1..=384)) {
+    fn the_scale_is_normal_and_no_code_is_the_minimum(
+        vector in prop_oneof![
+            prop::collection::vec(-2.0f32..2.0, 1..=384),
+            prop::collection::vec(-1e-36f32..1e-36, 1..=384),
+        ],
+    ) {
         let (codes, scale) = quantise(&vector);
-        prop_assert!(scale > 0.0);
+        prop_assert!(scale.is_normal() && scale > 0.0, "{scale:e}");
         prop_assert!(codes.iter().all(|c| *c != i8::MIN));
+        for (original, recovered) in vector.iter().zip(recover(&codes, scale)) {
+            prop_assert!((original - recovered).abs() <= scale / 2.0 + f32::EPSILON * scale);
+        }
     }
 
     /// Quantising what the scheme produced changes nothing: a re-encoded index is the same index.
@@ -64,6 +63,19 @@ proptest! {
         let (again, scale_again) = quantise(&recover(&codes, scale));
         prop_assert_eq!(codes, again);
         prop_assert!((scale - scale_again).abs() <= f32::EPSILON * scale.max(1.0));
+    }
+
+    /// The stored norm is the norm of what the row recovers to, so a row's cosine with itself
+    /// in the scan's arithmetic is one (review finding 6).
+    #[test]
+    fn the_stored_norm_is_the_recovered_norm(vector in prop::collection::vec(-2.0f32..2.0, 1..=384)) {
+        let (codes, scale) = quantise(&vector);
+        let by_floats = support::norm(&recover(&codes, scale));
+        let stored = recovered_norm(&codes, scale);
+        prop_assert!((stored - by_floats).abs() <= 1e-4 * by_floats.max(1.0), "{stored} vs {by_floats}");
+        let dot: i64 = codes.iter().map(|c| i64::from(*c) * i64::from(*c)).sum();
+        let self_cosine = dot as f64 * f64::from(scale) * f64::from(scale) / (stored * stored);
+        prop_assert!(dot == 0 || (self_cosine - 1.0).abs() < 1e-9, "{self_cosine}");
     }
 
     /// The direction survives, which is what a cosine ranking depends on. The bound is loose

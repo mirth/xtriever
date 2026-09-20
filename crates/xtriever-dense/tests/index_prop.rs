@@ -126,33 +126,16 @@ fn op() -> impl Strategy<Value = Op> {
 }
 
 use support::hit_bits as bits;
-
-/// The eight-bit scheme, restated here rather than imported: one scale per vector,
-/// `scale = max|component| / 127`, codes rounded and clamped (Feature 026, ADR-0015). A
-/// reference that called the crate's own code would prove nothing.
-fn quantise(vector: &[f32]) -> (Vec<i8>, f32) {
-    let peak = vector.iter().fold(0.0f32, |p, v| p.max(v.abs()));
-    let scale = if peak > 0.0 { peak / 127.0 } else { 1.0 };
-    let codes = vector
-        .iter()
-        .map(|v| (v / scale).round().clamp(-127.0, 127.0) as i8)
-        .collect();
-    (codes, scale)
-}
-
-/// What the stage recovers for a stored row.
-fn recovered(vector: &[f32]) -> Vec<f32> {
-    let (codes, scale) = quantise(vector);
-    codes.iter().map(|c| f32::from(*c) * scale).collect()
-}
+use support::{quantise, recovered, recovered_norm};
 
 /// An independent scorer over the reference model, in the contract's arithmetic.
 ///
 /// Since Feature 026 the stage stores eight-bit codes, so the oracle scores what the stage
 /// stores: the dot product of the quantised query and the quantised row accumulated in `i32` —
-/// exactly, nothing rounds — then one multiply by the two scales. The row norm is still the
-/// `f32` norm of the row as added, and Euclidean still works on recovered components, because a
-/// distance is not a dot product.
+/// exactly, nothing rounds — then one multiply by the two scales. Cosine divides by the norms
+/// of the two *quantised* vectors (the row's rounded to `f32`, as it is stored), and Euclidean
+/// works on recovered components, because a distance is not a dot product. The scheme itself is
+/// restated once in `support` (`quantise`, `recovered_norm`), not imported from the crate.
 fn reference(
     metric: Metric,
     model: &BTreeMap<u32, Vec<f32>>,
@@ -160,16 +143,12 @@ fn reference(
     q: &[f32],
     k: usize,
 ) -> Vec<(u32, u32)> {
-    let q_norm: f64 = q
-        .iter()
-        .map(|x| f64::from(*x) * f64::from(*x))
-        .sum::<f64>()
-        .sqrt();
+    let (q_codes, q_scale) = quantise(q);
+    let q_norm = recovered_norm(&q_codes, q_scale);
     let mut scored: Vec<(f32, u32)> = model
         .iter()
         .filter(|(id, _)| allowed.is_none_or(|a| a.contains(id)))
         .map(|(id, row)| {
-            let (q_codes, q_scale) = quantise(q);
             let (row_codes, row_scale) = quantise(row);
             let accumulator: i32 = q_codes
                 .iter()
@@ -180,11 +159,7 @@ fn reference(
             let score = match metric {
                 Metric::Dot => dot,
                 Metric::Cosine => {
-                    let row_norm = row
-                        .iter()
-                        .map(|x| f64::from(*x) * f64::from(*x))
-                        .sum::<f64>()
-                        .sqrt() as f32;
+                    let row_norm = recovered_norm(&row_codes, row_scale) as f32;
                     dot / (q_norm * f64::from(row_norm))
                 }
                 Metric::Euclidean => -q

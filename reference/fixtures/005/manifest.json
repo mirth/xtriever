@@ -1,10 +1,11 @@
 {
   "files": {
     "fusion.json": "289ae92968e82e33b1ff2d724412a76fd7b98a6c2e0946ebacc37e7599e2da0e",
-    "hybrid.json": "eec8b3deed8308c7505adfa0629fbe113f196a833774f9ffcabf9677c9d70fa9"
+    "hybrid.json": "cdc0057e37e55a3bd6c5fff97150c978bcaa0e8a9cc3567965c1d87d8bbcd9a1"
   },
   "generator_sha256": "bb4c7fe85d5fafd94e981367df1eb79bef2aa452229945c7fd3ea195f3e886aa",
   "python_version": "3.12.12",
   "rescored_by": "reference/gen_026_fixtures.py",
+  "rescored_by_sha256": "1a44b47218afd2a0482e097464c12a344f7e37fac898f3ebc8fdb93bad27cbd7",
   "schema_version": 1
 }

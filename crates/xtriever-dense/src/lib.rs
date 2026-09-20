@@ -11,10 +11,15 @@
 //!   asserts the model's shape from its files, and embeds **one text at a time at a fixed 256
 //!   tokens** with attention-mask-weighted mean pooling and L2 normalisation. 384 dimensions,
 //!   [`Metric::Cosine`](xtriever_core::Metric::Cosine).
-//! - [`FlatIndex`] stores `(DocId, norm, vector)` rows in an append-only `vectors.<g>.bin`
-//!   described by an atomically replaced `manifest.bin` ([`FORMAT_VERSION`] 2, Feature 024,
-//!   ADR-0013) and searches them exactly: scores accumulate in `f64` and are rounded once;
-//!   results are ordered `(score DESC, DocId ASC)`, including at the `k`-th rank. `commit`
+//! - [`FlatIndex`] stores `(DocId, norm, scale, codes)` rows — each vector as one signed byte
+//!   per dimension and one scale, 396 bytes at dimension 384 ([`FORMAT_VERSION`] 3, Feature
+//!   026, ADR-0015) — in an append-only `vectors.<g>.bin` described by an atomically replaced
+//!   `manifest.bin` (Feature 024, ADR-0013), and searches them exactly for what is stored: the
+//!   query is quantised with the same scheme, dot products accumulate in `i32` and are scaled
+//!   and rounded once, cosine divides by the norms of the two quantised vectors, and Euclidean
+//!   recovers the row to floats. The floats that were added are not kept: `vector(id)` returns
+//!   the row as it recovers, within half a quantisation step per component. Results are
+//!   ordered `(score DESC, DocId ASC)`, including at the `k`-th rank. `commit`
 //!   appends the new rows and marks deleted or replaced rows dead in the manifest's tombstone
 //!   set — it never modifies a committed byte; `compact` (run by the pipeline's `merge`, and
 //!   performed by `commit` itself when the index's `dense_compact_dead_share` would be
@@ -64,5 +69,7 @@ pub enum LoadPath {
     Mmap,
 }
 
-/// On-disk vector index format version this build reads and writes (Feature 024, ADR-0013).
+/// On-disk vector index format version this build reads and writes: 3, eight-bit rows
+/// (Feature 026, ADR-0015) in the version-2 directory (Feature 024, ADR-0013). Versions 1 and
+/// 2 are refused at open by name, with the instruction to rebuild.
 pub const FORMAT_VERSION: u32 = 3;

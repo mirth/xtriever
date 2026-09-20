@@ -27,13 +27,49 @@ and the requirements say so instead of claiming identity.
   mutation expectations, 8 pipeline queries, and the oracle verified at **795 queries, 0
   mismatches**. The fixture manifests record which generator rescored them.
 
-**Measured.** The scan benchmark on 100,000 rows × 384 dimensions: 5.05 ms against 40.3 ms for
-the version-1 shape it has always been compared with, on a quarter of the memory traffic.
-**This feature claims size and quality, not speed** — the owner waived a kernel probe, so that
-number is recorded, not leaned on.
+**Review round 1** (`/code-review`, nine findings, all applied in this pull request):
 
-Gate: fmt, clippy with warnings denied, `cargo nextest run --workspace` 333 passed, deny, the
-cross-target checks, and `reference/gen_026_fixtures.py` reporting zero differences.
+1. The Python generator rounded half-to-even in `f64` where the crate rounds half away from
+   zero in `f32`. It now does the crate's steps (`f32` quotient, `f32::round`) and says why.
+2. A denormal peak underflowed the scale to zero. The scale is floored at `f32::MIN_POSITIVE`;
+   a vector that is zero at eight-bit precision is refused under Cosine at `add`, as a zero
+   vector is.
+3. The magic was still `XTDENSE2`. It is `XTDENSE3`; version 2 is refused by magic and by
+   header with the rebuild instruction; the module, crate and Python-test spellings agree.
+4. T007, T008 and T011 were ticked without their tests. `tests/format_v3.rs` and
+   `tests/format_refusals.rs` exist now, the header names the scheme
+   (`i8-symmetric-per-vector`) and refuses another or none, and a row whose scale or norm this
+   engine could not have written is refused as corrupt by the scan — the scan rather than the
+   open, because an open reads nothing beyond the manifest (Feature 024).
+5. Euclidean computed and discarded an integer dot product per row. The metric is decided once
+   per search; each metric is one loop.
+6. Cosine divided a quantised dot product by float norms and exceeded one. The stored norm is
+   now the recovered row's, the query's likewise, so a row's cosine with itself is one and
+   nothing exceeds one beyond the last rounding. **Every golden moved again** for this: 78
+   search cases, 8 pipeline queries, and the oracle re-minted and re-checked in Python.
+7. `vector()`, the crate docs and the bench header said what version 2 did. They say what
+   version 3 does.
+8. The reference quantiser was copied into two suites. It lives once in `tests/support`.
+9. The v1→v2 converter and its tests are deleted; they produced what this build refuses.
+
+While there: a dimension bound of 133,144 at create and open, because past it the `i32`
+accumulator would wrap silently. And T009 (an in-crate agreement test against a float index)
+is **re-scoped, not ticked**: the float index no longer exists in the crate, and on synthetic
+vectors the agreement sits at 98.7–99.2 % against a 99 % bound where real embeddings measured
+99.5 %, so a random-vector test would test random vectors. The agreement is measured on real
+corpora by the study and re-measured by PR B's three-dataset gate.
+
+**Measured.** The scan benchmark on 100,000 rows × 384 dimensions, after the review: 4.04 ms
+against 31.5 ms for the version-1 shape it has always been compared with, on a quarter of the
+memory traffic. **This feature claims size and quality, not speed** — the owner waived a kernel
+probe, so that number is recorded, not leaned on.
+
+Gate: fmt, clippy with warnings denied, `cargo nextest run --workspace` 348 passed, deny, the
+three cross-target checks, `reference/gen_026_fixtures.py` and `--check-oracle` reporting zero
+differences, and the model-free Python tests. **The model-backed Python tests fail on this
+branch** (14 refusals and 1 golden mismatch): they open the shipped 40-document fixture index,
+a format-2 artefact with goldens minted by the float engine, which PR B's T026 rebuilds. CI
+runs `-m "not models"`.
 
 Next, in PR B: both models from the pinned eight-bit artefacts, the three-dataset quality gate,
 and one rebuild of every artefact.
