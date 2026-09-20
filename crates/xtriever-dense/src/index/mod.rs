@@ -1009,11 +1009,17 @@ impl FlatIndex {
     /// to catch one damage pattern in 256. The reader takes the byte as −128; the dimension
     /// bound (`quantise::MAX_DIM`) counts it so the accumulator cannot overflow; the contract
     /// says so.
-    fn checked_row(&self, r: usize, id: u32, least_norm: f32) -> Result<(f32, f32)> {
+    ///
+    /// The norm is checked only under Cosine, the one metric that reads it: under Dot and
+    /// Euclidean a damaged norm changes no score, and refusing the row there would turn one
+    /// bit flip into an outage for the whole index rather than degrading (Principle VI; review
+    /// round 6, finding 7). The scale is read by every metric and is checked for every one.
+    fn checked_row(&self, r: usize, id: u32, least_norm: Option<f32>) -> Result<(f32, f32)> {
         let bytes = self.bytes();
         let scale = self.layout.scale_at(bytes, r);
         let norm = self.layout.norm_at(bytes, r);
-        if !(scale.is_normal() && scale > 0.0 && norm.is_finite() && norm >= least_norm) {
+        let norm_ok = least_norm.is_none_or(|least| norm.is_finite() && norm >= least);
+        if !(scale.is_normal() && scale > 0.0 && norm_ok) {
             return Err(corrupt(format!(
                 "{} row {r} (id {id}) has scale {scale:e} and norm {norm:e}, which this engine \
                  never writes",
@@ -1023,14 +1029,11 @@ impl FlatIndex {
         Ok((scale, norm))
     }
 
-    /// The least norm a row of this index may carry: a cosine row's norm is at least its scale
-    /// (one code is ±127), so at least the floor; any other metric allows a zero row.
-    fn least_norm(&self) -> f32 {
-        if self.metric() == Metric::Cosine {
-            f32::MIN_POSITIVE
-        } else {
-            0.0
-        }
+    /// The least norm a row of this index may carry, for the metric that reads it: a cosine
+    /// row's norm is at least its scale (one code is ±127), so at least the floor. `None` under
+    /// Dot and Euclidean, which never read the norm and so never check it.
+    fn least_norm(&self) -> Option<f32> {
+        (self.metric() == Metric::Cosine).then_some(f32::MIN_POSITIVE)
     }
 
     /// Every live, allowed row as `(score_row(codes, scale, norm), id)`, with the row's scale

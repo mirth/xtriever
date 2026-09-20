@@ -99,7 +99,8 @@ dense/
   is computed independently in `f64` and rounded once, and the final order is total
   (`score DESC, id ASC`), so the arrangement of rows in the file cannot change a bit. The
   version-1 oracle (`tests/support/v1_oracle.json`, minted on the version-1 implementation)
-  and the 004 goldens assert it.
+  and the 004 goldens assert it. *Superseded by Feature 026 (ADR-0015): format 3 changes the
+  scores by design; the oracle is now `tests/support/v3_oracle.json`.*
 - **Version 1 is not read.** A directory holding `index.bin` is refused at open with the
   existing `Corrupt` version error naming both versions. Every artefact the repository
   relies on is regenerated in version 2 with unchanged vectors: the fixture index (its
@@ -171,7 +172,8 @@ the single-writer precondition the caller owns is unchanged.
   spec.
 - Existing version-1 indexes must be rebuilt (or converted once; the Wikipedia artefact was
   converted by `reference/convert_dense_v1_to_v2.py`, a record of the step rather than a
-  supported tool).
+  supported tool — *deleted with Feature 026 (ADR-0015), which rebuilds every artefact and
+  refuses version 2 as well*).
 
 ## Alternatives considered
 

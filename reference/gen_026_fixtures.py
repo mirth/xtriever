@@ -256,6 +256,10 @@ def main() -> int:
         return 1 if mismatches and not args.write_oracle else 0
 
     total = 0
+    missing = 0
+    if not PIPELINE.exists():
+        print(f"  {PIPELINE.relative_to(ROOT)}: missing", file=sys.stderr)
+        missing += 1
     if PIPELINE.exists():
         pipeline = json.loads(PIPELINE.read_text(encoding="utf-8"))
         changed = rescore_pipeline(pipeline)
@@ -268,7 +272,9 @@ def main() -> int:
     for name, rescore in (("search.json", rescore_search), ("mutations.json", rescore_mutations)):
         path = FIXTURES / name
         if not path.exists():
+            # A missing golden is a failure, not a pass with nothing checked (round 6, finding 6).
             print(f"  {name}: missing", file=sys.stderr)
+            missing += 1
             continue
         document = json.loads(path.read_text(encoding="utf-8"))
         changed = rescore(document)
@@ -281,7 +287,9 @@ def main() -> int:
         refresh_manifest(PIPELINE.parent)
         return 0
     print(f"{total} expectations differ from the committed goldens" + (" (run with --write)" if total else ""))
-    return 1 if total else 0
+    if missing:
+        print(f"{missing} golden file(s) missing", file=sys.stderr)
+    return 1 if total or missing else 0
 
 
 if __name__ == "__main__":

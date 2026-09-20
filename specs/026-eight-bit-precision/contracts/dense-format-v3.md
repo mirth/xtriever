@@ -54,7 +54,7 @@ dimension 384.
 | a dimension beyond 132,104 | refused at create and at open |
 | a row count inconsistent with the file length | refused as corrupt at open, as in version 2 |
 | a scale that is not a normal positive number (zero, denormal, negative, infinite, NaN) | refused as corrupt **by the first reader that reaches the row** — a search, or `vector(id)` on that row: it cannot have been written by this engine, and a NaN score would make the order arbitrary |
-| a norm that is not finite, or under Cosine not positive | the same |
+| a norm that is not finite or not positive, **under Cosine** — the one metric that reads it | the same; under Dot and Euclidean a damaged norm changes no score and refuses nothing, so the index degrades rather than failing (Principle VI) |
 | a damaged code byte | **not detected** (no checksum): the row scores with the damaged code, including −128 |
 
 The last two are caught by the readers rather than at open because an open reads nothing beyond

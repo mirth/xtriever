@@ -80,13 +80,22 @@ proptest! {
         prop_assert!(dot == 0 || (self_cosine - 1.0).abs() < 1e-9, "{self_cosine}");
     }
 
-    /// The direction survives, which is what a cosine ranking depends on. The bound is loose
-    /// against what was measured on real embeddings (0.99941 mean) because a random vector is a
-    /// harder case than a trained one.
+    /// The direction survives to the degree the half-step bound implies — an invariant of the
+    /// scheme, not a statistic of random vectors (review round 6, finding 5). With every
+    /// component within `step / 2`, the error vector `e` has `‖e‖ ≤ (step / 2) · √dim`, and for
+    /// `t = ‖e‖ / ‖v‖ < 1` the cosine between `v` and `v + e` is at least `(1 − t) / (1 + t)`.
+    /// What real embeddings measure (0.99941 mean) is the study's number, not this test's.
     #[test]
-    fn the_direction_survives(vector in prop::collection::vec(-1.0f32..1.0, 32..=384)) {
-        prop_assume!(vector.iter().any(|v| v.abs() > 1e-3));
+    fn the_direction_survives_within_the_bound_the_step_implies(
+        vector in prop::collection::vec(-1.0f32..1.0, 32..=384),
+    ) {
         let (codes, scale) = quantise(&vector);
-        prop_assert!(cosine(&vector, &recover(&codes, scale)) > 0.999);
+        let norm = support::norm(&vector);
+        let worst_error = f64::from(scale) / 2.0 * (vector.len() as f64).sqrt();
+        prop_assume!(worst_error < norm);
+        let t = worst_error / norm;
+        let bound = (1.0 - t) / (1.0 + t);
+        let got = f64::from(cosine(&vector, &recover(&codes, scale)));
+        prop_assert!(got >= bound - 1e-6, "cosine {got} below the bound {bound} (t = {t})");
     }
 }

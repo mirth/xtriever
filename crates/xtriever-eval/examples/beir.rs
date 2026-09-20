@@ -283,6 +283,29 @@ const FLOAT_SIDECAR: &str = "vectors.f32.bin";
 /// The `FlatIndex` directory inside a dataset's cache directory.
 const CACHE_INDEX_DIR: &str = "index";
 
+/// The sidecar's byte layout, spelled once: little-endian `f32`, row after row.
+fn decode_f32s(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
+}
+
+fn encode_f32s(out: &mut impl Write, floats: &[f32]) -> std::io::Result<()> {
+    for x in floats {
+        out.write_all(&x.to_le_bytes())?;
+    }
+    Ok(())
+}
+
+fn incomplete_sidecar(dir: &Path) -> anyhow::Error {
+    anyhow::anyhow!(
+        "{} is missing or incomplete; rebuild the cache with `beir run --config dense-baseline-v1`",
+        dir.join(FLOAT_SIDECAR).display()
+    )
+}
+
+/// Every cached row's floats in memory, for the hybrid baseline, which ingests them all.
 struct FloatRows {
     dim: usize,
     data: Vec<f32>,
@@ -295,19 +318,18 @@ impl FloatRows {
             .with_context(|| format!("reading the embedder's floats at {}", path.display()))?;
         if bytes.len() != count * dim * 4 {
             bail!(
-                "{} holds {} bytes, not {} × {} × 4: the cache is incomplete; rebuild it with \
-                 `beir run --config dense-baseline-v1`",
+                "{} holds {} bytes, not {} × {} × 4: {}",
                 path.display(),
                 bytes.len(),
                 count,
-                dim
+                dim,
+                incomplete_sidecar(dir)
             );
         }
-        let data = bytes
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect();
-        Ok(Self { dim, data })
+        Ok(Self {
+            dim,
+            data: decode_f32s(&bytes),
+        })
     }
 
     /// Whether `dir` holds a complete sidecar for `count` rows of `dim`: a cache without one
@@ -331,26 +353,42 @@ impl FloatRows {
         }
         Ok(&self.data[i * self.dim..(i + 1) * self.dim])
     }
+}
 
-    /// One row read by seeking, for a sample of a large cache: `export-vectors` wants a few
-    /// dozen rows of FiQA's 88 MB, not the file.
-    fn read_row(dir: &Path, dim: usize, count: usize, i: usize) -> anyhow::Result<Vec<f32>> {
-        use std::io::{Read, Seek, SeekFrom};
-        if !Self::is_complete(dir, dim, count) {
-            bail!(
-                "{} is missing or incomplete; rebuild the cache with `beir run --config \
-                 dense-baseline-v1`",
-                dir.join(FLOAT_SIDECAR).display()
-            );
+/// The sidecar opened once for a sample of its rows: `export-vectors` wants a few dozen rows
+/// of FiQA's 88 MB, not the file, and no index needs opening for that — the cache key gives
+/// the row count and the file's length gives the width.
+struct FloatSample {
+    file: std::fs::File,
+    dim: usize,
+    count: usize,
+}
+
+impl FloatSample {
+    fn open(dir: &Path, count: usize) -> anyhow::Result<Self> {
+        let path = dir.join(FLOAT_SIDECAR);
+        let len = std::fs::metadata(&path)
+            .map_err(|_| incomplete_sidecar(dir))?
+            .len() as usize;
+        if count == 0 || len % (count * 4) != 0 {
+            return Err(incomplete_sidecar(dir));
         }
-        let mut file = std::fs::File::open(dir.join(FLOAT_SIDECAR))?;
-        file.seek(SeekFrom::Start((i * dim * 4) as u64))?;
-        let mut bytes = vec![0u8; dim * 4];
-        file.read_exact(&mut bytes)?;
-        Ok(bytes
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect())
+        Ok(Self {
+            file: std::fs::File::open(&path)?,
+            dim: len / (count * 4),
+            count,
+        })
+    }
+
+    fn row(&mut self, i: usize) -> anyhow::Result<Vec<f32>> {
+        use std::io::{Read, Seek, SeekFrom};
+        if i >= self.count {
+            bail!("row {i} is beyond the {} cached rows", self.count);
+        }
+        self.file.seek(SeekFrom::Start((i * self.dim * 4) as u64))?;
+        let mut bytes = vec![0u8; self.dim * 4];
+        self.file.read_exact(&mut bytes)?;
+        Ok(decode_f32s(&bytes))
     }
 }
 
@@ -430,9 +468,7 @@ fn cached_index(
             .pop()
             .context("embedder returned no vector")?;
         let id = u32::try_from(i).context("corpus exceeds u32 ids")?;
-        for x in &vector {
-            floats.write_all(&x.to_le_bytes())?;
-        }
+        encode_f32s(&mut floats, &vector)?;
         index.add(DocId(id), &vector)?;
         if (i + 1) % 1000 == 0 {
             eprintln!(
@@ -541,21 +577,30 @@ fn export_vectors(a: &Args) -> anyhow::Result<()> {
     let cfg = DenseConfig::dense_baseline_v1();
     let (passages, ids) = build_passages(&ds, &cfg)?;
     let dir = dense_cache_dir(a).join(dataset);
-    let index = FlatIndex::open(&dir.join(CACHE_INDEX_DIR))
-        .with_context(|| format!("opening the cache at {}", dir.display()))?;
-    if index.len() != passages.len() as u64 {
+    // The cache key says how many rows the cache holds; the index itself is never opened here
+    // (a writable open would sweep and read the whole row file for two numbers).
+    let key_path = dir.join(EmbeddingCacheKey::FILE);
+    let key: EmbeddingCacheKey = serde_json::from_slice(
+        &std::fs::read(&key_path)
+            .with_context(|| format!("reading the cache key at {}", key_path.display()))?,
+    )
+    .with_context(|| format!("parsing {}", key_path.display()))?;
+    if key.dataset != *dataset || key.documents != passages.len() as u64 {
         bail!(
-            "cache holds {} rows but the corpus has {}",
-            index.len(),
+            "cache at {} is for {} ({} documents), not {dataset} ({} documents)",
+            dir.display(),
+            key.dataset,
+            key.documents,
             passages.len()
         );
     }
+    let mut floats = FloatSample::open(&dir, passages.len())?;
     let step = (passages.len() / sample.max(1)).max(1);
     let mut file = std::io::BufWriter::new(std::fs::File::create(out)?);
     let mut written = 0;
     for i in (0..passages.len()).step_by(step).take(sample) {
         let id = DocId(u32::try_from(i)?);
-        let vector = FloatRows::read_row(&dir, index.dim(), passages.len(), i)?;
+        let vector = floats.row(i)?;
         writeln!(
             file,
             "{}",
@@ -609,17 +654,10 @@ fn evaluate_hybrid(
             cache_dir.display()
         );
     }
-    let cache = FlatIndex::open_for(&cache_dir.join(CACHE_INDEX_DIR), &embedder)
-        .with_context(|| format!("opening the cache at {}", cache_dir.display()))?;
-    if cache.len() != ds.corpus.ids.len() as u64 {
-        bail!(
-            "cache holds {} rows but the corpus has {}",
-            cache.len(),
-            ds.corpus.ids.len()
-        );
-    }
-    // The embedder's floats, so the hybrid index quantises once (see `FLOAT_SIDECAR`).
-    let floats = FloatRows::read(&cache_dir, cache.dim(), ds.corpus.ids.len())?;
+    // The embedder's floats, so the hybrid index quantises once (see `FLOAT_SIDECAR`). The
+    // cache's index is not opened: the key already vouches for the document count, the
+    // embedder for the width, and the sidecar's length is checked on read (round 6, finding 1).
+    let floats = FloatRows::read(&cache_dir, embedder.dim(), ds.corpus.ids.len())?;
 
     let keep;
     let index_dir = match a.flags.get("index-dir") {

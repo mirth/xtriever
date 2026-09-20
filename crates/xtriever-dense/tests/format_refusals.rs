@@ -8,8 +8,10 @@
 //! - an unknown quantisation scheme, or none, is refused naming the scheme this build reads;
 //! - a row count beyond the row file is refused as corrupt (as in version 2);
 //! - a zero, denormal or NaN scale, and a NaN or zero norm under Cosine, are refused as corrupt
-//!   **by the scan**: an open reads nothing beyond the manifest (Feature 024), so the first
-//!   search that reaches the row is where it is caught, before a NaN could order anything.
+//!   **by the readers** (the scan and `vector`): an open reads nothing beyond the manifest
+//!   (Feature 024), so the first reader that reaches the row is where it is caught, before a
+//!   NaN could order anything; under Dot and Euclidean the norm is never read and so never
+//!   refused — the index degrades instead.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
@@ -176,12 +178,23 @@ fn a_norm_cosine_cannot_divide_by_is_refused_by_the_scan() {
             other => panic!("{label}: expected Corrupt, got {other:?}"),
         }
     }
-    // Under Dot the norm is not consulted, and a zero norm is what a zero vector stores.
-    let tmp = tempfile::tempdir().unwrap();
-    let generation = small(tmp.path(), Metric::Dot);
-    doctor_row(tmp.path(), generation, 0, 4, 0.0);
-    let index = FlatIndex::open(tmp.path()).unwrap();
-    assert_eq!(index.search(&[1.0, 0.0, 0.0], None, 2).unwrap().len(), 2);
+    // Under Dot and Euclidean the norm is never read, so a damaged one changes no score and
+    // refuses nothing: the index degrades to exactly what it would have returned (Principle
+    // VI; review round 6, finding 7). A zero norm is also what a zero vector stores under Dot.
+    for metric in [Metric::Dot, Metric::Euclidean] {
+        for value in [0.0f32, f32::NAN, f32::INFINITY, -1.0] {
+            let tmp = tempfile::tempdir().unwrap();
+            let generation = small(tmp.path(), metric);
+            let intact = FlatIndex::open(tmp.path()).unwrap();
+            let before = support::hit_bits(&intact.search(&[1.0, 0.0, 0.0], None, 2).unwrap());
+            drop(intact);
+            doctor_row(tmp.path(), generation, 0, 4, value);
+            let index = FlatIndex::open(tmp.path()).unwrap();
+            let after = support::hit_bits(&index.search(&[1.0, 0.0, 0.0], None, 2).unwrap());
+            assert_eq!(after, before, "{metric:?} with norm {value}");
+            assert!(index.vector(DocId(1)).unwrap().is_some());
+        }
+    }
 }
 
 #[test]

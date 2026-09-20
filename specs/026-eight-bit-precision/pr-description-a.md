@@ -158,6 +158,27 @@ corpora by the study and re-measured by PR B's three-dataset gate.
    pull request when the review rounds began; the reviewer's split (format, eval harness,
    reference generators) is the natural one if that changes.
 
+**Review round 6** (seven findings, all applied; the reviewer's own verdict this round was
+that the correctness surface is clean and what remained was cleanup and one soft test):
+
+1. The hybrid baseline and `export-vectors` opened the cache's index writably — a sweep and a
+   full row-file read — for a row count and a width the cache key, the embedder and the
+   sidecar already give. Neither opens it now; the export reads the key file instead.
+2. The persistence test re-implemented `assert_recovered`; it calls it.
+3. The sidecar sample opens the file once, and its byte layout is decoded and encoded in one
+   place each.
+4. ADR-0013's two remaining pointers to deleted files carry the superseded note.
+5. The direction property asserted 0.999, a statistic of random vectors that a legitimate
+   input could miss. It now asserts what the half-step bound implies: with
+   `t = ‖e‖ / ‖v‖` and `‖e‖ ≤ (step / 2) · √dim`, the cosine is at least `(1 − t) / (1 + t)`.
+6. A missing golden makes the checker exit 1 instead of passing with nothing checked.
+7. **The stored norm is checked only under Cosine.** Dot and Euclidean never read it, so a
+   damaged norm changed no score yet refused every search reaching the row and every
+   `vector()` on it. The reviewer's Principle VI point stands: the index now degrades to the
+   scores it would have returned. Tested for zero, NaN, infinite and negative norms under both
+   metrics against the intact index's bits; the contract's refusal row says which metric
+   reads the norm.
+
 **Evaluation, all three datasets, this build against the committed baselines.** Every delta is
 inside the 0.005 bound; no metric on any dataset dropped by more than 0.001. Recall@100 is
 unchanged everywhere except NFCorpus, where it rose by 0.0003.

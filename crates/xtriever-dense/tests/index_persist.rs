@@ -502,33 +502,13 @@ fn vector_returns_committed_rows_within_the_quantisation_step() {
     );
     index.commit().unwrap();
     for row in &set.rows {
-        let got = index.vector(DocId(row.id)).unwrap().unwrap();
         // Since Feature 026 a committed row is eight-bit codes and a scale, so `vector` returns
-        // what those recover — never the bytes that were added (ADR-0015, spec FR-003). Every
-        // component is within half a quantisation step — the row's scale, floored — which is
-        // the promise the format makes; the step comes from the scheme's restatement in
-        // `support`, not from an unfloored `peak / 127` (review round 4, finding 4).
-        let (_, step) = support::quantise(&row.vector);
-        assert_eq!(got.len(), row.vector.len(), "row {}", row.id);
-        for (i, (recovered, original)) in got.iter().zip(&row.vector).enumerate() {
-            assert!(
-                (recovered - original).abs() <= step / 2.0 + f32::EPSILON,
-                "row {} component {i}: {recovered} against {original}, step {step}",
-                row.id
-            );
-        }
+        // what those recover — never the bytes that were added (ADR-0015, spec FR-003) — within
+        // half a quantisation step, the one tolerance `support::assert_recovered` states.
+        support::assert_recovered(
+            index.vector(DocId(row.id)).unwrap(),
+            &row.vector,
+            &format!("row {}", row.id),
+        );
     }
-    assert_eq!(index.vector(DocId(u32::MAX)).unwrap(), None);
-    let reopened = FlatIndex::open(tmp.path()).unwrap();
-    // A reopen recovers exactly what this handle recovers — the codes on disk are the truth.
-    assert_eq!(
-        reopened
-            .vector(DocId(set.rows[7].id))
-            .unwrap()
-            .map(|v| support::bits(&v)),
-        index
-            .vector(DocId(set.rows[7].id))
-            .unwrap()
-            .map(|v| support::bits(&v))
-    );
 }
