@@ -68,10 +68,13 @@ attribution verbatim.
 ./gradlew :apps:android-wiki-demo:connectedAndroidTest     # needs a running ARM emulator
 ```
 
-Twenty-three tests against the 40-document fixture and the bundled corpus: the two lists and
-their marks, the title, passage and link rules, an empty query, a cancelled search, a spent
-budget both degrading and strict, preparation and its recovery, settings persistence, and
-About's facts against what the engine and the sidecar report.
+Twenty-six tests against the 40-document fixture and the bundled corpus: the two lists and
+their marks, the fused answer published before the re-ranked one, a stale search never
+overwriting a newer one, the title, passage and link rules, an empty query, a spent budget both
+degrading and strict, preparation and its recovery, a refusal when storage is short, settings
+persistence, and About's facts against what the engine and the sidecar report — including the
+recorded re-rank mode and dense compaction share. The measurement test is the twenty-seventh
+and is run on its own (below).
 
 ## The measured run
 
@@ -87,6 +90,6 @@ answers for the same corpus. Run it this way rather than through `connectedAndro
 uninstalls the app afterwards and takes the record with it.
 
 The committed record is under `specs/025-android-kotlin-demo/runs/`: **parity PASS**, 800 hits
-compared, identifiers, order, lexical bits and fused bits all identical, dense scores within
-1.2e-7 and re-rank scores within 5.3e-6. Latency and memory in that record describe an
+compared over twenty queries at four depths, identifiers, order, lexical bits and fused bits
+all identical, dense scores within 1.2e-7 and re-rank scores within 5.3e-6. Latency and memory in that record describe an
 **emulator**, not a phone, and must not be read beside the iPhone's numbers.

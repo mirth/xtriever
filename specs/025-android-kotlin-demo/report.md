@@ -64,7 +64,7 @@ application existed.
 
 **Landed**: `apps/android-wiki-demo/`, a Compose application with search, hit detail, stage
 report, About and settings; first-run extraction of the bundled models and corpus with progress
-and recovery; 23 instrumented tests; the measured record.
+and recovery; 26 instrumented tests plus the measurement run; the measured record.
 
 **The measured run** (`runs/sdk_gphone64_arm64-…-mmap-threads4.json`), twenty queries at
 re-rank depths 0, 5, 10 and 20 against host goldens for the same corpus:
@@ -75,8 +75,8 @@ re-rank depths 0, 5, 10 and 20 against host goldens for the same corpus:
 | identifiers, order, lexical bits, fused bits | identical |
 | dense scores | within 1.2e-7 |
 | re-rank scores | within 5.3e-6 |
-| median latency, depth 0 / 5 / 10 / 20 | 248 / 1,215 / 2,190 / 4,061 ms |
-| peak resident | 476 MB, against the project's 600 MB phone ceiling |
+| median latency, depth 0 / 5 / 10 / 20 | 247 / 1,154 / 2,043 / 3,908 ms |
+| peak resident | 474 MB, against the project's 600 MB phone ceiling |
 
 Those latencies are an **emulator's**, on four cores of a laptop, and the record says so in its
 own `claims` field. They are not a phone result and must not be set beside the iPhone's.
@@ -84,6 +84,25 @@ own `claims` field. They are not a phone result and must not be set beside the i
 **Two build facts worth remembering.** Compose 2026.09 requires compiling against API 37, so
 both modules do. And `kotlinx-coroutines-test` must match the coroutines core the lifecycle
 libraries resolve — a newer test artefact fails at run time with `NoSuchMethodError`.
+
+### Review (Copilot, nine comments — all applied)
+
+Four were behaviour, not tidiness. **The fused list was never published before re-ranking**:
+the model made both engine calls and published once, so the screen could not show the fused
+answer first as User Story 2 requires; it now publishes a fused phase and hands the same moment
+to a callback, which is what the new test pins. **Cancellation did not protect publication**: a
+native call already running cannot be interrupted, so a cancelled search could still overwrite a
+newer one; publication is now guarded by a generation counter. **The engine ran on the drawing
+thread**, blocking input for seconds per search; calls moved to the input-output dispatcher.
+**The search button was disabled while a search ran**, which made the cancellation scenario
+unreachable in the real application; it stays live and submits through the cancellation-aware
+path.
+
+The rest: the measurement compared model scores only when both sides had one, so a missing
+score could pass — presence is now asserted first; About omitted the recorded re-rank mode that
+FR-009 requires; the article link was inert text rather than a link; the committed record was
+missing the corpus identity and the query count the record contract requires, and was
+regenerated; and two documents claimed 23 tests where the suite has 26.
 
 ## Success criteria
 

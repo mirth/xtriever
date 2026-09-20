@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import dev.xtriever.android.DeviceSupport
 import dev.xtriever.android.Hit
 import dev.xtriever.android.XtrieverIndex
@@ -30,7 +32,6 @@ import dev.xtriever.demo.ui.HitDetailScreen
 import dev.xtriever.demo.ui.SearchScreen
 import dev.xtriever.demo.ui.SettingsScreen
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -107,8 +108,8 @@ class MainActivity : ComponentActivity() {
     private fun Ready(ready: Stage.Ready) {
         var tab by remember { mutableStateOf("search") }
         var query by remember { mutableStateOf("") }
-        var running by remember { mutableStateOf(false) }
-        var outcome by remember { mutableStateOf<DemoModel.Outcome?>(null) }
+        // The model publishes: the fused answer as soon as it arrives, then the complete one.
+        val outcome by ready.model.state.collectAsState()
         var open by remember { mutableStateOf<Hit?>(null) }
         var settings by remember { mutableStateOf(ready.model.settings) }
         val scope = rememberCoroutineScope()
@@ -132,14 +133,10 @@ class MainActivity : ComponentActivity() {
                 else -> SearchScreen(
                     query = query,
                     onQueryChange = { query = it },
-                    onSubmit = {
-                        running = true
-                        scope.launch {
-                            outcome = runCatching { ready.model.search(query) }.getOrNull()
-                            running = false
-                        }
-                    },
-                    running = running,
+                    // Submitting again cancels the search in flight; the model drops the older
+                    // answer even when its native call has already started.
+                    onSubmit = { ready.model.submit(scope, query) },
+                    running = outcome?.phase == DemoModel.Phase.FUSED,
                     outcome = outcome,
                     onOpen = { open = it },
                 )

@@ -1,6 +1,7 @@
 package dev.xtriever.demo
 
 import dev.xtriever.android.IndexInfo
+import dev.xtriever.android.RerankInterpolate
 
 /**
  * What the About screen states (Feature 025, spec FR-009), as label and value pairs so the
@@ -16,6 +17,7 @@ object AboutFacts {
             "rrf k" to info.rrfK.toString(),
             "dense compaction" to compaction(info),
             "re-rank depth (engine default)" to info.rerankDepth.toString(),
+            "re-rank mode (recorded)" to mode(info),
             "re-rank depth (app default)" to Settings.DEFAULT_DEPTH.toString(),
             "embedder" to info.embedderFingerprint,
             "re-ranker" to (info.rerankerModelId ?: "none"),
@@ -23,6 +25,18 @@ object AboutFacts {
             "embedder load" to "${info.embedderLoadMs} ms",
             "re-ranker load" to (info.rerankerLoadMs?.let { "$it ms" } ?: "—"),
         )
+
+    /**
+     * The re-rank mode the index recorded (Feature 015): how the re-ranked head is ordered
+     * unless a caller overrides it.
+     */
+    fun mode(info: IndexInfo): String = when (val recorded = info.rerankMode) {
+        is RerankInterpolate -> "interpolate α ${trim(recorded.alpha)}"
+        else -> "replace"
+    }
+
+    private fun trim(alpha: Double): String =
+        if (alpha == alpha.toInt().toDouble()) alpha.toInt().toString() else alpha.toString()
 
     /**
      * The dense compaction share the index recorded (Feature 024). Unset — what every built

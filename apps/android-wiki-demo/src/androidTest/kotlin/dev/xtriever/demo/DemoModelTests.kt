@@ -102,6 +102,32 @@ class DemoModelTests {
     }
 
     @Test
+    fun theFusedAnswerIsPublishedBeforeTheRerankedOne() = runTest {
+        // Spec US2 scenario 1: the fused list appears first. The model must publish it while
+        // the cross-encoder is still working, not only when both calls have finished.
+        var fusedSeen: DemoModel.Outcome? = null
+        val complete = model.search("zephyr") { fusedSeen = it }
+
+        val fused = requireNotNull(fusedSeen) { "the fused answer was never published" }
+        assertEquals("published while the cross-encoder was still working", DemoModel.Phase.FUSED, fused.phase)
+        assertTrue("with hits to show", fused.fused.isNotEmpty())
+        assertTrue("and nothing re-ranked yet", fused.reranked.isEmpty())
+        assertEquals("the complete answer follows", DemoModel.Phase.COMPLETE, complete.phase)
+        assertEquals("and is what the screen ends on", DemoModel.Phase.COMPLETE, model.state.value?.phase)
+    }
+
+    @Test
+    fun aStaleSearchNeverOverwritesANewerOne() = runTest {
+        // Cancellation cannot interrupt a native call that has already started, so the model
+        // drops the older answer by generation rather than trusting the coroutine to stop.
+        model.submit(this, "zephyr")
+        model.submit(this, "obsidian")
+        model.awaitIdle()
+        assertEquals("obsidian", model.state.value?.query)
+        assertEquals(DemoModel.Phase.COMPLETE, model.state.value?.phase)
+    }
+
+    @Test
     fun aSecondSubmissionCancelsTheFirst() = runTest {
         val scope = this
         model.submit(scope, "zephyr")

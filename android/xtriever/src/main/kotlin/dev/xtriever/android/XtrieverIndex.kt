@@ -14,6 +14,9 @@ typealias HitExplain = uniffi.xtriever_ffi.HitExplain
 typealias StageReport = uniffi.xtriever_ffi.StageReport
 typealias IndexInfo = uniffi.xtriever_ffi.IndexInfo
 typealias RerankMode = uniffi.xtriever_ffi.RerankMode
+// A type alias cannot reach a nested classifier, so the two modes are re-exported by name.
+typealias RerankInterpolate = uniffi.xtriever_ffi.RerankMode.Interpolate
+typealias RerankReplace = uniffi.xtriever_ffi.RerankMode.Replace
 typealias XtrieverException = uniffi.xtriever_ffi.XtrieverException
 
 /**

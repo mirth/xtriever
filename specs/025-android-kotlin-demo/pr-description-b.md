@@ -28,14 +28,15 @@ queries at re-rank depths 0, 5, 10 and 20 against host goldens for the same corp
 | identifiers, order, lexical bits, fused bits | identical to the host's |
 | dense scores | within 1.2e-7 |
 | re-rank scores | within 5.3e-6 |
-| median latency, depth 0 / 5 / 10 / 20 | 248 / 1,215 / 2,190 / 4,061 ms |
-| peak resident | 476 MB, against the project's 600 MB phone ceiling |
+| median latency, depth 0 / 5 / 10 / 20 | 247 / 1,154 / 2,043 / 3,908 ms |
+| peak resident | 474 MB, against the project's 600 MB phone ceiling |
 
 Those latency and memory figures are an **emulator's**, on four cores of a laptop. The record
 says so in its own `claims` field, and they must not be read beside the iPhone's numbers. A
 physical-device run is deliberately out of scope for this feature.
 
-**Tests**: 24 instrumented tests — the two lists and their marks, the title, passage and article
+**Tests**: 26 instrumented tests — the two lists and their marks, the fused answer published
+before the re-ranked one, a stale search that never overwrites a newer one, the title, passage and article
 link rules, an empty query, a cancelled search, a spent budget degrading and again in strict
 mode, preparation and its recovery from an interrupted extraction, a refusal when storage is
 short, settings persistence across a restart, and About's facts against what the engine and the
@@ -49,6 +50,6 @@ libraries resolve, or every coroutine test fails at run time with `NoSuchMethodE
 
 Gate: fmt, clippy with warnings denied, `cargo nextest run --workspace` 322 passed, deny, the
 cross-target checks, and both instrumented suites on the emulator — 6 in the module, 24 in the
-application.
+application, plus the measurement run driven directly so the record survives.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

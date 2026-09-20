@@ -58,6 +58,10 @@ class SettingsAndAboutTests {
             // Feature 024: every built artefact leaves the share unset, so the line says so.
             assertEquals(null, index.info.denseCompactDeadShare)
             assertEquals("on merge only (no share recorded)", facts["dense compaction"])
+            // Feature 015: the mode the index recorded, which every artefact built since then
+            // carries as the interpolated default.
+            assertEquals("interpolate α 0.5", facts["re-rank mode (recorded)"])
+            assertEquals(AboutFacts.mode(index.info), facts["re-rank mode (recorded)"])
             assertTrue("the corpus identity comes from the sidecar", facts["corpus identity"]!!.length == 64)
         }
     }

@@ -75,14 +75,20 @@ class MeasurementTest {
                         hitsCompared++
                         if (want.getString("external_id") != got.externalId) orderMismatches++
                         if (bits(want, "score_bits") != got.score.toRawBits().toULong().toString(16).padStart(16, '0')) fusedMismatches++
+                        // A stage that scored a hit on the host must have scored it here too:
+                        // a missing score is a difference, not something to skip over.
+                        val label = "${query.getString("id")} depth $depth hit $i"
                         val bm25 = floatOf(want, "bm25_score_bits")
+                        assertEquals("$label: bm25 presence", bm25 != null, got.explain?.bm25Score != null)
                         if (bm25 != null && got.explain?.bm25Score?.toRawBits() != bm25.toRawBits()) lexicalMismatches++
                         val dense = floatOf(want, "dense_score_bits")
-                        if (dense != null && got.explain?.denseScore != null) {
+                        assertEquals("$label: dense presence", dense != null, got.explain?.denseScore != null)
+                        if (dense != null) {
                             maxDense = maxOf(maxDense, abs(dense - got.explain!!.denseScore!!))
                         }
                         val rerank = floatOf(want, "rerank_score_bits")
-                        if (rerank != null && got.rerankScore != null) {
+                        assertEquals("$label: re-rank presence", rerank != null, got.rerankScore != null)
+                        if (rerank != null) {
                             maxRerank = maxOf(maxRerank, abs(rerank - got.rerankScore!!))
                         }
                         if (want.getString("external_id") == got.externalId) identical++
@@ -115,7 +121,11 @@ class MeasurementTest {
             put("threads", Runtime.getRuntime().availableProcessors())
             put("threadsSource", "Runtime.availableProcessors")
             put("loadPath", "mmap")
-            put("index", JSONObject(expected.getJSONObject("info").toString()))
+            // contracts/records.md: documents, format version, corpus identity, both fingerprints.
+            put("index", JSONObject(expected.getJSONObject("info").toString()).apply {
+                put("corpus_identity", CorpusSidecar.read(File(prepared.corpusDir, "corpus.json")).facts["corpus identity"])
+                put("corpus", "the bundled slice: ${File(prepared.corpusDir, "index").name}")
+            })
             put("queries", queries.length())
             put("perDepth", JSONObject().apply {
                 perDepth.forEach { (depth, times) ->
@@ -129,6 +139,8 @@ class MeasurementTest {
             put("ceilingBytes", 600_000_000)
             put("parity", JSONObject().apply {
                 put("verdict", "PASS")
+                put("queriesCompared", queries.length())
+                put("depthsCompared", JSONArray(DEPTHS))
                 put("hitsCompared", hitsCompared)
                 put("identifiersIdentical", identical)
                 put("orderMismatches", orderMismatches)

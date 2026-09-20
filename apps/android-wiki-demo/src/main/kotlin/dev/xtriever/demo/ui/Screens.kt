@@ -18,7 +18,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import dev.xtriever.android.Hit
 import dev.xtriever.android.IndexInfo
@@ -48,14 +54,18 @@ fun SearchScreen(
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
-            Button(onClick = onSubmit, enabled = !running) { Text("search") }
+            // Never disabled: submitting again while a search runs is how a person cancels it
+            // (spec US2 scenario 5), so the button must stay live.
+            Button(onClick = onSubmit) { Text(if (running) "searching…" else "search") }
         }
         if (running) CircularProgressIndicator(Modifier.padding(horizontal = 12.dp))
         outcome ?: return@Column
         LazyColumn(Modifier.fillMaxSize()) {
             item { SectionTitle("fused (lexical + dense), ${outcome.fused.size} hits") }
             itemsIndexed(outcome.fused) { i, hit -> HitRow(i + 1, hit, null, onOpen) }
-            if (outcome.rerankedMs > 0) {
+            if (outcome.phase == DemoModel.Phase.FUSED) {
+                item { SectionTitle("re-ranking…") }
+            } else if (outcome.rerankedMs > 0) {
                 item { SectionTitle("re-ranked (depth from settings), ${outcome.reranked.size} hits") }
                 itemsIndexed(outcome.reranked) { i, hit ->
                     HitRow(i + 1, hit, outcome.marks[hit.externalId], onOpen)
@@ -82,7 +92,18 @@ fun HitDetailScreen(hit: Hit) {
             .padding(16.dp),
     ) {
         Text(title ?: hit.externalId, style = MaterialTheme.typography.titleLarge)
-        HitText.articleUrl(title)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+        HitText.articleUrl(title)?.let { url ->
+            val opener = LocalUriHandler.current
+            Text(
+                url,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .clickable { opener.openUri(url) }
+                    .semantics { role = Role.Button },
+            )
+        }
         Text(passage, Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyMedium)
         Text("features", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleSmall)
         features(hit).forEach { (name, value) ->
