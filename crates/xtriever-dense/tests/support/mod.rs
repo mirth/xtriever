@@ -218,9 +218,26 @@ pub fn hit_bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
     hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
 }
 
-/// Bytes per row of dense format version 2: `id u32 · norm f32 · vector dim × f32`.
+/// Assert that `got` is what dense format 3 recovers for `expected`: every component within
+/// half a quantisation step (Feature 026, ADR-0015). A committed row is eight-bit codes and a
+/// scale, so it never returns the bytes that were added — that is the format, not a defect.
+#[track_caller]
+pub fn assert_recovered(got: Option<Vec<f32>>, expected: &[f32], label: &str) {
+    let got = got.unwrap_or_else(|| panic!("{label}: no vector"));
+    let step = expected.iter().fold(0.0f32, |p, v| p.max(v.abs())) / 127.0;
+    assert_eq!(got.len(), expected.len(), "{label}: width");
+    for (i, (recovered, original)) in got.iter().zip(expected).enumerate() {
+        assert!(
+            (recovered - original).abs() <= step / 2.0 + f32::EPSILON,
+            "{label}: component {i} recovered {recovered}, added {original}, step {step}"
+        );
+    }
+}
+
+/// Bytes per row of dense format version 3: `id u32 · norm f32 · scale f32 · codes dim × i8`
+/// (Feature 026, ADR-0015) — 396 at dimension 384, against 1,544 in version 2.
 pub const fn row_bytes(dim: usize) -> u64 {
-    8 + dim as u64 * 4
+    12 + dim as u64
 }
 
 /// The row file of generation `g` under `dir`.

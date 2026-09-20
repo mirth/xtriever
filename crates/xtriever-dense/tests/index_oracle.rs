@@ -1,12 +1,18 @@
-//! The version-1 oracle (Feature 024, spec FR-010; research D8): scripted add / replace /
-//! delete / commit / reopen sequences with queries after every commit, whose results were
-//! minted **on the version-1 implementation** (`mint`, ignored) into
-//! `tests/support/v1_oracle.json` — every hit's id and score bits. `replay` asserts that the
-//! current implementation reproduces them bit for bit, so the append/tombstone/compact format
-//! cannot change a single result. The generator is a fixed-seed LCG (`support::Lcg`):
-//! deterministic without a dependency, and the file is the record either way — and
-//! `reference/gen_024_fixtures.py` recomputes every expectation from the contract's
-//! arithmetic in Python (`--check`), so the fixture is reproducible independently of this crate.
+//! The dense stage's scripted oracle: add / replace / delete / commit / reopen sequences with
+//! queries after every commit, and every hit's id and score bits.
+//!
+//! **It changed with Feature 026.** Through formats 1 and 2 this file held results minted on the
+//! version-1 implementation, and `replay` proved that the append/tombstone/compact format could
+//! not change a single bit. Format 3 stores eight-bit codes and *does* change the scores, by
+//! design (ADR-0015, spec FR-003), so pretending the old numbers still hold would be a lie.
+//! The oracle was re-minted for format 3 into `tests/support/v3_oracle.json`, and what `replay`
+//! now proves is narrower but still worth having: that the same scripted sequence gives the same
+//! results on every run, through appends, compactions and reopens.
+//!
+//! The generator is a fixed-seed LCG (`support::Lcg`): deterministic without a dependency. What
+//! keeps the file honest is `reference/gen_026_fixtures.py --check-oracle`, which recomputes
+//! every expectation in Python from the contract's arithmetic, so the fixture is reproducible
+//! independently of this crate.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
@@ -70,7 +76,7 @@ struct Oracle {
 }
 
 fn oracle_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/v1_oracle.json")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/v3_oracle.json")
 }
 
 /// Generate the mutation steps (without expectations) for one sequence.
@@ -214,8 +220,9 @@ fn drive(seq: &Sequence, dim: usize, fingerprint: &str, mint: bool, rng: &mut Lc
     out
 }
 
-/// Mint `tests/support/v1_oracle.json` from the implementation this test is compiled against.
-/// Run once on version 1; the file is the oracle from then on.
+/// Mint `tests/support/v3_oracle.json` from the implementation this test is compiled against.
+/// Run once per format change, and only with the owner's decision recorded — re-minting is how
+/// an oracle stops being one, so it belongs to a feature that says why (here, ADR-0015).
 #[test]
 #[ignore]
 fn mint() {

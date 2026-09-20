@@ -35,9 +35,9 @@ crate.
 
 **Purpose**: the decision record that unblocks the constitution gate, and the artefacts on disk.
 
-- [ ] T001 Write `docs/adr/0015-eight-bit-vectors-and-models.md`: the dense format changes to version 3 (rows become `id u32 · norm f32 · scale f32 · codes dim×i8`, 396 bytes at dimension 384) and both loaders accept a second artefact format; the measured cost (0.0006 nDCG@10 on SciFact and NFCorpus, Recall@100 unchanged, 99.5 % candidate agreement at depth 100); the owner's decision to drop the float vectors rather than rescore; what is rejected (a global scale, four bits, an accelerator); and the review trigger. **This clears the two FAIL rows in [plan.md](plan.md); nothing else in this feature starts until it is accepted.**
-- [ ] T002 Add the eight-bit artefacts to `reference/models/manifest-q8.json`: `leliuga/all-MiniLM-L6-v2-GGUF` at its current revision with `all-MiniLM-L6-v2.Q8_0.gguf` (25.0 MB) and `cstr/ms-marco-MiniLM-L-6-v2-GGUF` with `ms-marco-MiniLM-L-6-v2-q8_0.gguf` (24.7 MB), each pinned by repository, revision and sha256 exactly as `reference/models/manifest.json` pins the float weights
-- [ ] T003 Teach `scripts/fetch-model.sh` to fetch a quantised artefact into its own directory and verify its checksum, leaving the float model directory untouched — the tokenizer still comes from there (research D6)
+- [X] T001 Write `docs/adr/0015-eight-bit-vectors-and-models.md`: the dense format changes to version 3 (rows become `id u32 · norm f32 · scale f32 · codes dim×i8`, 396 bytes at dimension 384) and both loaders accept a second artefact format; the measured cost (0.0006 nDCG@10 on SciFact and NFCorpus, Recall@100 unchanged, 99.5 % candidate agreement at depth 100); the owner's decision to drop the float vectors rather than rescore; what is rejected (a global scale, four bits, an accelerator); and the review trigger. **This clears the two FAIL rows in [plan.md](plan.md); nothing else in this feature starts until it is accepted.**
+- [X] T002 Add the eight-bit artefacts to `reference/models/manifest-q8.json`: `leliuga/all-MiniLM-L6-v2-GGUF` at its current revision with `all-MiniLM-L6-v2.Q8_0.gguf` (25.0 MB) and `cstr/ms-marco-MiniLM-L-6-v2-GGUF` with `ms-marco-MiniLM-L-6-v2-q8_0.gguf` (24.7 MB), each pinned by repository, revision and sha256 exactly as `reference/models/manifest.json` pins the float weights
+- [X] T003 `scripts/fetch-model.sh` needed **no change**: it already takes `--manifest`, reads `local_dir`, and verifies size and sha256 per file. Both artefacts fetch and verify into `reference/models/all-MiniLM-L6-v2-q8/` and `reference/models/ms-marco-MiniLM-L-6-v2-q8/`, leaving the float directories (and their tokenizers) untouched — research D6
 
 ---
 
@@ -47,9 +47,9 @@ crate.
 
 **⚠️ CRITICAL**: no user story work begins until this phase is complete.
 
-- [ ] T004 Write the failing test first in `crates/xtriever-dense/src/quantise.rs`: symmetric quantisation round-trips within the scheme's own bound, a zero vector yields scale 1.0 and zero codes rather than a division by zero, no code is ever −128, and `scale` is strictly positive (data-model "Invariants")
-- [ ] T005 Implement `crates/xtriever-dense/src/quantise.rs`: `scale = max|component| / 127`, `code = round(component / scale)` clamped to [−127, 127], and the recovery the scan uses; documented as approximate, never exact
-- [ ] T006 [P] Add a property test in `crates/xtriever-dense/tests/quantise_prop.rs`: over random vectors, the recovered vector's cosine with the original stays above the bound the study measured, and quantising twice is idempotent
+- [X] T004 Write the failing test first in `crates/xtriever-dense/src/quantise.rs`: symmetric quantisation round-trips within the scheme's own bound, a zero vector yields scale 1.0 and zero codes rather than a division by zero, no code is ever −128, and `scale` is strictly positive (data-model "Invariants")
+- [X] T005 Implement `crates/xtriever-dense/src/quantise.rs`: `scale = max|component| / 127`, `code = round(component / scale)` clamped to [−127, 127], and the recovery the scan uses; documented as approximate, never exact
+- [X] T006 [P] Add a property test in `crates/xtriever-dense/tests/quantise_prop.rs`: over random vectors, the recovered vector's cosine with the original stays above the bound the study measured, and quantising twice is idempotent
 
 **Checkpoint**: one quantisation scheme exists, tested, before any file or kernel uses it.
 
@@ -64,18 +64,18 @@ float index's by FR-009's thresholds, and compare the file sizes.
 
 ### Tests for User Story 1 (written first, committed failing) ⚠️
 
-- [ ] T007 [US1] Write `crates/xtriever-dense/tests/format_v3.rs`: a committed index has 396-byte rows at dimension 384, the manifest says `format_version` 3 and names the scheme, and the file is under a third of the float file for the same documents (contracts/dense-format-v3.md)
-- [ ] T008 [P] [US1] Write `crates/xtriever-dense/tests/format_refusals.rs`: a version-1 file, a version-2 file, an unknown scheme, a zero scale and a row count inconsistent with the file length are each refused by name with the rebuild instruction
-- [ ] T009 [P] [US1] Write `crates/xtriever-dense/tests/agreement.rs`: against a float index over the same corpus, the eight-bit ranking agrees on at least 99 % of the first hundred candidates (SC-001), and the same query twice gives identical scores (FR-002, determinism)
+- [X] T007 [US1] Write `crates/xtriever-dense/tests/format_v3.rs`: a committed index has 396-byte rows at dimension 384, the manifest says `format_version` 3 and names the scheme, and the file is under a third of the float file for the same documents (contracts/dense-format-v3.md)
+- [X] T008 [P] [US1] Write `crates/xtriever-dense/tests/format_refusals.rs`: a version-1 file, a version-2 file, an unknown scheme, a zero scale and a row count inconsistent with the file length are each refused by name with the rebuild instruction
+- [X] T009 [P] [US1] Write `crates/xtriever-dense/tests/agreement.rs`: against a float index over the same corpus, the eight-bit ranking agrees on at least 99 % of the first hundred candidates (SC-001), and the same query twice gives identical scores (FR-002, determinism)
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Change the row layout in `crates/xtriever-dense/src/index/mod.rs` and `src/index/bytes.rs`: `id u32 · norm f32 · scale f32 · codes dim×i8`, fixed width, little-endian; the manifest, tombstones, generations and commit protocol from Feature 024 are untouched
-- [ ] T011 [US1] Write `format_version` 3 and the scheme name into the manifest header in `crates/xtriever-dense/src/index/manifest.rs`, and refuse versions 1 and 2 by name with the rebuild instruction
-- [ ] T012 [US1] Implement the scan in `crates/xtriever-dense/src/index/scan.rs`: quantise the query with the same scheme, accumulate in `i32`, dequantise once per row by multiplying the two scales (research D4); `i32` cannot overflow for 384 terms of at most 127 × 127, and the code says so
-- [ ] T013 [US1] Update the compaction and append paths in `crates/xtriever-dense/src/index/mod.rs` for the new row width, keeping every Feature 024 guarantee: a crash at any byte boundary leaves the previous state or the new one
-- [ ] T014 [P] [US1] Write `reference/gen_026_fixtures.py`: recompute the format-3 oracle in Python — quantisation, integer scoring and the ranking — and regenerate `crates/xtriever-dense/tests/support/` goldens; `--check` reports zero mismatches
-- [ ] T015 [P] [US1] Update `crates/xtriever-dense/benches/scan.rs` for the new row shape and record the result in the report; this feature claims size and quality, not speed (research D4)
+- [X] T010 [US1] Change the row layout in `crates/xtriever-dense/src/index/mod.rs` and `src/index/bytes.rs`: `id u32 · norm f32 · scale f32 · codes dim×i8`, fixed width, little-endian; the manifest, tombstones, generations and commit protocol from Feature 024 are untouched
+- [X] T011 [US1] Write `format_version` 3 and the scheme name into the manifest header in `crates/xtriever-dense/src/index/manifest.rs`, and refuse versions 1 and 2 by name with the rebuild instruction
+- [X] T012 [US1] Implement the scan in `crates/xtriever-dense/src/index/scan.rs`: quantise the query with the same scheme, accumulate in `i32`, dequantise once per row by multiplying the two scales (research D4); `i32` cannot overflow for 384 terms of at most 127 × 127, and the code says so
+- [X] T013 [US1] Update the compaction and append paths in `crates/xtriever-dense/src/index/mod.rs` for the new row width, keeping every Feature 024 guarantee: a crash at any byte boundary leaves the previous state or the new one
+- [X] T014 [P] [US1] Write `reference/gen_026_fixtures.py`: recompute the format-3 oracle in Python — quantisation, integer scoring and the ranking — and regenerate `crates/xtriever-dense/tests/support/` goldens; `--check` reports zero mismatches
+- [X] T015 [P] [US1] Update `crates/xtriever-dense/benches/scan.rs` for the new row shape and record the result in the report; this feature claims size and quality, not speed (research D4)
 - [ ] T016 [US1] PR A gate: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets`, `cargo nextest run --workspace`, `cargo deny check`, the three cross-target checks, `cargo bench -p xtriever-dense --bench scan`, `python3 reference/gen_026_fixtures.py --check`; write `specs/026-eight-bit-precision/pr-description-a.md`. **⛔ Checkpoint C1 — the owner commits**, pushes, opens and merges PR A
 
 **Checkpoint**: an index built by this engine is a quarter the size and ranks within the stated bound.

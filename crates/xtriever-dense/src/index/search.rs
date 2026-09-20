@@ -1,9 +1,13 @@
 //! Exact scoring and the total `(score DESC, id ASC)` order (spec FR-010–FR-013; research D7, D9).
 //!
-//! Scores accumulate in `f64` in index order and are rounded to `f32` once: a product of two
-//! `f32` is exact in `f64`, so the result agrees with a `float64` oracle to the final rounding, and
-//! identical rows give identical bits whatever order they are visited in. A scalar loop — the
-//! compiler does not reorder float reductions — with no threads and no SIMD (FR-027).
+//! Since Feature 026 the stored rows are eight-bit codes with a scale (ADR-0015), so "exact"
+//! means exact for what is stored: the dot product accumulates in `i32` — no rounding at all —
+//! and one multiply by the two scales turns it into a score. Identical rows give identical bits
+//! whatever order they are visited in, as before. The Euclidean path still recovers the row as
+//! floats and accumulates in `f64`, because the distance is not a dot product.
+//!
+//! A scalar loop — the compiler does not reorder float reductions — with no threads and no SIMD
+//! (FR-027).
 
 use std::cmp::Ordering;
 
@@ -74,6 +78,28 @@ pub(crate) fn score(
     };
     // `as` is the one conversion here; f64 → f32 rounds to nearest, which is the intent.
     value as f32
+}
+
+/// One row's score from its stored codes, for the metrics that are a dot product.
+///
+/// `query` is the query quantised with the same scheme; `codes` and `row_scale` are the row as
+/// it lies on disk. Returns `None` for a metric that is not a dot product, so the caller falls
+/// back to the recovered-float path.
+pub(crate) fn score_quantised(
+    metric: Metric,
+    q: &Query<'_>,
+    query_codes: &crate::quantise::Quantised,
+    codes: &[u8],
+    row_scale: f32,
+    row_norm: f32,
+) -> Option<f32> {
+    let dot = crate::quantise::dot(query_codes, codes, f64::from(row_scale));
+    let value = match metric {
+        Metric::Cosine => dot / (q.norm * f64::from(row_norm)),
+        Metric::Dot => dot,
+        Metric::Euclidean => return None,
+    };
+    Some(value as f32)
 }
 
 fn dot_f64(q: &[f32], row: impl Iterator<Item = f32>) -> f64 {

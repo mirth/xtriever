@@ -113,8 +113,11 @@ pub(crate) struct Rows {
 
 impl Rows {
     /// The layout of `count` rows of `dim`, or `None` if the byte arithmetic overflows.
+    ///
+    /// A row is `id u32 · norm f32 · scale f32 · codes dim×i8` — 396 bytes at dimension 384,
+    /// against 1,544 in format 2 (Feature 026, ADR-0015).
     pub fn checked(count: usize, dim: usize) -> Option<Self> {
-        let row_bytes = dim.checked_mul(4)?.checked_add(8)?;
+        let row_bytes = dim.checked_add(12)?;
         count.checked_mul(row_bytes)?;
         Some(Self {
             count,
@@ -146,11 +149,27 @@ impl Rows {
         f32::from_le_bytes(four(bytes.slice(r * self.row_bytes + 4, 4)))
     }
 
+    /// The scale that recovers row `r`'s components. Strictly positive by construction.
+    pub fn scale_at(&self, bytes: RowBytes<'_>, r: usize) -> f32 {
+        f32::from_le_bytes(four(bytes.slice(r * self.row_bytes + 8, 4)))
+    }
+
+    /// Row `r`'s codes, as they are on disk: one byte per dimension, two's complement.
+    ///
+    /// Returned as bytes rather than as signed bytes because reinterpreting a slice needs
+    /// `unsafe`, which this crate confines to SIMD kernels and memory mapping (Principle VII).
+    /// Callers convert per element, which compiles to nothing.
+    pub fn codes_at<'a>(&self, bytes: RowBytes<'a>, r: usize) -> &'a [u8] {
+        bytes.slice(r * self.row_bytes + 12, self.dim)
+    }
+
+    /// Row `r` recovered as floats — `code × scale`, which is approximate (ADR-0015). Used to
+    /// answer `vector(id)` and by the Euclidean path; the scan never materialises a row.
     pub fn row_at<'a>(&self, bytes: RowBytes<'a>, r: usize) -> impl Iterator<Item = f32> + 'a {
-        bytes
-            .slice(r * self.row_bytes + 8, self.dim * 4)
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        let scale = self.scale_at(bytes, r);
+        self.codes_at(bytes, r)
+            .iter()
+            .map(move |c| f32::from(*c as i8) * scale)
     }
 
     /// The bytes of row `r`, as they are on disk.
@@ -189,13 +208,13 @@ fn four(bytes: &[u8]) -> [u8; 4] {
     [bytes[0], bytes[1], bytes[2], bytes[3]]
 }
 
-/// Append one row to `out`.
+/// Append one row to `out`, quantising the vector on the way (Feature 026, ADR-0015).
 pub(crate) fn encode_row(out: &mut Vec<u8>, id: u32, norm: f32, vector: &[f32]) {
+    let quantised = crate::quantise::quantise(vector);
     out.extend_from_slice(&id.to_le_bytes());
     out.extend_from_slice(&norm.to_le_bytes());
-    for x in vector {
-        out.extend_from_slice(&x.to_le_bytes());
-    }
+    out.extend_from_slice(&quantised.scale.to_le_bytes());
+    out.extend(quantised.codes.iter().map(|c| *c as u8));
 }
 
 /// Encode a manifest: the header (with `tombstones_len` set here) and the tombstone set.
@@ -355,7 +374,7 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, Rows, RoaringBitm
 pub(crate) fn version_1_error() -> xtriever_core::Error {
     corrupt(format!(
         "dense index is format version 1 ({V1_FILE}); this build reads {FORMAT_VERSION} \
-         ({MANIFEST}) — rebuild the index (Feature 024, ADR-0013)"
+         ({MANIFEST}) — rebuild the index (Feature 026, ADR-0015)"
     ))
 }
 
@@ -392,7 +411,7 @@ mod tests {
         assert_eq!(h.tombstones_len as usize, dead.serialized_size());
         assert_eq!(d, dead);
         let json = serde_json::to_string(&h).unwrap();
-        assert!(json.starts_with("{\"format_version\":2,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"generation\":3,\"rows\":3,\"live\":2,\"ordered\":true,\"tombstones_len\":"), "{json}");
+        assert!(json.starts_with("{\"format_version\":3,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"generation\":3,\"rows\":3,\"live\":2,\"ordered\":true,\"tombstones_len\":"), "{json}");
     }
 
     #[test]
@@ -456,13 +475,13 @@ mod tests {
             Err(xtriever_core::Error::Corrupt(_))
         ));
         // a future versioned magic names both versions
-        let mut v3 = b"XTDENSE3".to_vec();
-        v3.extend_from_slice(&0u64.to_le_bytes());
-        let msg = match decode_manifest(&v3).unwrap_err() {
+        let mut v4 = b"XTDENSE4".to_vec();
+        v4.extend_from_slice(&0u64.to_le_bytes());
+        let msg = match decode_manifest(&v4).unwrap_err() {
             xtriever_core::Error::Corrupt(m) => m,
             other => panic!("{other:?}"),
         };
-        assert!(msg.contains("version 3") && msg.contains('2'), "{msg}");
+        assert!(msg.contains("version 4") && msg.contains('3'), "{msg}");
         // version 1 magic
         let mut v1 = b"XTDENSE1".to_vec();
         v1.extend_from_slice(&0u64.to_le_bytes());

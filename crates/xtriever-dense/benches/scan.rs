@@ -1,6 +1,12 @@
-//! Feature 024 (spec FR-011, SC-001, SC-004; research D8): the exact scan over the version-2
-//! row file against the version-1 shape, and the cost of a 10-row commit against the rewrite
-//! version 1 did. 100,000 rows × 384 dims from a fixed-seed generator; `k = 10`.
+//! Feature 024 (spec FR-011, SC-001, SC-004; research D8), carried into Feature 026: the exact
+//! scan over the current row file against the version-1 shape, and the cost of a 10-row commit
+//! against the rewrite version 1 did. 100,000 rows × 384 dims from a fixed-seed generator;
+//! `k = 10`.
+//!
+//! Since Feature 026 a row is eight-bit codes and a scale (396 bytes at dimension 384, against
+//! 1,544), and the scan accumulates in integers. **Feature 026 claims size and quality, not
+//! speed**: the owner waived a kernel probe, so what this bench does is record what happened,
+//! and the report quotes it without drawing a conclusion from it (ADR-0015).
 //!
 //! The version-1 *scan shape* is kept here as bench-local code (three columns, the same `f64`
 //! accumulation and the same total order) so SC-004's comparison outlives the format's removal;

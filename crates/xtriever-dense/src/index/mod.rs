@@ -938,6 +938,8 @@ impl VectorIndex for FlatIndex {
         }
         let bytes = self.bytes();
         let layout = self.layout;
+        // The query is quantised once, with the scheme the rows were written with.
+        let query_codes = crate::quantise::quantise(q.vector);
         let no_dead = self.dead.is_empty();
         let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
         for r in 0..layout.count {
@@ -948,12 +950,16 @@ impl VectorIndex for FlatIndex {
             if allowed.is_some_and(|set| !set.contains(DocId(id))) {
                 continue;
             }
-            let s = search::score(
+            let norm = layout.norm_at(bytes, r);
+            let s = search::score_quantised(
                 metric,
                 &q,
-                layout.row_at(bytes, r),
-                layout.norm_at(bytes, r),
-            );
+                &query_codes,
+                layout.codes_at(bytes, r),
+                layout.scale_at(bytes, r),
+                norm,
+            )
+            .unwrap_or_else(|| search::score(metric, &q, layout.row_at(bytes, r), norm));
             scored.push((s, id));
         }
         Ok(search::top_k(scored, k))

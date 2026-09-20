@@ -42,6 +42,7 @@ mod embedder;
 mod error;
 mod index;
 pub mod model;
+mod quantise;
 
 pub use embedder::MiniLmEmbedder;
 pub use index::{DenseStats, FlatIndex, validate_compaction_threshold};
@@ -64,4 +65,4 @@ pub enum LoadPath {
 }
 
 /// On-disk vector index format version this build reads and writes (Feature 024, ADR-0013).
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;

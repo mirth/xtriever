@@ -388,7 +388,7 @@ fn an_append_that_succeeds_before_the_manifest_fails_is_rolled_back() {
     );
     assert_eq!(
         index.bytes_written() - written_before,
-        16,
+        support::row_bytes(2),
         "one row of dim 2 was written, no manifest"
     );
     assert_eq!(index.len(), 1);
@@ -485,7 +485,7 @@ fn a_buffered_open_reads_only_the_committed_bytes() {
 }
 
 #[test]
-fn vector_returns_committed_rows_exactly_as_added() {
+fn vector_returns_committed_rows_within_the_quantisation_step() {
     let set = set384();
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), set.dim, Metric::Cosine, "test-fp").unwrap();
@@ -500,19 +500,28 @@ fn vector_returns_committed_rows_exactly_as_added() {
     index.commit().unwrap();
     for row in &set.rows {
         let got = index.vector(DocId(row.id)).unwrap();
-        assert_eq!(
-            support::bits(&got),
-            support::bits(&row.vector),
-            "row {}",
-            row.id
-        );
+        // Since Feature 026 a committed row is eight-bit codes and a scale, so `vector` returns
+        // what those recover — never the bytes that were added (ADR-0015, spec FR-003). Every
+        // component is within half a quantisation step, which is the promise the format makes.
+        let step = row.vector.iter().fold(0.0f32, |p, v| p.max(v.abs())) / 127.0;
+        assert_eq!(got.len(), row.vector.len(), "row {}", row.id);
+        for (i, (recovered, original)) in got.iter().zip(&row.vector).enumerate() {
+            assert!(
+                (recovered - original).abs() <= step / 2.0 + f32::EPSILON,
+                "row {} component {i}: {recovered} against {original}, step {step}",
+                row.id
+            );
+        }
     }
     assert_eq!(index.vector(DocId(u32::MAX)), None);
     let reopened = FlatIndex::open(tmp.path()).unwrap();
+    // A reopen recovers exactly what this handle recovers — the codes on disk are the truth.
     assert_eq!(
         reopened
             .vector(DocId(set.rows[7].id))
             .map(|v| support::bits(&v)),
-        Some(support::bits(&set.rows[7].vector))
+        index
+            .vector(DocId(set.rows[7].id))
+            .map(|v| support::bits(&v))
     );
 }

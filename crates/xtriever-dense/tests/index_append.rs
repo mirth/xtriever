@@ -144,7 +144,7 @@ fn bytes_written_are_proportional_to_the_change() {
     // ten rows plus one manifest, so a same-length rewrite of the row file could not hide —
     // and the directory's net growth is reported beside it.
     const D: usize = 32;
-    let row = 8 + D as u64 * 4;
+    let row = support::row_bytes(D);
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), D, Metric::Cosine, "fp").unwrap();
     for i in 0..1000u32 {
