@@ -45,33 +45,19 @@ pub(crate) fn validate_query<'a>(q: &'a [f32], dim: usize, metric: Metric) -> Re
     Ok(match metric {
         Metric::Dot => Query::Dot(quantise::quantise(q)),
         Metric::Cosine => {
-            if norm_f64(q.iter().copied()) == 0.0 {
-                return Err(invalid_query(
-                    "query has zero norm; cosine similarity is undefined",
-                ));
-            }
+            // A zero query and one whose every component is below half the scale floor both
+            // quantise to all-zero codes: one check, on what is actually compared.
             let codes = quantise::quantise(q);
             let norm = quantise::norm(&codes);
             if norm == 0.0 {
-                // Every component below half the scale floor: nothing to point with.
                 return Err(invalid_query(
-                    "query is zero at eight-bit precision; cosine similarity is undefined",
+                    "query has zero norm at eight-bit precision; cosine similarity is undefined",
                 ));
             }
             Query::Cosine { codes, norm }
         }
         Metric::Euclidean => Query::Euclidean(q),
     })
-}
-
-/// Euclidean norm in `f64` from `f32` components.
-pub(crate) fn norm_f64(xs: impl Iterator<Item = f32>) -> f64 {
-    xs.map(|x| {
-        let x = f64::from(x);
-        x * x
-    })
-    .sum::<f64>()
-    .sqrt()
 }
 
 /// One row's dot-product score from its stored codes and scale, rounded to `f32` once.

@@ -305,6 +305,13 @@ impl FloatRows {
         Ok(Self { dim, data })
     }
 
+    /// Whether `dir` holds a complete sidecar for `count` rows of `dim`: a cache without one
+    /// is not a hit, whatever its key says (review round 3, finding 2).
+    fn is_complete(dir: &Path, dim: usize, count: usize) -> bool {
+        std::fs::metadata(dir.join(FLOAT_SIDECAR))
+            .is_ok_and(|m| m.len() == (count * dim * 4) as u64)
+    }
+
     fn row(&self, i: usize) -> &[f32] {
         &self.data[i * self.dim..(i + 1) * self.dim]
     }
@@ -342,16 +349,20 @@ fn cached_index(
     };
     if key.matches(&dir) {
         match open(&dir) {
-            Ok(index) if index.len() == passages.len() as u64 => {
-                eprintln!("embedded 0 passages (cache hit: {})", dir.display());
-                return Ok(index);
-            }
-            Ok(index) => eprintln!(
+            Ok(index) if index.len() != passages.len() as u64 => eprintln!(
                 "cache at {} holds {} vectors, not {}; re-embedding",
                 dir.display(),
                 index.len(),
                 passages.len()
             ),
+            Ok(_) if !FloatRows::is_complete(&dir, embedder.dim(), passages.len()) => eprintln!(
+                "cache at {} has no complete {FLOAT_SIDECAR}; re-embedding",
+                dir.display()
+            ),
+            Ok(index) => {
+                eprintln!("embedded 0 passages (cache hit: {})", dir.display());
+                return Ok(index);
+            }
             // Never re-embed silently: say why the cache is being rebuilt.
             Err(e) => eprintln!(
                 "cache at {} cannot be opened ({e}); re-embedding",
@@ -603,10 +614,9 @@ fn evaluate_hybrid(
     let started = Instant::now();
     let docs = build_external(&ds, &cfg.lexical)?;
     let mut batch = Vec::with_capacity(1000);
+    // The cache's row count and the sidecar's length were both checked above; nothing per row
+    // is left to verify, and materialising a row here would be work thrown away.
     for (i, (external_id, fields)) in docs.into_iter().enumerate() {
-        if cache.vector(DocId(u32::try_from(i)?)).is_none() {
-            bail!("cache row {i} ({external_id}) missing");
-        }
         let vector = floats.row(i).to_vec();
         batch.push((
             SourceDocument {

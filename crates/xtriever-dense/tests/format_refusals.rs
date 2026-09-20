@@ -144,6 +144,13 @@ fn a_scale_this_engine_never_writes_is_refused_by_the_scan() {
                     .len(),
                 1
             );
+            // And `vector` refuses the same row rather than recovering NaN or zeros from it
+            // (review round 3, finding 4), while the intact row still recovers.
+            assert!(
+                matches!(index.vector(DocId(2)), Err(Error::Corrupt(_))),
+                "{label}"
+            );
+            assert!(index.vector(DocId(1)).unwrap().is_some());
         }
     }
 }

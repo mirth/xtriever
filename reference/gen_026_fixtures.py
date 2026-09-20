@@ -256,7 +256,7 @@ def recompute_oracle(oracle: dict, write: bool) -> tuple[int, int]:
             elif op == "expect":
                 if len(committed) != step["len"]:
                     raise SystemExit(
-                        f"{path.name}: expected {step['len']} live rows, model holds {len(committed)}"
+                        f"{ORACLE_OUT.name}: expected {step['len']} live rows, model holds {len(committed)}"
                     )
                 rows = {i: Prepared(v) for i, v in committed.items()}
                 for query in step["queries"]:

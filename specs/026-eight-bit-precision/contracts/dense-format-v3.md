@@ -49,12 +49,13 @@ dimension 384.
 | an unknown quantisation scheme, or none | refused by name at open, naming the scheme this build reads |
 | a dimension beyond 132,104 | refused at create and at open |
 | a row count inconsistent with the file length | refused as corrupt at open, as in version 2 |
-| a scale that is not a normal positive number (zero, denormal, negative, infinite, NaN) | refused as corrupt **by the first search that reaches the row**: it cannot have been written by this engine, and a NaN score would make the order arbitrary |
+| a scale that is not a normal positive number (zero, denormal, negative, infinite, NaN) | refused as corrupt **by the first reader that reaches the row** — a search, or `vector(id)` on that row: it cannot have been written by this engine, and a NaN score would make the order arbitrary |
 | a norm that is not finite, or under Cosine not positive | the same |
 
-The last two are caught by the scan rather than at open because an open reads nothing beyond
+The last two are caught by the readers rather than at open because an open reads nothing beyond
 the manifest (Feature 024): a read-only open of a shipped index must not page in every row. A
-search whose filter never reaches the damaged row is unaffected.
+search whose filter never reaches the damaged row is unaffected, and `vector(id)` on an intact
+row still recovers it.
 
 ## What the stage promises
 

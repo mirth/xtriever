@@ -84,9 +84,42 @@ corpora by the study and re-measured by PR B's three-dataset gate.
 7. `FlatIndex::open` docs say version 3 and name the version-2 refusal.
 8. The Android README says version 3.
 
-**SciFact after the rebuild**, against the committed baselines (the three-dataset gate is PR B's
-T024): dense-baseline-v1 nDCG@10 0.64573 against 0.64508, Recall@100 0.925 unchanged;
-hybrid-baseline-v2 0.71448 against 0.71437, Recall@100 0.955 unchanged.
+**Review round 3** (nine findings, all applied):
+
+1. The oracle checker's row-count error referenced an undefined name; it names the file.
+2. A cache hit now requires a complete float sidecar, so the "rebuild it" advice rebuilds.
+3. The study rounded in `f32`; the `+0.5` and floor are in `f64`, which is what `f32::round`
+   and the generator do. (The same lesson as round 1, finding 1, learned twice.)
+4. `vector(id)` returns `Result<Option<_>>` and refuses a damaged row exactly as the scan does,
+   instead of recovering NaN or zeros; tested on the same doctored files.
+5. `rescored_by_sha256` in both fixture manifests is asserted by the fixture-validity tests,
+   like `generator_sha256`, so an edited generator cannot leave stale goldens behind.
+6. The scan decodes scale and norm once per row and hands them to the scorer.
+7. The hybrid baseline no longer materialises a row per document as an existence check.
+8. `validate_query` keeps one zero-norm check, on the quantised query.
+9. **All three datasets evaluated in this pull request**, as Rule 5 requires for a
+   ranking-affecting change to `dense` — PR B's gate re-runs them with the eight-bit models.
+
+**Evaluation, all three datasets, this build against the committed baselines.** Every delta is
+inside the 0.005 bound; no metric on any dataset dropped by more than 0.001. Recall@100 is
+unchanged everywhere except NFCorpus, where it rose by 0.0003.
+
+| Dataset | Config | nDCG@10 | baseline | Δ | Recall@100 | baseline |
+|---|---|---|---|---|---|---|
+| SciFact | dense-baseline-v1 | 0.64573 | 0.64508 | +0.0007 | 0.925 | 0.925 |
+| SciFact | hybrid-baseline-v2 | 0.71448 | 0.71437 | +0.0001 | 0.955 | 0.955 |
+| NFCorpus | dense-baseline-v1 | 0.31575 | 0.31667 | −0.0009 | 0.31173 | 0.31145 |
+| NFCorpus | hybrid-baseline-v2 | 0.35316 | 0.35351 | −0.0004 | 0.32178 | 0.32165 |
+| NFCorpus | hybrid-rerank-v3 | 0.36189 | 0.36225 | −0.0004 | 0.32178 | 0.32165 |
+| FiQA | dense-baseline-v1 | 0.36862 | 0.36867 | −0.0001 | 0.70606 | 0.70606 |
+| FiQA | hybrid-baseline-v2 | 0.36933 | 0.36921 | +0.0001 | 0.70711 | 0.70711 |
+| FiQA | hybrid-rerank-v3 | 0.39082 | 0.39096 | −0.0001 | 0.70711 | 0.70711 |
+
+The study on the engine's own rows, all three datasets (SC-001 promises ≥ 0.99 agreement at
+depth 100): SciFact 0.9956, NFCorpus 0.9947, FiQA 0.9947; top-10 kept 0.990–0.995; the stored
+rows match the scheme byte for byte on every corpus. Embedding time for the record: SciFact
+5,183 passages in 32 min under a load average of 70, NFCorpus 3,633 in 6.6 min, FiQA 57,638 in
+97 min; the FiQA re-rank of 12,960 pairs took 25 min.
 
 **Measured.** The scan benchmark on 100,000 rows × 384 dimensions, after the review: 4.04 ms
 against 31.5 ms for the version-1 shape it has always been compared with, on a quarter of the

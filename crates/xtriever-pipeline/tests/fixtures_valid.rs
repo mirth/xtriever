@@ -13,6 +13,10 @@ use sha2::{Digest, Sha256};
 struct Manifest {
     files: BTreeMap<String, String>,
     generator_sha256: String,
+    /// Feature 026: the generator that recomputed the expectations under format 3, pinned like
+    /// the one that minted the rows (review round 3, finding 5).
+    rescored_by: String,
+    rescored_by_sha256: String,
 }
 
 fn hex(digest: &[u8]) -> String {
@@ -41,6 +45,15 @@ fn every_fixture_matches_manifest() {
     assert_eq!(
         actual, manifest.generator_sha256,
         "gen_005_fixtures.py changed; regenerate or --refresh-manifest"
+    );
+    assert_eq!(manifest.rescored_by, "reference/gen_026_fixtures.py");
+    let rescorer = support::fixtures_dir().join("../../gen_026_fixtures.py");
+    let actual = hex(&Sha256::digest(
+        std::fs::read(rescorer).expect("read rescorer"),
+    ));
+    assert_eq!(
+        actual, manifest.rescored_by_sha256,
+        "gen_026_fixtures.py changed; run it with --write"
     );
 }
 

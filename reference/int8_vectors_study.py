@@ -81,8 +81,10 @@ def quantise(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     peak = np.abs(vectors).max(axis=1, keepdims=True)
     scale = np.maximum(peak / np.float32(127.0), F32_MIN_POSITIVE).astype(np.float32)
     scale = np.where(peak > 0, scale, np.float32(1.0)).astype(np.float32)
-    q = (vectors / scale).astype(np.float32)
-    codes = (np.floor(np.abs(q) + np.float32(0.5)) * np.sign(q)).clip(-127, 127).astype(np.int8)
+    q = (vectors / scale).astype(np.float32).astype(np.float64)
+    # `f32::round` is half away from zero: the `+ 0.5` and the floor happen in f64, where adding
+    # 0.5 to an f32 value is exact; in f32 the add itself could round (0.49999997 + 0.5 → 1.0).
+    codes = (np.floor(np.abs(q) + 0.5) * np.sign(q)).clip(-127, 127).astype(np.int8)
     norms = np.sqrt((codes.astype(np.int64) ** 2).sum(axis=1)).astype(np.float64) * scale[:, 0].astype(np.float64)
     return codes, scale[:, 0], norms
 

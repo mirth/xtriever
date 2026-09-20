@@ -96,7 +96,11 @@ fn the_same_query_gives_the_same_bits_across_runs_reopens_and_compactions() {
         index = reopened;
         // And the rows recover to what the scheme says they recover to.
         for (i, v) in vectors.iter().enumerate().take(10) {
-            support::assert_recovered(index.vector(DocId(i as u32)), v, &format!("{metric:?} {i}"));
+            support::assert_recovered(
+                index.vector(DocId(i as u32)).unwrap(),
+                v,
+                &format!("{metric:?} {i}"),
+            );
         }
     }
 }

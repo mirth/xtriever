@@ -506,7 +506,7 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     );
     let fresh = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(fresh.len(), 2);
-    assert_eq!(fresh.vector(DocId(2)), Some(vec![0.0, 1.0]));
+    assert_eq!(fresh.vector(DocId(2)).unwrap(), Some(vec![0.0, 1.0]));
 
     // The check applies to no-ops too: a stale handle never reports success over another
     // writer's state.
@@ -533,7 +533,10 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     c.add(DocId(5), &[1.0, 1.0]).unwrap();
     assert!(matches!(c.commit().unwrap_err(), Error::Corrupt(_)));
     assert_eq!(
-        FlatIndex::open(tmp.path()).unwrap().vector(DocId(2)),
+        FlatIndex::open(tmp.path())
+            .unwrap()
+            .vector(DocId(2))
+            .unwrap(),
         None,
         "the delete stands"
     );
@@ -549,7 +552,10 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     assert!(matches!(e.commit().unwrap_err(), Error::Corrupt(_)));
     let fresh = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(
-        (fresh.vector(DocId(6)), fresh.vector(DocId(7)).is_some()),
+        (
+            fresh.vector(DocId(6)).unwrap(),
+            fresh.vector(DocId(7)).unwrap().is_some()
+        ),
         (None, true)
     );
 }

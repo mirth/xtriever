@@ -6,6 +6,6 @@
   "generator_sha256": "bb4c7fe85d5fafd94e981367df1eb79bef2aa452229945c7fd3ea195f3e886aa",
   "python_version": "3.12.12",
   "rescored_by": "reference/gen_026_fixtures.py",
-  "rescored_by_sha256": "1a44b47218afd2a0482e097464c12a344f7e37fac898f3ebc8fdb93bad27cbd7",
+  "rescored_by_sha256": "dabb4099944d705a49aac1b980c00cbf2e8c1ae19ddc0e733a96259d50c31654",
   "schema_version": 1
 }

@@ -255,7 +255,7 @@ proptest! {
         for (id, v) in &committed {
             // What a committed row recovers, not what was added: the stage stores codes and a
             // scale (Feature 026). The oracle quantises the same way, so this is still exact.
-            let got = index.vector(DocId(*id));
+            let got = index.vector(DocId(*id)).unwrap();
             let want = recovered(v);
             prop_assert_eq!(got.as_deref(), Some(want.as_slice()));
         }

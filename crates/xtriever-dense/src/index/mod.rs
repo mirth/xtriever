@@ -315,12 +315,19 @@ impl FlatIndex {
     /// The committed vector stored under `id`, **as the stored row recovers it**: each
     /// component within half a quantisation step (`max|component| / 254`) of what was added,
     /// because a row is eight-bit codes and one scale (Feature 026, ADR-0015) and the floats
-    /// are not kept. `None` if `id` has no live row (pending changes are not visible, as with
-    /// `search`).
-    #[must_use]
-    pub fn vector(&self, id: DocId) -> Option<Vec<f32>> {
-        let r = self.live_row(id)?;
-        Some(self.layout.row_at(self.bytes(), r).collect())
+    /// are not kept. `Ok(None)` if `id` has no live row (pending changes are not visible, as
+    /// with `search`).
+    ///
+    /// # Errors
+    ///
+    /// `Error::Corrupt` if the row's scale or norm is one this engine never writes — the same
+    /// check the scan makes, so a damaged row is refused here rather than recovered as NaN.
+    pub fn vector(&self, id: DocId) -> Result<Option<Vec<f32>>> {
+        let Some(r) = self.live_row(id) else {
+            return Ok(None);
+        };
+        self.checked_row(r, id.0)?;
+        Ok(Some(self.layout.row_at(self.bytes(), r).collect()))
     }
 
     /// Whether this handle was opened read-only (`open_read_only*`): every mutation is refused
@@ -965,19 +972,13 @@ impl VectorIndex for FlatIndex {
         // The metric was decided by `validate_query`; each arm is one loop over the rows with
         // nothing to decide per row (review finding 5).
         let scored = match &q {
-            search::Query::Dot(codes) => self.scan(allowed, |r| {
-                search::dot_score(codes, layout.codes_at(bytes, r), layout.scale_at(bytes, r))
+            search::Query::Dot(codes) => self.scan(allowed, |r, scale, _| {
+                search::dot_score(codes, layout.codes_at(bytes, r), scale)
             }),
-            search::Query::Cosine { codes, norm } => self.scan(allowed, |r| {
-                search::cosine_score(
-                    codes,
-                    *norm,
-                    layout.codes_at(bytes, r),
-                    layout.scale_at(bytes, r),
-                    layout.norm_at(bytes, r),
-                )
+            search::Query::Cosine { codes, norm } => self.scan(allowed, |r, scale, row_norm| {
+                search::cosine_score(codes, *norm, layout.codes_at(bytes, r), scale, row_norm)
             }),
-            search::Query::Euclidean(vector) => self.scan(allowed, |r| {
+            search::Query::Euclidean(vector) => self.scan(allowed, |r, _, _| {
                 search::euclidean_score(vector, layout.row_at(bytes, r))
             }),
         }?;
@@ -990,26 +991,42 @@ impl VectorIndex for FlatIndex {
 }
 
 impl FlatIndex {
-    /// Every live, allowed row as `(score_row(r), id)`, checking each row's stored scale and
-    /// norm on the way: a scale that is not a normal positive number, or a norm that is not
-    /// finite (or, under Cosine, not positive), was never written by this engine, and rather
-    /// than score it — a NaN would make the order arbitrary — the scan refuses the row file as
-    /// corrupt (contract "Refusals"). This is where the check lives because an open reads
-    /// nothing beyond the manifest (Feature 024); the scan is the first reader of a row.
-    fn scan(
-        &self,
-        allowed: Option<&DocSet>,
-        mut score_row: impl FnMut(usize) -> f32,
-    ) -> Result<Vec<(f32, u32)>> {
+    /// Row `r`'s stored scale and norm, checked: a scale that is not a normal positive number,
+    /// or a norm that is not finite (or, under Cosine, not positive), was never written by
+    /// this engine, and rather than score or recover it — a NaN would make the order arbitrary
+    /// — the reader refuses the row file as corrupt (contract "Refusals"). The check lives at
+    /// the readers rather than at open because an open reads nothing beyond the manifest
+    /// (Feature 024); the scan and `vector` are the first readers of a row.
+    fn checked_row(&self, r: usize, id: u32) -> Result<(f32, f32)> {
         let bytes = self.bytes();
-        let layout = self.layout;
-        let no_dead = self.dead.is_empty();
+        let scale = self.layout.scale_at(bytes, r);
+        let norm = self.layout.norm_at(bytes, r);
         // A cosine row's norm is at least its scale (one code is ±127), so at least the floor.
         let least_norm = if self.metric() == Metric::Cosine {
             f32::MIN_POSITIVE
         } else {
             0.0
         };
+        if !(scale.is_normal() && scale > 0.0 && norm.is_finite() && norm >= least_norm) {
+            return Err(corrupt(format!(
+                "{} row {r} (id {id}) has scale {scale:e} and norm {norm:e}, which this engine \
+                 never writes",
+                format::row_file(self.header.generation)
+            )));
+        }
+        Ok((scale, norm))
+    }
+
+    /// Every live, allowed row as `(score_row(r, scale, norm), id)`, with the row's scale and
+    /// norm decoded and checked once ([`Self::checked_row`]) and handed to the scorer.
+    fn scan(
+        &self,
+        allowed: Option<&DocSet>,
+        mut score_row: impl FnMut(usize, f32, f32) -> f32,
+    ) -> Result<Vec<(f32, u32)>> {
+        let bytes = self.bytes();
+        let layout = self.layout;
+        let no_dead = self.dead.is_empty();
         let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
         for r in 0..layout.count {
             if !no_dead && self.dead.contains(r as u32) {
@@ -1019,16 +1036,8 @@ impl FlatIndex {
             if allowed.is_some_and(|set| !set.contains(DocId(id))) {
                 continue;
             }
-            let scale = layout.scale_at(bytes, r);
-            let norm = layout.norm_at(bytes, r);
-            if !(scale.is_normal() && scale > 0.0 && norm.is_finite() && norm >= least_norm) {
-                return Err(corrupt(format!(
-                    "{} row {r} (id {id}) has scale {scale:e} and norm {norm:e}, which this \
-                     engine never writes",
-                    format::row_file(self.header.generation)
-                )));
-            }
-            scored.push((score_row(r), id));
+            let (scale, norm) = self.checked_row(r, id)?;
+            scored.push((score_row(r, scale, norm), id));
         }
         Ok(scored)
     }

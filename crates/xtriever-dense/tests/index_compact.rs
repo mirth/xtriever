@@ -129,11 +129,11 @@ fn compact_commits_pending_changes_first() {
     index.compact().unwrap();
     assert_eq!(index.len(), 52);
     support::assert_recovered(
-        index.vector(DocId(200)),
+        index.vector(DocId(200)).unwrap(),
         &vec_for(200),
         "row 200 after compaction",
     );
-    assert_eq!(index.vector(DocId(0)), None);
+    assert_eq!(index.vector(DocId(0)).unwrap(), None);
     assert_eq!(index.stats().dead, 0);
 }
 
@@ -290,16 +290,20 @@ fn a_threshold_commit_is_one_protocol_that_fails_whole() {
         "nothing reached disk"
     );
     assert_eq!(index.len(), 10, "the handle is unchanged");
-    assert_eq!(index.vector(DocId(20)), None, "the add is still pending");
+    assert_eq!(
+        index.vector(DocId(20)).unwrap(),
+        None,
+        "the add is still pending"
+    );
     index.set_compaction_threshold(None).unwrap();
     index.commit().unwrap(); // the append protocol, same pending changes
     assert_eq!(index.len(), 10);
     support::assert_recovered(
-        index.vector(DocId(20)),
+        index.vector(DocId(20)).unwrap(),
         &vec_for(20),
         "row 20 after the append protocol",
     );
-    assert_eq!(index.vector(DocId(1)), None);
+    assert_eq!(index.vector(DocId(1)).unwrap(), None);
     assert_eq!(index.stats().dead, 1);
 }
 
