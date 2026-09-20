@@ -54,9 +54,11 @@ scripts/build-android-package.sh --with-fixtures
 ```
 
 Expected: the native library is built for `arm64-v8a`, the Kotlin bindings are generated from
-that library, the 40-document fixture index and its goldens are staged, and the parity test
-passes — every hit and every score bit equal to `swift/Xtriever/Tests/Fixtures/expected.json`
-at re-rank depths 0, 5, 10 and 20 (SC-001).
+that library, the 40-document fixture index and its goldens are staged, and the parity suite
+passes against `swift/Xtriever/Tests/Fixtures/expected.json` by the FR-004 rule — identifiers,
+order, lexical bits and fused bits identical, dense and re-rank scores within 1e-3 (SC-001).
+The goldens carry one re-rank depth per query, which is the depth they are replayed at; depth 0
+is checked against the no-re-ranker goldens.
 
 Two checks worth running once by hand, because both have bitten already:
 
@@ -64,7 +66,7 @@ Two checks worth running once by hand, because both have bitten already:
 "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-nm" \
     android/xtriever/src/main/jniLibs/arm64-v8a/libxtriever_ffi.so | grep -c UNIFFI_META   # must be > 0
 "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf" -l \
-    android/xtriever/src/main/jniLibs/arm64-v8a/libxtriever_ffi.so | grep -m1 LOAD          # alignment 0x4000
+    android/xtriever/src/main/jniLibs/arm64-v8a/libxtriever_ffi.so | awk '/LOAD/ {print $NF}' | sort -u   # only 0x4000
 ```
 
 ## Step 3 — the application (PR B)
@@ -98,7 +100,8 @@ extraction.
 Run the twenty measurement queries on the emulator and write the record under
 `specs/025-android-kotlin-demo/runs/`, in the shape `contracts/records.md` fixes. It must carry
 `emulated: true` and the sentence bounding what it claims. Compare its answers with the host's
-for the same corpus and queries: every score bit identical (SC-003). Peak memory is recorded
+for the same corpus and queries by the same rule as SC-001 — identifiers, order, lexical and
+fused bits identical, model scores within 1e-3 (SC-003). Peak memory is recorded
 with the 600 MB phone ceiling quoted beside it, for comparison only (SC-004).
 
 ## Step 6 — the gate (Rule 5)

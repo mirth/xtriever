@@ -28,8 +28,8 @@ that gap twice over: a library module another Android project can depend on, and
 shows the pipeline working on a phone exactly as the iOS demo does.
 
 The claim is measured, not asserted. The engine's results on Android must equal the host's
-bit for bit for the same index and query, checked against the same 40-document fixture
-goldens the Swift package is checked against, and the demo's latency and footprint are
+by the project's cross-device rule for the same index and query, checked against the same
+40-document fixture goldens the Swift package is checked against, and the demo's latency and footprint are
 recorded in the same shape as 009's and 019's records rather than described in prose — on an
 emulator for this feature, which the record states and which bounds what those figures mean.
 
@@ -224,8 +224,12 @@ its parity verdict is a pass computed by the same rule the iOS and Python record
 - **FR-012**: The application MUST own no retrieval logic. Every number it displays MUST be
   the engine's own or a wall clock around a single engine call.
 - **FR-013**: An automated test running on an Android device or emulator MUST open the
-  40-document fixture index and reproduce its committed goldens bit for bit at every re-rank
-  depth.
+  40-document fixture index and reproduce its committed goldens by the FR-004 rule — exact
+  identifiers, order, lexical bits and fused bits; model scores within 1e-3. The goldens carry
+  one re-rank depth per query, so that is the depth replayed against them; depth 0 is covered
+  separately, by requiring that an attached re-ranker at depth 0 reproduces the goldens'
+  no-re-ranker answer. Coverage of further depths needs per-depth goldens minted on the host,
+  which is outside this feature.
 - **FR-014**: The feature MUST NOT change the engine's ranking behaviour: no change to any
   stage crate's logic, to the on-disk formats, or to any committed baseline. Build
   configuration needed to produce an Android library is not a ranking change.
@@ -265,10 +269,10 @@ its parity verdict is a pass computed by the same rule the iOS and Python record
 ### Measurable Outcomes
 
 - **SC-001**: On a supported device, every one of the eight fixture queries returns the
-  goldens' hits in the goldens' order at all four re-rank depths, with every lexical and fused
-  score bit identical and every model-computed score within 1e-3 (FR-004). Measured maxima are
-  recorded, so a drift larger than the one established on 2026-09-20 is visible rather than
-  absorbed.
+  goldens' hits in the goldens' order — at the depth each golden records, and at depth 0
+  against the no-re-ranker goldens — with every lexical and fused score bit identical and every
+  model-computed score within 1e-3 (FR-004). Measured maxima are recorded, so a drift larger
+  than the one established on 2026-09-20 is visible rather than absorbed.
 - **SC-002**: A person with the application installed and the network disabled receives
   passages for a typed question, with the fused list visible before the re-ranked one.
 - **SC-003**: The measured run over the twenty measurement queries reports a parity pass

@@ -8,8 +8,10 @@ and nothing generated is committed.
 
 **The proof is the existing oracle.** `swift/Xtriever/Tests/Fixtures/expected.json` — the
 goldens the Swift package is checked against, minted on the host — replayed on an ARM emulator
-at re-rank depths 0, 5, 10 and 20, with and without the re-ranker. Five instrumented tests,
-all passing.
+with and without the re-ranker, at the re-rank depth each golden query records (the fixture
+mints them all at 5, as the Swift parity tests also replay them), plus depth 0 checked against
+the no-re-ranker goldens. Six instrumented tests, all passing. Per-depth goldens would widen
+this, and would change the fixture the Swift tests share; that is noted, not done here.
 
 **Two things the link attempt found, both now asserted by the script.** The build stops at
 `gemm-f16` with `instruction requires: fullfp16` unless half precision is enabled, because the

@@ -134,10 +134,12 @@ and a device's core count is not the laptop's. Nothing in the demo should pin it
 ## D10 — What the tests are, and where they run
 
 **Decision**: instrumented tests on the emulator. PR A's is the oracle: open the 40-document
-fixture index staged by the script and compare every hit and score bit with
-`swift/Xtriever/Tests/Fixtures/expected.json` at re-rank depths 0, 5, 10 and 20. PR B's mirror
-the iOS demo's model tests — marks, settings persistence, preparation recovery, empty query,
-cancellation.
+fixture index staged by the script and compare against `swift/Xtriever/Tests/Fixtures/expected.json`
+by the FR-004 split — identifiers, order, lexical bits and fused bits exact; dense and re-rank
+scores within 1e-3. The goldens carry one depth per query (5), which is what they can be
+replayed at; depth 0 is covered by requiring an attached re-ranker at depth 0 to reproduce the
+no-re-ranker goldens. PR B's tests mirror the iOS demo's model tests — marks, settings
+persistence, preparation recovery, empty query, cancellation.
 
 **Rationale**: the goldens are committed, cross-platform and already the oracle for Swift;
 reusing them makes "Android agrees with the host" a one-file comparison rather than a new

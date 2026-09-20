@@ -78,7 +78,8 @@ the compiler asks for. The effect on this surface is that `e.message` is the eng
 ./gradlew :android:xtriever:connectedAndroidTest     # needs a running ARM emulator or a device
 ```
 
-Five tests: the goldens replayed at four re-rank depths with and without the re-ranker, the
-index information, the processor requirement, and the parity census. The goldens are
+Six tests: the goldens replayed with and without the re-ranker at the depth each golden
+records, depth 0 checked against the no-re-ranker goldens, the index information, the processor
+requirement, and the parity census. The goldens are
 `swift/Xtriever/Tests/Fixtures/expected.json`, the same file the Swift package is checked
 against, minted on the host.

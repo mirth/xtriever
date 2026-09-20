@@ -60,7 +60,8 @@ user story can run until this works.
 
 ## Phase 3: User Story 1 — The engine answers a query on Android through Kotlin (Priority: P1) 🎯 MVP
 
-**Goal**: a reusable module whose answers equal the host's, bit for bit.
+**Goal**: a reusable module whose answers equal the host's — identifiers, order, lexical and
+fused bits exact, model scores within 1e-3 (FR-004).
 
 **Independent Test**: `./gradlew :android:xtriever:connectedAndroidTest` on the `xtriever-arm64`
 emulator reproduces `swift/Xtriever/Tests/Fixtures/expected.json` at re-rank depths 0, 5, 10
@@ -68,7 +69,7 @@ and 20.
 
 ### Tests for User Story 1 (written first, committed failing) ⚠️
 
-- [X] T008 [US1] Write `android/xtriever/src/androidTest/kotlin/.../FixtureParityTest.kt`: open the staged 40-document fixture index, run its eight golden queries at depths 0 / 5 / 10 / 20, and assert every hit identifier and every score bit equals `swift/Xtriever/Tests/Fixtures/expected.json`; run it and record that it fails because the module does not exist yet (Rule 4, quickstart Step 1)
+- [X] T008 [US1] Write `android/xtriever/src/androidTest/kotlin/.../FixtureParityTest.kt`: open the staged 40-document fixture index, run its eight golden queries at the depth each golden carries and at depth 0 against the no-re-ranker goldens, and assert the FR-004 rule against `swift/Xtriever/Tests/Fixtures/expected.json` — identifiers, order, lexical bits and fused bits exact, dense and re-rank scores within 1e-3; run it and record that it fails because the module does not exist yet (Rule 4, quickstart Step 1)
 
 ### Implementation for User Story 1
 
@@ -144,7 +145,7 @@ equal what the engine and the sidecar report; a chosen depth survives a restart.
 
 - [ ] T034 [US4] Write the measurement run — the twenty queries of `reference/fixtures/008/queries.json` at depths 0 / 5 / 10 / 20 on the bundled corpus — as an instrumented test that emits its numbers
 - [ ] T035 [US4] Write the record to `specs/025-android-kotlin-demo/runs/` per [contracts/records.md](contracts/records.md): `emulated: true`, the `claims` sentence, the emulated device and image, the host, the API level, the thread count and its source, per-depth medians and maxima, peak memory with the 600 MB phone ceiling quoted for comparison only
-- [ ] T036 [US4] Compare the run recorded under `specs/025-android-kotlin-demo/runs/` with the host's answers for the same corpus and queries — every score bit identical (SC-003) — and record the verdict; a failure is a stop-and-report
+- [ ] T036 [US4] Compare the run recorded under `specs/025-android-kotlin-demo/runs/` with the host's answers for the same corpus and queries by the FR-004 rule (SC-003) — identifiers, order, lexical and fused bits exact, model scores within 1e-3 — and record the verdict; a failure is a stop-and-report
 
 ---
 

@@ -14,14 +14,29 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * Feature 025, User Story 1 (spec FR-004, SC-001): the engine's answers on Android equal the
- * host's, bit for bit.
+ * Feature 025, User Story 1 (spec FR-004, SC-001): the engine's answers on Android match the
+ * host's by the project's cross-device rule.
  *
  * The oracle is not a new fixture. It is `swift/Xtriever/Tests/Fixtures/expected.json` — the
  * same file the Swift package is checked against, minted on the host by
  * `crates/xtriever-ffi/examples/fixture_index.rs` — staged into this module's test assets by
- * `scripts/build-android-package.sh --with-fixtures`. Every hit identifier and every score bit
- * is compared; nothing here has a tolerance to widen (Agent Operating Rule 6).
+ * `scripts/build-android-package.sh --with-fixtures`.
+ *
+ * **What is exact and what is not.** Hit identifiers, their order, the lexical score bits and
+ * the fused score bits are compared bit for bit: they come from pure Rust and from rank
+ * arithmetic, and no compilation target may move them. The two model-computed scores — dense
+ * and re-rank — are compared within [TOLERANCE], because the inference engine's matrix kernels
+ * round their reductions differently when compiled for this target (spec FR-004, owner's
+ * decision 2026-09-20; measured gaps 1.3e-7 and 3.3e-6). [ParityCensusTest] prints the census
+ * on every run, so drift beyond that is visible rather than absorbed. Neither side of this
+ * split may be loosened to make a run pass (Agent Operating Rule 6).
+ *
+ * **What the goldens cover.** Each of the eight queries carries one re-rank depth — 5 — so
+ * that is the depth this file replays against them, exactly as the Swift package's own parity
+ * tests do. Depth 0 is covered too, by a different route: with the re-ranker attached but
+ * `rerankDepth = 0` the stage must not run, so the answer must equal the goldens' no-re-ranker
+ * case. Depths 10 and 20 have no goldens on any platform; covering them needs per-depth
+ * goldens minted on the host, which would change the fixture the Swift tests share.
  */
 @RunWith(AndroidJUnit4::class)
 class FixtureParityTest {
@@ -90,6 +105,7 @@ class FixtureParityTest {
 
     @Test
     fun hitsEqualTheGoldensWithTheReranker() {
+        // Each golden query carries its own re-rank depth; the fixture mints them all at 5.
         openFixture(withReranker = true).use { index ->
             forEachQuery { query ->
                 val response = index.search(
@@ -117,6 +133,24 @@ class FixtureParityTest {
                 assertParity(response, query.getJSONObject("without_reranker"), "${query.getString("id")} without re-ranker")
                 assertNull(query.getString("id"), response.stages.rerank)
                 assertTrue(response.hits.all { it.rerankScore == null })
+            }
+        }
+    }
+
+    @Test
+    fun depthZeroEqualsTheNoRerankerGoldens() {
+        // The re-ranker is attached and must still not run: the engine's answer at depth 0 is
+        // the fused list, which is what the no-re-ranker goldens hold.
+        openFixture(withReranker = true).use { index ->
+            forEachQuery { query ->
+                val response = index.search(
+                    query.getString("text"),
+                    k = query.getInt("k"),
+                    rerankDepth = 0,
+                    explain = true,
+                )
+                assertParity(response, query.getJSONObject("without_reranker"), "${query.getString("id")} at depth 0")
+                assertTrue("${query.getString("id")}: no hit may carry a re-rank score", response.hits.all { it.rerankScore == null })
             }
         }
     }

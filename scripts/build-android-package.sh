@@ -83,12 +83,19 @@ if [[ "$meta" -eq 0 ]]; then
     echo "the build profile stripped them; Cargo.toml's [profile.android] must keep symbols." >&2
     exit 1
 fi
-align=$("$ndk_bin/llvm-readelf" -l "$lib" 2>/dev/null | awk '/LOAD/ {print $NF; exit}')
-if [[ "$align" != "0x4000" ]]; then
-    echo "loadable segments are aligned at $align, not 0x4000 — Android 15 requires 16 KB pages." >&2
+# Every loadable segment, not just the first: one 4 KB-aligned segment later in the file is
+# enough for Android 15 to refuse the library.
+aligns=$("$ndk_bin/llvm-readelf" -l "$lib" 2>/dev/null | awk '/LOAD/ {print $NF}')
+[[ -n "$aligns" ]] || { echo "no LOAD segments in $lib" >&2; exit 1; }
+bad=$(echo "$aligns" | grep -vc '^0x4000$' || true)
+if [[ "$bad" -ne 0 ]]; then
+    echo "$bad of $(echo "$aligns" | wc -l | tr -d ' ') loadable segments are not aligned at 0x4000:" >&2
+    echo "$aligns" | sort | uniq -c >&2
+    echo "Android 15 requires 16 KB pages." >&2
     exit 1
 fi
-printf '    %-28s %s metadata symbols, segments aligned at %s\n' "checks" "$meta" "$align"
+printf '    %-28s %s metadata symbols, %s loadable segments all aligned at 0x4000\n' \
+    "checks" "$meta" "$(echo "$aligns" | wc -l | tr -d ' ')"
 
 echo "==> generating the Kotlin bindings"
 rm -rf "${generated:?}/uniffi"
