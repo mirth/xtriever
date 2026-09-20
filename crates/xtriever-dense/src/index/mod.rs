@@ -1002,6 +1002,13 @@ impl FlatIndex {
     /// — the reader refuses the row file as corrupt (contract "Refusals"). The check lives at
     /// the readers rather than at open because an open reads nothing beyond the manifest
     /// (Feature 024); the scan and `vector` are the first readers of a row.
+    ///
+    /// The codes are **not** checked: the format carries no checksum, so a damaged code byte
+    /// is indistinguishable from a written one whatever its value, and a check for the one
+    /// value the engine never writes (`0x80`, −128) would cost a pass over every row's codes
+    /// to catch one damage pattern in 256. The reader takes the byte as −128; the dimension
+    /// bound (`quantise::MAX_DIM`) counts it so the accumulator cannot overflow; the contract
+    /// says so.
     fn checked_row(&self, r: usize, id: u32, least_norm: f32) -> Result<(f32, f32)> {
         let bytes = self.bytes();
         let scale = self.layout.scale_at(bytes, r);

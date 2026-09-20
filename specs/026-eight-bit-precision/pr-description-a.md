@@ -117,6 +117,29 @@ corpora by the study and re-measured by PR B's three-dataset gate.
 6. The eval cache is `<dataset>/{cache.json, vectors.f32.bin, index/}`: the float sidecar sits
    beside the dense crate's directory, not inside it, so no future sweep can remove it.
 
+**Copilot on PR A** (six comments):
+
+1. The pipeline checker scored only the ids the committed golden listed, so a document that
+   rose under quantisation could never enter. It now scores every document the query's filter
+   admits, breaks ties by ingestion order as the stage does, and cuts at the golden's depth;
+   the committed goldens still pass.
+2. The reader accepts a row byte of −128 rather than refusing it. Deliberate, and now stated in
+   the contract: the format has no checksum over codes, a damaged byte is indistinguishable
+   from a written one whatever its value, and refusing the one value the engine never writes
+   would cost a pass over every row for one damage pattern in 256. The dimension bound already
+   counts that byte (round 2).
+3. `info.format_version == 2` in the Python test and `"format_version": 2` in the fixture
+   goldens are the **pipeline descriptor's** version (`xtriever-pipeline` `FORMAT_VERSION`),
+   which this feature does not change; the dense manifest is the one that moved to 3. The
+   fixture goldens were re-minted in round 2 and carry format-3 score bits.
+4. The quickstart's gate commands evaluated float weights: they now pass the eight-bit
+   artefacts' pinned directories, with a note that T023 makes them the default.
+5. The quickstart ran `hybrid-rerank-v2`; it runs `v3`, the configuration this description
+   reports.
+6. The packagers stage float directories by name, so no rebuild could ship the eight-bit
+   artefacts: **T027a added** to PR B's plan for both packagers and both loaders, and the
+   quickstart says so.
+
 **Evaluation, all three datasets, this build against the committed baselines.** Every delta is
 inside the 0.005 bound; no metric on any dataset dropped by more than 0.001. Recall@100 is
 unchanged everywhere except NFCorpus, where it rose by 0.0003.

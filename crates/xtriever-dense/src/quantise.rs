@@ -33,7 +33,8 @@ pub(crate) const MAX_DIM: usize = (i32::MAX / (127 * 128)) as usize;
 /// A quantised vector: the codes, and the scale that recovers them.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Quantised {
-    /// One code per dimension, each in `-127..=127`.
+    /// One code per dimension, each in `-127..=127` as written; a reader takes a row byte of
+    /// `0x80` as −128 (see [`MAX_DIM`]).
     pub codes: Vec<i8>,
     /// A normal, strictly positive `f32`. Multiply a code by this to recover the component.
     pub scale: f32,

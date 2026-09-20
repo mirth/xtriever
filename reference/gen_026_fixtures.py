@@ -107,23 +107,50 @@ def rescore_mutations(document: dict) -> int:
     return changed
 
 
+def resolve_filter(filter_: dict | None, docs: list[dict]) -> set[str] | None:
+    """The query's filter as `gen_005_fixtures.py` resolves it: the allowed external ids, or
+    `None` for no filter. Restated here because that generator imports numpy and this checker
+    must stay standard-library for CI."""
+    if filter_ is None:
+        return None
+    (kind, payload), = filter_.items()
+    if kind == "Eq":
+        field, value = payload
+        (_, val), = value.items()
+        return {d["external_id"] for d in docs if d["fields"].get(field, {}).get("Keyword") == val}
+    if kind == "In":
+        field, values = payload
+        vals = {list(v.values())[0] for v in values}
+        return {d["external_id"] for d in docs if d["fields"].get(field, {}).get("Keyword") in vals}
+    if kind == "Not":
+        inner = resolve_filter(payload, docs)
+        return {d["external_id"] for d in docs} - inner
+    raise ValueError(kind)
+
+
 def rescore_pipeline(document: dict) -> int:
     """The pipeline fixture's expected dense scores, recomputed under format 3.
 
     The hybrid fixture carries its own document vectors and a query vector per case, and the
-    dense stage there is cosine over unit-length vectors. Fusion is untouched: reciprocal rank
-    fusion reads ranks, not scores, so the fused expectations move only if a rank moves — and
-    the test asserts that too, which is the point of recomputing rather than loosening.
+    dense stage there is cosine over unit-length vectors. Every document the query's *filter*
+    admits is scored — not just the ids the committed golden lists, which would let a stale
+    ranking pass (Copilot, PR A) — and the ranking is cut at the golden's depth. Fusion is
+    untouched: reciprocal rank fusion reads ranks, not scores, so the fused expectations move
+    only if a rank moves — and the test asserts that too, which is the point of recomputing
+    rather than loosening.
     """
-    rows = {doc["external_id"]: Prepared(doc["vector"]) for doc in document["documents"]}
+    docs = document["documents"]
+    rows = {doc["external_id"]: Prepared(doc["vector"]) for doc in docs}
+    # The stage breaks ties by ascending *internal* id — ingestion order, the position in `docs`.
+    order = {doc["external_id"]: i for i, doc in enumerate(docs)}
     changed = 0
     for query in document["queries"]:
         q = Prepared(query["vector"])
-        scores = {i: score("cosine", q, v) for i, v in rows.items()}
-        wanted = [entry["id"] for entry in query["expected_dense"]]
-        recomputed = [
-            {"id": i, "score": s} for i, s in ranked(scores, set(wanted))[: len(wanted)]
-        ]
+        allowed = resolve_filter(query.get("filter"), docs)
+        scores = {i: score("cosine", q, v) for i, v in rows.items() if allowed is None or i in allowed}
+        depth = len(query["expected_dense"])
+        by_score = sorted(scores.items(), key=lambda pair: (-pair[1], order[pair[0]]))
+        recomputed = [{"id": i, "score": s} for i, s in by_score[:depth]]
         if recomputed != query["expected_dense"]:
             changed += 1
             query["expected_dense"] = recomputed

@@ -30,7 +30,11 @@ dimension 384.
   that it is always a normal, strictly positive number: a denormal peak would otherwise store a
   zero scale that no reader could tell from corruption.
 - `codes` are `component / scale` rounded **half away from zero** and clamped to [−127, 127];
-  −128 is never written.
+  −128 is never written. A reader takes a row byte of −128 as the code −128 and scores it: the
+  format carries no checksum over the codes, so a damaged code byte is indistinguishable from a
+  written one whatever its value, and refusing the one value the engine never writes would
+  cost a pass over every row to catch one damage pattern in 256. The dimension bound below
+  counts that byte, so the integer accumulator cannot overflow on it.
 - `norm` is the norm of the row **as stored** — `sqrt(Σ code²) × scale` — not of the floats that
   were added, which are not kept. Cosine divides by it and by the same norm of the quantised
   query, so it is the cosine of what is actually compared: a row's cosine with itself is one,
@@ -51,6 +55,7 @@ dimension 384.
 | a row count inconsistent with the file length | refused as corrupt at open, as in version 2 |
 | a scale that is not a normal positive number (zero, denormal, negative, infinite, NaN) | refused as corrupt **by the first reader that reaches the row** — a search, or `vector(id)` on that row: it cannot have been written by this engine, and a NaN score would make the order arbitrary |
 | a norm that is not finite, or under Cosine not positive | the same |
+| a damaged code byte | **not detected** (no checksum): the row scores with the damaged code, including −128 |
 
 The last two are caught by the readers rather than at open because an open reads nothing beyond
 the manifest (Feature 024): a read-only open of a shipped index must not page in every row. A

@@ -51,16 +51,26 @@ refused by checksum, and a re-ranker artefact without a classification head is r
 ## Step 4 — the quality gate (FR-009, SC-004)
 
 ```bash
+# The eight-bit artefacts, by their pinned directories (`local_dir` in reference/models/manifest-q8.json
+# and manifest-rerank-q8.json). After T023 the manifest-named artefact is the default and the two
+# flags are redundant; until then they are what selects the eight-bit models — without them, beir
+# evaluates the float weights (Copilot, PR A).
 for d in scifact nfcorpus fiqa; do
   cargo run --release -p xtriever-eval --example beir -- run --dataset $d --config dense-baseline-v1 \
+      --model-dir reference/models/all-MiniLM-L6-v2-q8 \
       --cache-dir target/xt-dense-cache --out target/026-dense.$d.json
-  cargo run --release -p xtriever-eval --example beir -- run --dataset $d --config hybrid-rerank-v2 \
+  cargo run --release -p xtriever-eval --example beir -- run --dataset $d --config hybrid-rerank-v3 \
+      --model-dir reference/models/all-MiniLM-L6-v2-q8 --rerank-model-dir reference/models/ms-marco-MiniLM-L-6-v2-q8 \
       --cache-dir target/xt-dense-cache --out target/026-rerank.$d.json
 done
 ```
 
+`hybrid-rerank-v3` is the current re-rank rule (Feature 015) and the configuration PR A's
+description reports; the same three configurations PR A ran on float weights
+(`dense-baseline-v1`, `hybrid-baseline-v2`, `hybrid-rerank-v3`) are what PR B compares.
+
 About two hours, nearly all of it embedding FiQA. Every cache must be rebuilt first, because a
-different embedder invalidates every cached vector. Compare each result with its committed
+different embedder invalidates every cached vector (the cache key carries the fingerprint). Compare each result with its committed
 baseline: **no dataset may fall more than 0.005 below it on nDCG@10 or Recall@100**. A larger
 drop stops the feature and is reported; it is never answered by moving the threshold.
 
@@ -69,9 +79,14 @@ drop stops the feature and is reported; it is never answered by moving the thres
 ```bash
 cargo run --release -p xtriever-cli -- wiki build --out target/xt-wiki-q8      # hours
 cargo run --release -p xtriever-cli -- wiki expected --index target/xt-wiki-q8/index --out target/xt-wiki-q8/expected.json
-scripts/build-ios-package.sh --with-models --with-fixtures
+scripts/build-ios-package.sh --with-models --with-fixtures     # after T027a: stages the eight-bit artefacts
 apps/python-wiki-demo/.venv/bin/wikidemo build --limit 2000 --out target/xt-wiki-slice-q8
 ```
+
+Both packagers (`build-ios-package.sh --with-models`, `build-android-package.sh`) stage the
+float directories by name today; T027a teaches them the eight-bit artefacts and the tokenizer
+they borrow from the float directory (`tokenizer_from`). Until it lands, a packaged app ships
+float weights whatever the index was built with (Copilot, PR A).
 
 Then the demonstrations' own checks: the Python measurement against the new goldens, the Android
 module's parity test against the regenerated fixture, and the iOS simulator tests.
