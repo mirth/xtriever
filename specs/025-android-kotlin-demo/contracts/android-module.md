@@ -47,10 +47,18 @@ The surface the generated bindings expose, unchanged from Swift and Python:
 
 ## Determinism
 
-The same index, query and configuration give the same hits in the same order with the same
-score bits as the same index gives on the host (FR-004). This is the module's central promise
-and its test: the committed `swift/Xtriever/Tests/Fixtures/expected.json`, replayed on the
-device at re-rank depths 0, 5, 10 and 20.
+The same index, query and configuration give the same hits in the same order as on the host,
+with the lexical and fused score bits identical and the model-computed scores — dense and
+re-rank — within 1e-3 per document (FR-004, the rule Features 009 and 019 already apply across
+devices). This is the module's central promise and its test: the committed
+`swift/Xtriever/Tests/Fixtures/expected.json`, replayed on the device at re-rank depths 0, 5,
+10 and 20.
+
+The two model stages cannot promise more across compilation targets: their arithmetic runs
+through matrix kernels compiled for this target with half precision enabled, which round their
+reductions differently. Measured on 2026-09-20 over 80 hits per mode: identifiers, order, BM25
+bits and fused bits identical; dense scores differing by at most 1.3e-7, re-rank scores by at
+most 3.3e-6 — four orders of magnitude inside the tolerance.
 
 ## Errors
 

@@ -46,15 +46,17 @@ request. Without it there is no demo to build; with it alone, an Android develop
 already embed the engine.
 
 **Independent Test**: An instrumented test on an emulator opens the 40-document fixture
-index staged by the packaging script, runs the eight golden queries at every re-rank depth
-and compares each hit and score bit with `swift/Xtriever/Tests/Fixtures/expected.json` — the
-goldens the Swift package already uses.
+index staged by the packaging script, runs the eight golden queries at every re-rank depth and
+compares the result with `swift/Xtriever/Tests/Fixtures/expected.json` — the goldens the Swift
+package already uses — by the FR-004 rule: identifiers, order, lexical bits and fused bits
+exact, model scores within 1e-3.
 
 **Acceptance Scenarios**:
 
 1. **Given** the module and the fixture index on a supported device, **When** the eight
-   golden queries run at depths 0 / 5 / 10 / 20, **Then** every hit identifier and every
-   score bit equals the goldens.
+   golden queries run at depths 0 / 5 / 10 / 20, **Then** the hit identifiers and their order
+   equal the goldens, every lexical and fused score bit equals the goldens, and each dense and
+   re-rank score is within 1e-3 of the goldens (FR-004).
 2. **Given** the module, **When** a caller opens an index whose dense stage is format
    version 1, **Then** the engine's own error reaches Kotlin as a typed, catchable failure
    naming the rebuild, not a crash.
@@ -187,8 +189,17 @@ its parity verdict is a pass computed by the same rule the iOS and Python record
 - **FR-003**: Bindings, native library and staged resources MUST be produced from source by a
   single documented command; nothing generated may be committed, as the Swift package's
   bindings are not.
-- **FR-004**: The engine's answers on Android MUST be identical to the host's for the same
-  index, query and configuration — every hit identifier and every score bit.
+- **FR-004**: The engine's answers on Android MUST match the host's for the same index, query
+  and configuration by the project's cross-device parity rule (Features 009 and 019): hit
+  identifiers and their order identical, lexical score bits exact, fused score bits identical,
+  and the model-computed scores — dense and re-rank — within 1e-3 per document. **Owner's
+  decision (2026-09-20)**, on measured evidence from the emulator: over 80 hits per mode the
+  identifiers, the order, every BM25 bit and every fused bit were identical, while 67 of 80
+  dense scores differed by at most 1.3e-7 and 32 of 80 re-rank scores by at most 3.3e-6. Those
+  two stages run through the inference engine's matrix kernels, which are compiled for this
+  target with half precision enabled and round their reductions differently from the host, so
+  bit-identity is not available there. The ranking — what a person sees — is bit-identical, and
+  that is what this requirement pins.
 - **FR-005**: The demo MUST search its bundled corpus with no network call in the retrieval
   path, and MUST work with the device offline.
 - **FR-006**: The demo MUST show the fused list first and the re-ranked order second, with a
@@ -253,12 +264,16 @@ its parity verdict is a pass computed by the same rule the iOS and Python record
 
 ### Measurable Outcomes
 
-- **SC-001**: On a supported device, every one of the eight fixture queries returns hits
-  identical to the committed goldens — 100 % of score bits, at all four re-rank depths.
+- **SC-001**: On a supported device, every one of the eight fixture queries returns the
+  goldens' hits in the goldens' order at all four re-rank depths, with every lexical and fused
+  score bit identical and every model-computed score within 1e-3 (FR-004). Measured maxima are
+  recorded, so a drift larger than the one established on 2026-09-20 is visible rather than
+  absorbed.
 - **SC-002**: A person with the application installed and the network disabled receives
   passages for a typed question, with the fused list visible before the re-ranked one.
 - **SC-003**: The measured run over the twenty measurement queries reports a parity pass
-  against the host's answers for the same corpus, every score bit identical.
+  against the host's answers for the same corpus, by the same rule as SC-001 — the rule the
+  iPhone's own records are judged by.
 - **SC-004**: Peak memory during a search over the bundled corpus is recorded. The project's
   600 MB phone ceiling is reported beside it for comparison only; this feature measures an
   emulator and claims nothing about a physical device.
@@ -280,8 +295,9 @@ its parity verdict is a pass computed by the same rule the iOS and Python record
 - **The emulator can run the build.** The virtual device prepared for this feature reports
   both half-precision processor features the library requires, verified on 2026-09-20, so the
   hardware floor of FR-016 does not stand in the way of the emulator record of FR-017.
-- **The recorded run is an emulator run** (FR-017). Correctness — every hit and score bit —
-  is a real claim; latency and footprint describe a virtual device on the host machine.
+- **The recorded run is an emulator run** (FR-017). Correctness — the ranking, bit for bit, and
+  the model scores within 1e-3 — is a real claim; latency and footprint describe a virtual
+  device on the host machine.
 - **The application is installed over a cable, not from a store.** Bundling 174 MB of model
   weights exceeds what a store listing would allow, and the demo has no store audience.
 - **The bundled corpus is the 2,000-article slice**, rebuilt on the current dense format. The

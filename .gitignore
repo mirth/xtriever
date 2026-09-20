@@ -53,3 +53,16 @@ apps/ios-wiki-demo/*.xcodeproj/
 
 # Feature 011: the Python package's local environment (uv venv); wheels land under target/
 python/.venv/
+
+# Feature 025 — the Android side. Everything generated is reproduced by
+# scripts/build-android-package.sh; nothing generated is committed (spec FR-003).
+/.gradle/
+local.properties
+# Staged by scripts/build-android-package.sh: the native library, the generated bindings, the
+# module's test fixture (the 40-document index and both models) and the demo's bundled corpus.
+/android/xtriever/src/main/jniLibs/
+/android/xtriever/src/main/kotlin/uniffi/
+/android/xtriever/src/androidTest/assets/
+/apps/android-wiki-demo/src/main/assets/
+*.iml
+.kotlin/
