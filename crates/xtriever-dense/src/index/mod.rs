@@ -18,6 +18,8 @@ use crate::bytes::{self, Bytes};
 use crate::error::{corrupt, dim_mismatch, schema_err};
 use format::{Header, MANIFEST, MANIFEST_TMP, RowBytes, Rows, V1_FILE};
 
+use crate::quantise::Quantised;
+
 /// What the manifest says about the committed state — for tests, records and `about`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DenseStats {
@@ -84,7 +86,10 @@ pub struct FlatIndex {
     /// row ids, and a read-only open touches nothing beyond the manifest.
     table: Option<BTreeMap<u32, u32>>,
     /// `Some(vector)` = add or replace, `None` = delete. Invisible until `commit`.
-    pending: BTreeMap<DocId, Option<Vec<f32>>>,
+    /// Staged changes: `Some` an insert or replacement, already quantised (once, at `add`,
+    /// where it is validated — a quarter of the memory of the floats, and `commit` and
+    /// `compact` only copy bytes); `None` a delete.
+    pending: BTreeMap<DocId, Option<Quantised>>,
     /// `commit` rewrites instead of appending when the dead share it would leave exceeds this
     /// (`None` = only on `compact`).
     compaction_threshold: Option<f32>,
@@ -134,7 +139,7 @@ impl FlatIndex {
     /// # Errors
     ///
     /// `Error::Corrupt` if `dir` is not empty, `dim == 0` or `dim` is wider than the integer
-    /// kernel can score (133,144); `Error::Io` otherwise. A failure leaves the directory empty,
+    /// kernel can score (132,104); `Error::Io` otherwise. A failure leaves the directory empty,
     /// so a corrected retry succeeds.
     pub fn create(dir: &Path, dim: usize, metric: Metric, fingerprint: &str) -> Result<Self> {
         if dim == 0 {
@@ -202,8 +207,9 @@ impl FlatIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Io` if a file cannot be read; `Error::Corrupt` if it is not a version-2 index
-    /// (a version-1 `index.bin` is named as such).
+    /// `Error::Io` if a file cannot be read; `Error::Corrupt` if it is not a version-3 index
+    /// (a version-1 `index.bin` or a version-2 manifest is named as such, with the
+    /// instruction to rebuild — Feature 026, ADR-0015).
     pub fn open(dir: &Path) -> Result<Self> {
         Self::open_with(dir, LoadPath::Buffered, false)
     }
@@ -706,7 +712,8 @@ impl FlatIndex {
         Ok(())
     }
 
-    fn validate_vector(&self, id: DocId, v: &[f32]) -> Result<()> {
+    /// Validate `v` for this index and return it as the row it will be stored as.
+    fn validate_vector(&self, id: DocId, v: &[f32]) -> Result<Quantised> {
         if v.len() != self.header.dim {
             return Err(dim_mismatch(self.header.dim, v.len()));
         }
@@ -715,18 +722,16 @@ impl FlatIndex {
                 "vector for {id} has a non-finite component at index {i}"
             )));
         }
-        if self.metric() == Metric::Cosine && search::norm_f64(v.iter().copied()) == 0.0 {
-            return Err(schema_err(format!(
-                "vector for {id} has zero norm; cosine similarity is undefined"
-            )));
-        }
         // What gets stored is the quantised row, and it is that row's norm that is written and
-        // that cosine divides by (ADR-0015): a vector whose every component is below half the
-        // scale floor is zero at eight-bit precision, which cosine cannot point with.
-        let norm = crate::quantise::norm(&crate::quantise::quantise(v));
+        // that cosine divides by (ADR-0015). A zero vector, and a vector whose every component
+        // is below half the scale floor, both quantise to all-zero codes: one check covers both,
+        // and it is the stored row that cosine cannot point with.
+        let quantised = crate::quantise::quantise(v);
+        let norm = crate::quantise::norm(&quantised);
         if self.metric() == Metric::Cosine && norm == 0.0 {
             return Err(schema_err(format!(
-                "vector for {id} is zero at eight-bit precision; cosine similarity is undefined"
+                "vector for {id} has zero norm at eight-bit precision; cosine similarity is \
+                 undefined"
             )));
         }
         // The norm is persisted as f32; a finite vector such as [f32::MAX, f32::MAX] has a norm
@@ -736,7 +741,7 @@ impl FlatIndex {
                 "vector for {id} has norm {norm:e}, which does not fit a finite f32"
             )));
         }
-        Ok(())
+        Ok(quantised)
     }
 }
 
@@ -757,8 +762,8 @@ impl VectorIndex for FlatIndex {
         if self.read_only {
             return Err(Error::read_only());
         }
-        self.validate_vector(id, vector)?;
-        self.pending.insert(id, Some(vector.to_vec()));
+        let quantised = self.validate_vector(id, vector)?;
+        self.pending.insert(id, Some(quantised));
         Ok(())
     }
 
@@ -1042,7 +1047,7 @@ impl FlatIndex {
 /// A row of the merged (committed ⊕ pending) sequence a rewrite emits.
 enum Merged<'a> {
     Kept(usize),
-    Pending(u32, &'a [f32]),
+    Pending(u32, &'a Quantised),
 }
 
 /// The ascending merge of the committed live rows with the pending changes.
@@ -1058,7 +1063,7 @@ where
 impl<'a, C, P> Iterator for Merge<C, P>
 where
     C: Iterator<Item = (u32, usize)>,
-    P: Iterator<Item = (u32, Option<&'a Vec<f32>>)>,
+    P: Iterator<Item = (u32, Option<&'a Quantised>)>,
 {
     type Item = Merged<'a>;
 

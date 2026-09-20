@@ -366,8 +366,11 @@ pub fn execute_dense(
 /// the vector index; any field disagreement is a miss.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EmbeddingCacheKey {
-    /// Cache layout version: the dense on-disk format the cache directory holds (2 since
-    /// Feature 024; a key that says 1 names a directory this build cannot open).
+    /// Cache layout version: the dense on-disk format the cache directory holds, plus, since
+    /// Feature 026 (3), the embedder's own floats beside it in `vectors.f32.bin` — the index
+    /// stores eight-bit rows, and the eval measures the embedder and the quantisation against
+    /// what the embedder produced. A key that says 1 or 2 names a directory this build cannot
+    /// open or one without the floats; either is a miss.
     pub format_version: u32,
     /// `DenseConfig::name`.
     pub config: String,

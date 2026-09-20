@@ -19,7 +19,7 @@ dense/
 `scheme`, whose value for this feature is `i8-symmetric-per-vector` — so that reading code never
 has to infer it. Everything else — dimension, metric, fingerprint, generation, row count, live
 count, ordering, tombstone length — keeps its version-2 meaning. The dimension is at most
-133,144, the widest row whose integer dot product fits the accumulator.
+132,104, the widest row whose integer dot product fits the accumulator even when a byte on disk is −128.
 
 ## A row
 
@@ -47,7 +47,7 @@ dimension 384.
 |---|---|
 | `format_version` 1 or 2 — by the magic (`XTDENSE1`, `XTDENSE2`) or by the header | refused by name at open, with the rebuild instruction |
 | an unknown quantisation scheme, or none | refused by name at open, naming the scheme this build reads |
-| a dimension beyond 133,144 | refused at create and at open |
+| a dimension beyond 132,104 | refused at create and at open |
 | a row count inconsistent with the file length | refused as corrupt at open, as in version 2 |
 | a scale that is not a normal positive number (zero, denormal, negative, infinite, NaN) | refused as corrupt **by the first search that reaches the row**: it cannot have been written by this engine, and a NaN score would make the order arbitrary |
 | a norm that is not finite, or under Cosine not positive | the same |
@@ -63,7 +63,12 @@ search whose filter never reaches the damaged row is unaffected.
 - **Quality within a stated bound.** Against the same corpus stored as floats, the ranking agrees
   on at least 99 % of the first hundred candidates, and the evaluation metrics stay within 0.005
   of the committed baselines. The stage does **not** promise an identical ranking: the float
-  vectors are not kept (spec FR-003).
+  vectors are not kept (spec FR-003). **How it is measured**, since the index holds no floats:
+  the evaluation harness keeps the embedder's own output beside each dataset's cache
+  (`vectors.f32.bin`, `beir run --config dense-baseline-v1`), and
+  `reference/int8_vectors_study.py` ranks a dataset's judged queries over those floats and over
+  the engine's stored rows — after first checking that the rows are the scheme, byte for byte —
+  and reports the agreement, the top-10 kept, and both rankings' nDCG@10 and Recall@100.
 - **Size.** A file no larger than a third of the float file for the same corpus.
 - **Everything version 2 promised** about durability: a crash at any byte boundary leaves either
   the previous committed state or the new one.

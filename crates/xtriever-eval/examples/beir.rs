@@ -266,8 +266,53 @@ fn report_line(dataset: &str, config: &str, report: &EvalReport) {
     );
 }
 
+/// The embedder's own floats for every cached row, in `DocId` order: `vectors.f32.bin` beside
+/// the index, `documents × dim` little-endian `f32`, written while the cache is embedded.
+///
+/// Since Feature 026 the index stores eight-bit rows, so `FlatIndex::vector` returns a
+/// recovery — within half a quantisation step — not the embedding. The eval keeps the floats
+/// because three things need them: `export-vectors` measures the *embedder* against the
+/// reference recipe (tolerance 1e-3, which a recovered vector can exceed); the hybrid baseline
+/// feeds them to a `HybridIndex`, which quantises once, exactly as an index built from the
+/// embedder would (a recovered vector re-quantised is the same to within an ulp of scale, not
+/// bit-for-bit); and `reference/int8_vectors_study.py` measures the quantisation against them.
+const FLOAT_SIDECAR: &str = "vectors.f32.bin";
+
+struct FloatRows {
+    dim: usize,
+    data: Vec<f32>,
+}
+
+impl FloatRows {
+    fn read(dir: &Path, dim: usize, count: usize) -> anyhow::Result<Self> {
+        let path = dir.join(FLOAT_SIDECAR);
+        let bytes = std::fs::read(&path)
+            .with_context(|| format!("reading the embedder's floats at {}", path.display()))?;
+        if bytes.len() != count * dim * 4 {
+            bail!(
+                "{} holds {} bytes, not {} × {} × 4: the cache is incomplete; rebuild it with \
+                 `beir run --config dense-baseline-v1`",
+                path.display(),
+                bytes.len(),
+                count,
+                dim
+            );
+        }
+        let data = bytes
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        Ok(Self { dim, data })
+    }
+
+    fn row(&self, i: usize) -> &[f32] {
+        &self.data[i * self.dim..(i + 1) * self.dim]
+    }
+}
+
 /// The corpus embeddings for `dataset`: the cached `FlatIndex` when `cache.json` matches, else a
-/// fresh embed-and-commit into the cache directory (spec FR-020; research D10).
+/// fresh embed-and-commit into the cache directory (spec FR-020; research D10), writing the
+/// embedder's floats to [`FLOAT_SIDECAR`] on the way.
 fn cached_index(
     dataset: &Dataset,
     passages: &[String],
@@ -282,7 +327,7 @@ fn cached_index(
         .cloned()
         .context("dataset hashes lack corpus.jsonl")?;
     let key = EmbeddingCacheKey {
-        format_version: 2,
+        format_version: 3,
         config: cfg.name.clone(),
         dataset: dataset.name.clone(),
         embedder_fingerprint: embedder.fingerprint().to_owned(),
@@ -328,12 +373,16 @@ fn cached_index(
         embedder.fingerprint(),
     )?;
     let started = Instant::now();
+    let mut floats = std::io::BufWriter::new(std::fs::File::create(dir.join(FLOAT_SIDECAR))?);
     for (i, passage) in passages.iter().enumerate() {
         let vector = embedder
             .embed(&[passage.as_str()], TextKind::Passage)?
             .pop()
             .context("embedder returned no vector")?;
         let id = u32::try_from(i).context("corpus exceeds u32 ids")?;
+        for x in &vector {
+            floats.write_all(&x.to_le_bytes())?;
+        }
         index.add(DocId(id), &vector)?;
         if (i + 1) % 1000 == 0 {
             eprintln!(
@@ -344,6 +393,11 @@ fn cached_index(
             );
         }
     }
+    floats.flush()?;
+    floats
+        .into_inner()
+        .map_err(|e| e.into_error())?
+        .sync_all()?;
     index.commit()?;
     key.write(&dir)?;
     eprintln!(
@@ -422,7 +476,9 @@ fn model_memory(a: &Args) -> anyhow::Result<()> {
 }
 
 /// `{"doc_id","text","vector"}` per line for N evenly spaced cached rows, for
-/// `gen_004_fixtures.py --verify-embed` (research D14).
+/// `gen_004_fixtures.py --verify-embed` (research D14). The vectors are the embedder's floats
+/// from the cache's sidecar, not the index's eight-bit recovery of them: this checks the
+/// embedder, not the quantiser.
 fn export_vectors(a: &Args) -> anyhow::Result<()> {
     let dataset = a.flags.get("dataset").context("--dataset is required")?;
     let sample: usize = a
@@ -444,14 +500,13 @@ fn export_vectors(a: &Args) -> anyhow::Result<()> {
             passages.len()
         );
     }
+    let floats = FloatRows::read(&dir, index.dim(), passages.len())?;
     let step = (passages.len() / sample.max(1)).max(1);
     let mut file = std::io::BufWriter::new(std::fs::File::create(out)?);
     let mut written = 0;
     for i in (0..passages.len()).step_by(step).take(sample) {
         let id = DocId(u32::try_from(i)?);
-        let vector = index
-            .vector(id)
-            .with_context(|| format!("row {id} missing from the cache"))?;
+        let vector = floats.row(i);
         writeln!(
             file,
             "{}",
@@ -491,7 +546,7 @@ fn evaluate_hybrid(
         .cloned()
         .context("dataset hashes lack corpus.jsonl")?;
     let key = EmbeddingCacheKey {
-        format_version: 2,
+        format_version: 3,
         config: cfg.dense.name.clone(),
         dataset: dataset.to_owned(),
         embedder_fingerprint: embedder.fingerprint().to_owned(),
@@ -514,6 +569,8 @@ fn evaluate_hybrid(
             ds.corpus.ids.len()
         );
     }
+    // The embedder's floats, so the hybrid index quantises once (see `FLOAT_SIDECAR`).
+    let floats = FloatRows::read(&cache_dir, cache.dim(), ds.corpus.ids.len())?;
 
     let keep;
     let index_dir = match a.flags.get("index-dir") {
@@ -547,10 +604,10 @@ fn evaluate_hybrid(
     let docs = build_external(&ds, &cfg.lexical)?;
     let mut batch = Vec::with_capacity(1000);
     for (i, (external_id, fields)) in docs.into_iter().enumerate() {
-        let id = DocId(u32::try_from(i)?);
-        let vector = cache
-            .vector(id)
-            .with_context(|| format!("cache row {i} ({external_id}) missing"))?;
+        if cache.vector(DocId(u32::try_from(i)?)).is_none() {
+            bail!("cache row {i} ({external_id}) missing");
+        }
+        let vector = floats.row(i).to_vec();
         batch.push((
             SourceDocument {
                 external_id,

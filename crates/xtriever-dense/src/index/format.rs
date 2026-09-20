@@ -223,12 +223,12 @@ fn four(bytes: &[u8]) -> [u8; 4] {
     [bytes[0], bytes[1], bytes[2], bytes[3]]
 }
 
-/// Append one row to `out`, quantising the vector on the way (Feature 026, ADR-0015). The
-/// norm written is the norm of the row as stored (`quantise::norm`), rounded to `f32` once —
-/// the same rounding everywhere a row is written.
-pub(crate) fn encode_row(out: &mut Vec<u8>, id: u32, vector: &[f32]) {
-    let quantised = quantise::quantise(vector);
-    let norm = quantise::norm(&quantised) as f32;
+/// Append one row to `out` from its quantised form (Feature 026, ADR-0015) — quantised once, at
+/// `add`, and carried in the pending set as codes. The norm written is the norm of the row as
+/// stored (`quantise::norm`), rounded to `f32` once — the same rounding everywhere a row is
+/// written.
+pub(crate) fn encode_row(out: &mut Vec<u8>, id: u32, quantised: &quantise::Quantised) {
+    let norm = quantise::norm(quantised) as f32;
     out.extend_from_slice(&id.to_le_bytes());
     out.extend_from_slice(&norm.to_le_bytes());
     out.extend_from_slice(&quantised.scale.to_le_bytes());
@@ -466,8 +466,8 @@ mod tests {
     #[test]
     fn rows_read_back_what_encode_row_wrote() {
         let mut out = Vec::new();
-        encode_row(&mut out, 3, &[1.0, 0.0]);
-        encode_row(&mut out, 9, &[0.0, 2.0]);
+        encode_row(&mut out, 3, &quantise::quantise(&[1.0, 0.0]));
+        encode_row(&mut out, 9, &quantise::quantise(&[0.0, 2.0]));
         let rows = Rows::for_count(2, 2).unwrap();
         assert_eq!(rows.len_bytes(), out.len());
         let whole = RowBytes::whole(&out);
@@ -589,6 +589,6 @@ mod tests {
             xtriever_core::Error::Corrupt(m) => m,
             other => panic!("{other:?}"),
         };
-        assert!(msg.contains("dim") && msg.contains("133144"), "{msg}");
+        assert!(msg.contains("dim") && msg.contains("132104"), "{msg}");
     }
 }

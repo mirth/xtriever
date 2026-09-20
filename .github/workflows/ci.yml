@@ -30,6 +30,11 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets
       - run: cargo nextest run --workspace
+      # Feature 026: the dense goldens and the scripted oracle are recomputed from the
+      # contract's arithmetic in Python (stdlib only) and must match what is committed, so a
+      # golden can never be re-minted from the implementation without `reference/` agreeing.
+      - run: python3 reference/gen_026_fixtures.py && python3 reference/gen_026_fixtures.py --check-oracle
+        if: runner.os == 'Linux'
       - run: df -h . && du -sh target
         if: runner.os == 'Linux'
       - run: cargo deny check

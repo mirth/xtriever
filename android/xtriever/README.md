@@ -53,8 +53,9 @@ The directories must be real files the operating system can memory-map. Assets i
 application package are not: copy them into application storage first, as
 `apps/android-wiki-demo` does on its first launch.
 
-The index must be dense format version 2. An index written before Feature 024 is refused at
-open with the engine's own message naming the rebuild.
+The index must be dense format version 3 (eight-bit rows, Feature 026). An index written by an
+earlier build — version 1 or version 2 — is refused at open with the engine's own message
+naming the rebuild.
 
 ## What the answers promise
 

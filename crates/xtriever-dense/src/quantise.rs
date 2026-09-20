@@ -25,8 +25,10 @@ pub(crate) const SCHEME: &str = "i8-symmetric-per-vector";
 pub(crate) const MAX_CODE: f32 = 127.0;
 
 /// The widest vector [`dot`] can score without its `i32` accumulator overflowing:
-/// `dim × 127 × 127 ≤ i32::MAX`. An index is refused at create and at open beyond it.
-pub(crate) const MAX_DIM: usize = (i32::MAX / (127 * 127)) as usize;
+/// `dim × 127 × 128 ≤ i32::MAX`. The engine never writes −128, but [`dot`] reads codes straight
+/// from disk, where a corrupt or foreign byte can be, so the bound counts it (review round 2,
+/// finding 3). An index is refused at create and at open beyond it.
+pub(crate) const MAX_DIM: usize = (i32::MAX / (127 * 128)) as usize;
 
 /// A quantised vector: the codes, and the scale that recovers them.
 #[derive(Debug, Clone, PartialEq)]
@@ -91,8 +93,9 @@ pub(crate) fn recover(quantised: &Quantised) -> Vec<f32> {
 
 /// The dot product of a quantised query and a quantised row.
 ///
-/// The products accumulate in `i32`: 384 terms of at most `127 × 127` reach about 6.2 million,
-/// four orders of magnitude inside the type, and [`MAX_DIM`] is where the bound would fail.
+/// The products accumulate in `i32`: 384 terms of at most `127 × 128` (the query never holds
+/// −128; a row byte on disk might) reach about 6.2 million, four orders of magnitude inside the
+/// type, and [`MAX_DIM`] is where the bound would fail.
 pub(crate) fn dot(query: &Quantised, row_codes: &[u8], row_scale: f64) -> f64 {
     debug_assert_eq!(query.codes.len(), row_codes.len());
     let mut accumulator: i32 = 0;
@@ -251,8 +254,18 @@ mod tests {
 
     #[test]
     fn the_dimension_bound_is_where_the_accumulator_would_overflow() {
-        assert_eq!(MAX_DIM, 133_144);
-        assert!(i32::try_from(MAX_DIM as u64 * 127 * 127).is_ok());
-        assert!(i32::try_from((MAX_DIM as u64 + 1) * 127 * 127).is_err());
+        assert_eq!(MAX_DIM, 132_104);
+        // Against the worst byte a row file can hold, not the worst code the engine writes.
+        assert!(i32::try_from(MAX_DIM as u64 * 127 * 128).is_ok());
+        assert!(i32::try_from((MAX_DIM as u64 + 1) * 127 * 128).is_err());
+        let query = Quantised {
+            codes: vec![127; MAX_DIM],
+            scale: 1.0,
+        };
+        let worst_row = vec![0x80u8; MAX_DIM]; // every byte −128
+        assert_eq!(
+            dot(&query, &worst_row, 1.0),
+            -(MAX_DIM as f64) * 127.0 * 128.0
+        );
     }
 }

@@ -9,10 +9,11 @@
 //! - cosine is the cosine of the stored rows: a row's cosine with itself is one and no score
 //!   exceeds one beyond the final rounding (review finding 6).
 //!
-//! Candidate agreement with a float index (SC-001) is **not** asserted here: the float index no
-//! longer exists in the crate, and on synthetic vectors the agreement sits at the bound
-//! (98.7–99.2 % at depth 100) where on real embeddings the study measured 99.5 %. It is measured
-//! on real corpora by `reference/int8_vectors_study.py` and re-measured by the three-dataset
+//! Candidate agreement with a float ranking (SC-001) is **not** asserted here: the crate holds
+//! no float index, and on synthetic vectors the agreement sits at the bound (98.7–99.2 % at
+//! depth 100) where real embeddings measure above it. It is measured on real corpora by
+//! `reference/int8_vectors_study.py`, which reads the embedder's floats the evaluation harness
+//! keeps beside each dataset's cache and the rows this engine stored, and by the three-dataset
 //! gate in PR B; a test on random vectors would be a test of random vectors.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
