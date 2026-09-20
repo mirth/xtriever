@@ -64,5 +64,6 @@ local.properties
 /android/xtriever/src/main/kotlin/uniffi/
 /android/xtriever/src/androidTest/assets/
 /apps/android-wiki-demo/src/main/assets/
+/apps/android-wiki-demo/src/androidTest/assets/
 *.iml
 .kotlin/

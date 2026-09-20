@@ -48,6 +48,7 @@ jni_libs="$module/src/main/jniLibs/$abi"
 generated="$module/src/main/kotlin"
 demo_assets="$repo_root/apps/android-wiki-demo/src/main/assets"
 fixture_dir="$module/src/androidTest/assets/fixture"
+demo_fixture_dir="$repo_root/apps/android-wiki-demo/src/androidTest/assets/fixture"
 # Everything staged into an application package, budgeted as the iOS script budgets its bundle.
 budget=400000000
 
@@ -159,6 +160,10 @@ if $with_fixtures; then
     # by hand before it runs.
     stage_dir "${XTRIEVER_MODEL_DIR:-$repo_root/reference/models/all-MiniLM-L6-v2}" "$fixture_dir/models/embedder" "test embedder"
     stage_dir "${XTRIEVER_RERANK_MODEL_DIR:-$repo_root/reference/models/ms-marco-MiniLM-L-6-v2}" "$fixture_dir/models/reranker" "test re-ranker"
+    # The demonstration's own tests drive its model against the same 40-document index, and take
+    # the models from the application's bundled ones rather than carrying a second copy.
+    stage_dir "$repo_root/swift/Xtriever/Tests/Fixtures/index" "$demo_fixture_dir/index" "demo fixture index"
+    cp "$repo_root/swift/Xtriever/Tests/Fixtures/expected.json" "$demo_fixture_dir/expected.json"
 fi
 
 if $with_models; then
@@ -174,6 +179,16 @@ if $with_corpus; then
     stage_dir "$slice/index" "$demo_assets/corpus/index" "corpus index"
     cp "$slice/ATTRIBUTION.txt" "$demo_assets/corpus/ATTRIBUTION.txt"
     cp "$slice/index/corpus.json" "$demo_assets/corpus/corpus.json" 2>/dev/null || true
+    # The measurement run compares the device's answers with the host's for this same corpus,
+    # so the host goldens and the measurement queries travel with the *test* package.
+    if [[ -f "$slice/expected.json" ]]; then
+        mkdir -p "$demo_fixture_dir/../corpus"
+        cp "$slice/expected.json" "$demo_fixture_dir/../corpus/expected.json"
+        cp "$repo_root/reference/fixtures/008/queries.json" "$demo_fixture_dir/../corpus/queries.json"
+        printf '    %-28s %s\n' "measurement goldens" "$(du -sh "$demo_fixture_dir/../corpus/expected.json" | cut -f1)"
+    else
+        echo "    no host goldens beside the corpus — xtriever wiki expected --index $slice/index --out $slice/expected.json" >&2
+    fi
 fi
 
 if [[ "$staged" -gt "$budget" ]]; then

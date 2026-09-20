@@ -80,7 +80,7 @@ and 20.
 - [X] T013 [US1] **Owner's decision (2026-09-20)**: the model-score differences are accepted; FR-004 and SC-001 now hold Android to the cross-device rule (identifiers, order, lexical and fused bits exact; dense and re-rank within 1e-3), and `ParityCensusTest` prints the census each run so drift stays visible. Make `android/xtriever/src/androidTest/kotlin/.../FixtureParityTest.kt` pass on the emulator; if any score bit differs, stop and report — never widen a tolerance (Rule 6)
 - [X] T014 [P] [US1] Write `docs/adr/0014-android-half-precision-floor.md`: the measured failure (`instruction requires: fullfp16`, eleven times, in `gemm-f16`), the decision to require ARMv8.2 half precision, which processors that excludes, how the refusal is made legible, and the two rejected alternatives — a second library and a runtime fallback (FR-016, owner's decision 2026-09-20)
 - [X] T015 [P] [US1] Write `android/xtriever/README.md`: what the module is, the one command that builds it, the processor and operating-system requirements, and what a consumer must provide (real files, format version 2)
-- [ ] T016 [US1] PR A gate and record: the unchanged workspace gate (`cargo fmt --all --check`, `cargo clippy --workspace --all-targets`, `cargo nextest run --workspace`, `cargo deny check`, the three cross-target checks), then the module build and the instrumented test; `git diff --stat main -- crates/` shows no stage-crate logic; `grep -rn "$(hostname -s)\|$USER" specs/025-android-kotlin-demo android` finds nothing; write `specs/025-android-kotlin-demo/pr-description-a.md`. **⛔ Checkpoint C1 — the owner commits**, pushes, opens and merges PR A
+- [X] T016 [US1] PR A gate and record: the unchanged workspace gate (`cargo fmt --all --check`, `cargo clippy --workspace --all-targets`, `cargo nextest run --workspace`, `cargo deny check`, the three cross-target checks), then the module build and the instrumented test; `git diff --stat main -- crates/` shows no stage-crate logic; `grep -rn "$(hostname -s)\|$USER" specs/025-android-kotlin-demo android` finds nothing; write `specs/025-android-kotlin-demo/pr-description-a.md`. **⛔ Checkpoint C1 — the owner commits**, pushes, opens and merges PR A
 
 **Checkpoint**: an Android project can embed the engine and get the host's answers.
 
@@ -95,19 +95,19 @@ passages with titles and links, fused list first.
 
 ### Tests for User Story 2 (written first, committed failing) ⚠️
 
-- [ ] T017 [US2] Write `apps/android-wiki-demo/src/androidTest/kotlin/.../DemoModelTests.kt` mirroring the iOS demo's: fused then re-ranked equal the fixture goldens, depth zero runs only the fused search, an empty query is empty and not an error, a second submission cancels the first, and a spent budget degrades in the report rather than failing; run and record the failure
-- [ ] T018 [P] [US2] Write `apps/android-wiki-demo/src/androidTest/kotlin/.../ChangeMarkTests.kt`: the mark rule ported from the iOS demo — a hit rising n places displaces the others by one, identical lists are all unchanged, new and dropped are named
+- [X] T017 [US2] Write `apps/android-wiki-demo/src/androidTest/kotlin/.../DemoModelTests.kt` mirroring the iOS demo's: fused then re-ranked equal the fixture goldens, depth zero runs only the fused search, an empty query is empty and not an error, a second submission cancels the first, and a spent budget degrades in the report rather than failing; run and record the failure
+- [X] T018 [P] [US2] Write `apps/android-wiki-demo/src/androidTest/kotlin/.../ChangeMarkTests.kt`: the mark rule ported from the iOS demo — a hit rising n places displaces the others by one, identical lists are all unchanged, new and dropped are named
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Write `apps/android-wiki-demo/build.gradle.kts` and the manifest: application plugin, Compose, minimum API 26, the module as a project dependency, uncompressed assets so extracted files can be memory-mapped
-- [ ] T020 [US2] Write the demo model in `apps/android-wiki-demo/src/main/kotlin/.../DemoModel.kt`: two engine calls per question — fused at depth zero, then re-ranked at the chosen depth — cancellation of an in-flight search, and a wall clock around each call; no retrieval logic of its own (FR-012)
-- [ ] T021 [P] [US2] Write the mark computation in `.../ChangeMarks.kt` — moved up by n, moved down by n, new, unchanged, plus the fused hits that left the head — the only arithmetic the application performs (data-model.md)
-- [ ] T022 [P] [US2] Write the title, passage and article-link derivation in `.../HitText.kt` by the Feature 008 convention: split at the first blank line; percent-encode the title outside `A–Z a–z 0–9 - _ . ~ /` (FR-007)
-- [ ] T023 [US2] Write the search screen in `.../ui/SearchScreen.kt`: the fused list as soon as it returns, then the re-ranked order with its marks
-- [ ] T024 [P] [US2] Write the hit detail in `.../ui/HitDetailScreen.kt`: the eight explained features under the engine's names, "not seen by this stage" where a stage did not retrieve the hit
-- [ ] T025 [P] [US2] Write the stage report in `.../ui/StageReportView.kt`: candidate counts, degradation and its reason, re-rank candidates, scored and skipped, the time-limit flag, elapsed milliseconds (FR-008)
-- [ ] T026 [US2] Make `apps/android-wiki-demo/src/androidTest/kotlin/.../DemoModelTests.kt` and `.../ChangeMarkTests.kt` pass on the emulator
+- [X] T019 [US2] Write `apps/android-wiki-demo/build.gradle.kts` and the manifest: application plugin, Compose, minimum API 26, the module as a project dependency, uncompressed assets so extracted files can be memory-mapped
+- [X] T020 [US2] Write the demo model in `apps/android-wiki-demo/src/main/kotlin/.../DemoModel.kt`: two engine calls per question — fused at depth zero, then re-ranked at the chosen depth — cancellation of an in-flight search, and a wall clock around each call; no retrieval logic of its own (FR-012)
+- [X] T021 [P] [US2] Write the mark computation in `.../ChangeMarks.kt` — moved up by n, moved down by n, new, unchanged, plus the fused hits that left the head — the only arithmetic the application performs (data-model.md)
+- [X] T022 [P] [US2] Write the title, passage and article-link derivation in `.../HitText.kt` by the Feature 008 convention: split at the first blank line; percent-encode the title outside `A–Z a–z 0–9 - _ . ~ /` (FR-007)
+- [X] T023 [US2] Write the search screen in `.../ui/SearchScreen.kt`: the fused list as soon as it returns, then the re-ranked order with its marks
+- [X] T024 [P] [US2] Write the hit detail in `.../ui/HitDetailScreen.kt`: the eight explained features under the engine's names, "not seen by this stage" where a stage did not retrieve the hit
+- [X] T025 [P] [US2] Write the stage report in `.../ui/StageReportView.kt`: candidate counts, degradation and its reason, re-rank candidates, scored and skipped, the time-limit flag, elapsed milliseconds (FR-008)
+- [X] T026 [US2] Make `apps/android-wiki-demo/src/androidTest/kotlin/.../DemoModelTests.kt` and `.../ChangeMarkTests.kt` pass on the emulator
 
 **Checkpoint**: the demonstration searches and shows the pipeline.
 
@@ -122,16 +122,16 @@ equal what the engine and the sidecar report; a chosen depth survives a restart.
 
 ### Tests for User Story 3 (written first, committed failing) ⚠️
 
-- [ ] T027 [US3] Write `apps/android-wiki-demo/src/androidTest/kotlin/.../PreparationTests.kt`: a fresh files directory reaches ready; a directory with files but no marker is re-extracted rather than opened; a simulated shortage of space refuses before writing and names the amount required (FR-011, data-model.md "Preparation state")
-- [ ] T028 [P] [US3] Write `.../SettingsTests.kt` and `.../AboutTests.kt`: the depth choices are 0, 5, 10 and 20 with 10 the default, a choice survives a restart, and About's lines equal the engine's index information and the corpus sidecar including the recorded dense compaction share
+- [X] T027 [US3] Write `apps/android-wiki-demo/src/androidTest/kotlin/.../PreparationTests.kt`: a fresh files directory reaches ready; a directory with files but no marker is re-extracted rather than opened; a simulated shortage of space refuses before writing and names the amount required (FR-011, data-model.md "Preparation state")
+- [X] T028 [P] [US3] Write `.../SettingsTests.kt` and `.../AboutTests.kt`: the depth choices are 0, 5, 10 and 20 with 10 the default, a choice survives a restart, and About's lines equal the engine's index information and the corpus sidecar including the recorded dense compaction share
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Write the preparation in `.../Preparation.kt`: copy each asset to a temporary name and rename it, write `.prepared` last, read it before opening anything, report a progress fraction, and refuse up front when free space is short (data-model.md)
-- [ ] T030 [US3] Teach `scripts/build-android-package.sh`'s `--with-models` and `--with-corpus` to stage both pinned models and `target/xt-wiki-slice-py` — index, `corpus.json`, `ATTRIBUTION.txt` — into the application's assets uncompressed
-- [ ] T031 [P] [US3] Write the About screen in `.../ui/AboutScreen.kt` (FR-009), the attribution verbatim with its licence link
-- [ ] T032 [P] [US3] Write Settings in `.../ui/SettingsScreen.kt` with persistence (FR-010)
-- [ ] T033 [US3] Make `apps/android-wiki-demo/src/androidTest/kotlin/.../PreparationTests.kt`, `.../SettingsTests.kt` and `.../AboutTests.kt` pass on the emulator
+- [X] T029 [US3] Write the preparation in `.../Preparation.kt`: copy each asset to a temporary name and rename it, write `.prepared` last, read it before opening anything, report a progress fraction, and refuse up front when free space is short (data-model.md)
+- [X] T030 [US3] Teach `scripts/build-android-package.sh`'s `--with-models` and `--with-corpus` to stage both pinned models and `target/xt-wiki-slice-py` — index, `corpus.json`, `ATTRIBUTION.txt` — into the application's assets uncompressed
+- [X] T031 [P] [US3] Write the About screen in `.../ui/AboutScreen.kt` (FR-009), the attribution verbatim with its licence link
+- [X] T032 [P] [US3] Write Settings in `.../ui/SettingsScreen.kt` with persistence (FR-010)
+- [X] T033 [US3] Make `apps/android-wiki-demo/src/androidTest/kotlin/.../PreparationTests.kt`, `.../SettingsTests.kt` and `.../AboutTests.kt` pass on the emulator
 
 **Checkpoint**: a fresh install prepares itself, searches, and explains its corpus.
 
@@ -143,18 +143,18 @@ equal what the engine and the sidecar report; a chosen depth survives a restart.
 
 **Independent Test**: the record exists, names what it ran on, and its parity verdict is a pass.
 
-- [ ] T034 [US4] Write the measurement run — the twenty queries of `reference/fixtures/008/queries.json` at depths 0 / 5 / 10 / 20 on the bundled corpus — as an instrumented test that emits its numbers
-- [ ] T035 [US4] Write the record to `specs/025-android-kotlin-demo/runs/` per [contracts/records.md](contracts/records.md): `emulated: true`, the `claims` sentence, the emulated device and image, the host, the API level, the thread count and its source, per-depth medians and maxima, peak memory with the 600 MB phone ceiling quoted for comparison only
-- [ ] T036 [US4] Compare the run recorded under `specs/025-android-kotlin-demo/runs/` with the host's answers for the same corpus and queries by the FR-004 rule (SC-003) — identifiers, order, lexical and fused bits exact, model scores within 1e-3 — and record the verdict; a failure is a stop-and-report
+- [X] T034 [US4] Write the measurement run — the twenty queries of `reference/fixtures/008/queries.json` at depths 0 / 5 / 10 / 20 on the bundled corpus — as an instrumented test that emits its numbers
+- [X] T035 [US4] Write the record to `specs/025-android-kotlin-demo/runs/` per [contracts/records.md](contracts/records.md): `emulated: true`, the `claims` sentence, the emulated device and image, the host, the API level, the thread count and its source, per-depth medians and maxima, peak memory with the 600 MB phone ceiling quoted for comparison only
+- [X] T036 [US4] Compare the run recorded under `specs/025-android-kotlin-demo/runs/` with the host's answers for the same corpus and queries by the FR-004 rule (SC-003) — identifiers, order, lexical and fused bits exact, model scores within 1e-3 — and record the verdict; a failure is a stop-and-report
 
 ---
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T037 [P] Write `apps/android-wiki-demo/README.md` in the shape the other two demos use: what it shows, its inputs and their producers, the build and install commands, what the screens mean, the processor requirement, and the tests
-- [ ] T038 [P] Add the Android demo to the other demos' cross-references: `apps/ios-wiki-demo/README.md` and `apps/python-wiki-demo/README.md` name it as the third demonstration
-- [ ] T039 Write `specs/025-android-kotlin-demo/report.md`: the verdict, both pull requests, the measured record, SC-001 to SC-007 with their evidence, and "deliberately not done" — no physical-device run, no store packaging, no on-phone index build, no registry publication, no second library for unsupported processors, no continuous-integration change
-- [ ] T040 PR B gate: the unchanged workspace gate, the module build, both instrumented suites, the record; `git diff --stat main -- crates/ deny.toml` shows only the Cargo profile; the identifier grep finds nothing; write `specs/025-android-kotlin-demo/pr-description-b.md`. **⛔ Checkpoint C2 — the owner commits**, pushes and opens PR B
+- [X] T037 [P] Write `apps/android-wiki-demo/README.md` in the shape the other two demos use: what it shows, its inputs and their producers, the build and install commands, what the screens mean, the processor requirement, and the tests
+- [X] T038 [P] Add the Android demo to the other demos' cross-references: `apps/ios-wiki-demo/README.md` and `apps/python-wiki-demo/README.md` name it as the third demonstration
+- [X] T039 Write `specs/025-android-kotlin-demo/report.md`: the verdict, both pull requests, the measured record, SC-001 to SC-007 with their evidence, and "deliberately not done" — no physical-device run, no store packaging, no on-phone index build, no registry publication, no second library for unsupported processors, no continuous-integration change
+- [X] T040 PR B gate: the unchanged workspace gate, the module build, both instrumented suites, the record; `git diff --stat main -- crates/ deny.toml` shows only the Cargo profile; the identifier grep finds nothing; write `specs/025-android-kotlin-demo/pr-description-b.md`. **⛔ Checkpoint C2 — the owner commits**, pushes and opens PR B
 
 ---
 

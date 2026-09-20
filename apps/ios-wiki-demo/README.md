@@ -16,8 +16,9 @@ The previous order is one option away — `SearchOptions(k: 10, rerankMode: .rep
 `hit.explain?.rerankCombined` is the score a re-ranked hit was ordered by. Numbers:
 `specs/015-rerank-interpolation/report.md`.
 
-**The second demo.** The same corpus, engine and measurement queries from a Python command
-line — `apps/python-wiki-demo/` (Feature 019): `wikidemo search`, `about`, `build` (the index
+**The other demos.** The same corpus, engine and measurement queries from a Python command
+line — `apps/python-wiki-demo/` (Feature 019) — and on Android through Kotlin bindings,
+`apps/android-wiki-demo/` (Feature 025), whose record is an emulator record and says so: `wikidemo search`, `about`, `build` (the index
 from the raw snapshot through the package alone) and `measure` (the laptop against the same
 host goldens this app's parity check uses; its record beside this app's under
 `specs/019-python-wiki-demo/runs/`).
