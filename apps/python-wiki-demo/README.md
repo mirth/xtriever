@@ -1,6 +1,7 @@
 # Xtriever Wikipedia demo (Python)
 
-The second demo of the engine over the same corpus as the iOS one (`apps/ios-wiki-demo`):
+The second demo of the engine over the same corpus as the iOS one (`apps/ios-wiki-demo`) and
+the Android one (`apps/android-wiki-demo`):
 a command line that searches all of Simple English Wikipedia through the `xtriever` Python
 package and shows the pipeline working — the fused (lexical + dense) list first, then the
 re-ranked order with what moved, each hit's eight explained features under the engine's
