@@ -32,6 +32,14 @@ lto = "fat"
 codegen-units = 1
 strip = true
 
+# Feature 025: the Android library. Same reason as the wheel below — uniffi's metadata lives in
+# the library's symbol table and `strip = true` removes it, so `uniffi-bindgen` finds nothing to
+# read in a release `.so` (measured 2026-09-20: 0 `UNIFFI_META` symbols stripped, 30 unstripped).
+# Debug info is still dropped; the stripped-of-debuginfo library is ~9 MB.
+[profile.android]
+inherits = "release"
+strip = "debuginfo"
+
 # Feature 011: the Python wheel's cdylib. uniffi's metadata lives in the library's symbol table;
 # `strip = true` removes it on Linux (`uniffi-bindgen` then finds "No UniFFI metadata"), so the
 # wheel keeps symbols and drops only debug info. Everything else is the release profile.
