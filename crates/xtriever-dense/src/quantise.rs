@@ -15,6 +15,10 @@
 //! costs 0.0006 nDCG@10 on SciFact and on NFCorpus, leaves Recall@100 unchanged, and agrees on
 //! 99.5 % of the first hundred candidates (`reference/int8_vectors_study.py`).
 //!
+//! The module is `#[doc(hidden)] pub` so the crate's own test suites use this one spelling of
+//! the scheme rather than a copy that would share its bugs; the *independent* restatement is
+//! `reference/dense_format3.py`, which mints and checks every golden those suites replay.
+//!
 //! [ADR-0015]: https://github.com/mirth/xtriever/blob/main/docs/adr/0015-eight-bit-vectors-and-models.md
 
 /// The name of this scheme, written into every manifest header so that reading code never has
@@ -32,7 +36,7 @@ pub(crate) const MAX_DIM: usize = (i32::MAX / (127 * 128)) as usize;
 
 /// A quantised vector: the codes, and the scale that recovers them.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Quantised {
+pub struct Quantised {
     /// One code per dimension, each in `-127..=127` as written; a reader takes a row byte of
     /// `0x80` as −128 (see [`MAX_DIM`]).
     pub codes: Vec<i8>,
@@ -44,7 +48,7 @@ pub(crate) struct Quantised {
 ///
 /// A vector of all zeros — which a degenerate embedding can be — gets scale `1.0` and all-zero
 /// codes, so recovery gives back zeros instead of dividing by zero.
-pub(crate) fn quantise(vector: &[f32]) -> Quantised {
+pub fn quantise(vector: &[f32]) -> Quantised {
     let peak = vector.iter().fold(0.0f32, |peak, v| peak.max(v.abs()));
     let scale = if peak > 0.0 {
         // The floor keeps a denormal peak from storing a zero (or denormal) scale, which no
@@ -71,7 +75,7 @@ pub(crate) fn quantise(vector: &[f32]) -> Quantised {
 /// product of two quantised vectors by the norms of *those* vectors, so a row's cosine with
 /// itself is one and no score exceeds one beyond the final rounding. The norm of the float
 /// vector that was added is not kept, because that vector is not kept either.
-pub(crate) fn norm(quantised: &Quantised) -> f64 {
+pub fn norm(quantised: &Quantised) -> f64 {
     let sum_of_squares: i64 = quantised
         .codes
         .iter()
@@ -81,14 +85,20 @@ pub(crate) fn norm(quantised: &Quantised) -> f64 {
     (sum_of_squares as f64).sqrt() * f64::from(quantised.scale)
 }
 
-/// Recover a quantised vector as floats. For tests and for the reference oracle; the scan never
+/// One code recovered as a float: `code × scale`, the one spelling of the recovery, used by
+/// [`recover`], by the row reader (`Rows::recover`) and by the test suites.
+#[inline]
+pub fn recover_code(code: i8, scale: f32) -> f32 {
+    f32::from(code) * scale
+}
+
+/// Recover a quantised vector as floats. For tests and for `vector(id)`; the scan never
 /// materialises a row.
-#[cfg(test)]
-pub(crate) fn recover(quantised: &Quantised) -> Vec<f32> {
+pub fn recover(quantised: &Quantised) -> Vec<f32> {
     quantised
         .codes
         .iter()
-        .map(|c| f32::from(*c) * quantised.scale)
+        .map(|c| recover_code(*c, quantised.scale))
         .collect()
 }
 

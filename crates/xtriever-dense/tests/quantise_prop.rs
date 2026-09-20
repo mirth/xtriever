@@ -8,7 +8,9 @@
 //! a vector and its recovery stays above what the study measured, which is the property the
 //! ranking actually depends on.
 //!
-//! The scheme is restated once, in `support`, for every suite that scores against it.
+//! These are property tests of the crate's own quantiser, reached through `support`'s wrappers;
+//! the independent restatement of the scheme is `reference/dense_format3.py`, which mints and
+//! checks the goldens the other suites replay.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod support;

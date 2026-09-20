@@ -128,14 +128,16 @@ fn op() -> impl Strategy<Value = Op> {
 use support::hit_bits as bits;
 use support::{quantise, recovered, recovered_norm};
 
-/// An independent scorer over the reference model, in the contract's arithmetic.
+/// A reference scorer over the model, in the contract's arithmetic — independent in what it
+/// does with the codes (accumulation, cosine, order), not in how the codes are made.
 ///
 /// Since Feature 026 the stage stores eight-bit codes, so the oracle scores what the stage
 /// stores: the dot product of the quantised query and the quantised row accumulated in `i32` —
 /// exactly, nothing rounds — then one multiply by the two scales. Cosine divides by the norms
 /// of the two *quantised* vectors (the row's rounded to `f32`, as it is stored), and Euclidean
-/// works on recovered components, because a distance is not a dot product. The scheme itself is
-/// restated once in `support` (`quantise`, `recovered_norm`), not imported from the crate.
+/// works on recovered components, because a distance is not a dot product. The quantisation is
+/// the crate's own, through `support` (`quantise`, `recovered_norm`); the independent check of
+/// the scheme is `reference/dense_format3.py`, which mints the goldens `index_golden` replays.
 fn reference(
     metric: Metric,
     model: &BTreeMap<u32, Vec<f32>>,

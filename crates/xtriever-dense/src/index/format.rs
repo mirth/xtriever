@@ -183,7 +183,9 @@ impl Rows {
     /// dot-product paths never materialise a row. The scale is the caller's, decoded and
     /// checked once.
     pub fn recover(codes: &[u8], scale: f32) -> impl Iterator<Item = f32> + '_ {
-        codes.iter().map(move |c| f32::from(*c as i8) * scale)
+        codes
+            .iter()
+            .map(move |c| quantise::recover_code(*c as i8, scale))
     }
 
     /// The bytes of row `r`, as they are on disk.

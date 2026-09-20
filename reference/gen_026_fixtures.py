@@ -80,7 +80,7 @@ def rescore_mutations(document: dict) -> int:
     changed = 0
     for step in document["steps"]:
         op = step["op"]
-        if op == "add":
+        if op in ("add", "replace"):
             live[step["id"]] = [f32(x) for x in step["vector"]]
         elif op == "delete":
             for doomed in step["ids"]:
@@ -91,7 +91,11 @@ def rescore_mutations(document: dict) -> int:
             # A reopen drops whatever was staged and never committed (step 19's add is gone by
             # step 21's expect, which is why the script has it).
             live = dict(committed)
-        elif op == "expect":
+        elif op != "expect":
+            # A step this model does not know would leave it stale while the check still said
+            # "0 differences": refuse, so a new op is a change here too.
+            raise SystemExit(f"mutations.json: unknown op {op!r} at step {document['steps'].index(step)}")
+        if op == "expect":
             q = Prepared(step["query"])
             scores = {i: score(metric, q, Prepared(v)) for i, v in committed.items()}
             results = [
@@ -205,7 +209,9 @@ def recompute_oracle(oracle: dict, write: bool) -> tuple[int, int]:
                 committed = dict(live)
             elif op == "reopen":
                 live = dict(committed)          # staged changes do not survive a reopen
-            elif op == "expect":
+            elif op != "expect":
+                raise SystemExit(f"{ORACLE_OUT.name}: unknown op {op!r} in the {metric} sequence")
+            if op == "expect":
                 if len(committed) != step["len"]:
                     raise SystemExit(
                         f"{ORACLE_OUT.name}: expected {step['len']} live rows, model holds {len(committed)}"
@@ -256,7 +262,9 @@ def main() -> int:
         total += changed
         print(f"  005/hybrid.json: {changed} queries recomputed")
         if args.write and changed:
-            PIPELINE.write_text(json.dumps(pipeline, indent=2) + "\n", encoding="utf-8")
+            # The generators' own bytes (`sort_keys`, two-space indent, trailing newline), so a
+            # golden written here and one minted fresh hash the same.
+            PIPELINE.write_text(json.dumps(pipeline, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     for name, rescore in (("search.json", rescore_search), ("mutations.json", rescore_mutations)):
         path = FIXTURES / name
         if not path.exists():
@@ -267,7 +275,7 @@ def main() -> int:
         total += changed
         print(f"  {name}: {changed} expectations recomputed")
         if args.write and changed:
-            path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+            path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.write:
         refresh_manifest(FIXTURES)
         refresh_manifest(PIPELINE.parent)

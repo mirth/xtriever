@@ -161,7 +161,7 @@ fn execute_dense_embeds_every_judged_query_as_query_and_maps_hits_in_order() {
 fn cache_key_matches_only_when_every_field_agrees() {
     let dir = tempfile::tempdir().unwrap();
     let key = EmbeddingCacheKey {
-        format_version: 2,
+        format_version: 3,
         config: "dense-baseline-v1".into(),
         dataset: "scifact".into(),
         embedder_fingerprint: "fp-a".into(),
@@ -212,7 +212,7 @@ fn cache_key_matches_only_when_every_field_agrees() {
         (
             "format",
             EmbeddingCacheKey {
-                format_version: 3,
+                format_version: 2, // the layout this build cannot open: a miss, never a hit
                 ..key.clone()
             },
         ),

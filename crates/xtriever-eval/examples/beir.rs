@@ -317,8 +317,40 @@ impl FloatRows {
             .is_ok_and(|m| m.len() == (count * dim * 4) as u64)
     }
 
-    fn row(&self, i: usize) -> &[f32] {
-        &self.data[i * self.dim..(i + 1) * self.dim]
+    /// Row `i`, or a clean error naming the mismatch: the sidecar's row count is checked
+    /// against the corpus at load, but the documents the lexical builder yields are counted
+    /// separately, and an example binary must say what went wrong, not panic on a slice.
+    fn row(&self, i: usize) -> anyhow::Result<&[f32]> {
+        let rows = self.data.len() / self.dim;
+        if i >= rows {
+            bail!(
+                "document {i} has no cached embedding: {FLOAT_SIDECAR} holds {rows} rows; the \
+                 corpus and the cache disagree — rebuild the cache with `beir run --config \
+                 dense-baseline-v1`"
+            );
+        }
+        Ok(&self.data[i * self.dim..(i + 1) * self.dim])
+    }
+
+    /// One row read by seeking, for a sample of a large cache: `export-vectors` wants a few
+    /// dozen rows of FiQA's 88 MB, not the file.
+    fn read_row(dir: &Path, dim: usize, count: usize, i: usize) -> anyhow::Result<Vec<f32>> {
+        use std::io::{Read, Seek, SeekFrom};
+        if !Self::is_complete(dir, dim, count) {
+            bail!(
+                "{} is missing or incomplete; rebuild the cache with `beir run --config \
+                 dense-baseline-v1`",
+                dir.join(FLOAT_SIDECAR).display()
+            );
+        }
+        let mut file = std::fs::File::open(dir.join(FLOAT_SIDECAR))?;
+        file.seek(SeekFrom::Start((i * dim * 4) as u64))?;
+        let mut bytes = vec![0u8; dim * 4];
+        file.read_exact(&mut bytes)?;
+        Ok(bytes
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect())
     }
 }
 
@@ -518,13 +550,12 @@ fn export_vectors(a: &Args) -> anyhow::Result<()> {
             passages.len()
         );
     }
-    let floats = FloatRows::read(&dir, index.dim(), passages.len())?;
     let step = (passages.len() / sample.max(1)).max(1);
     let mut file = std::io::BufWriter::new(std::fs::File::create(out)?);
     let mut written = 0;
     for i in (0..passages.len()).step_by(step).take(sample) {
         let id = DocId(u32::try_from(i)?);
-        let vector = floats.row(i);
+        let vector = FloatRows::read_row(&dir, index.dim(), passages.len(), i)?;
         writeln!(
             file,
             "{}",
@@ -621,10 +652,11 @@ fn evaluate_hybrid(
     let started = Instant::now();
     let docs = build_external(&ds, &cfg.lexical)?;
     let mut batch = Vec::with_capacity(1000);
-    // The cache's row count and the sidecar's length were both checked above; nothing per row
-    // is left to verify, and materialising a row here would be work thrown away.
     for (i, (external_id, fields)) in docs.into_iter().enumerate() {
-        let vector = floats.row(i).to_vec();
+        let vector = floats
+            .row(i)
+            .with_context(|| format!("cache row {i} ({external_id})"))?
+            .to_vec();
         batch.push((
             SourceDocument {
                 external_id,

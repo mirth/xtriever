@@ -140,6 +140,24 @@ corpora by the study and re-measured by PR B's three-dataset gate.
    artefacts: **T027a added** to PR B's plan for both packagers and both loaders, and the
    quickstart says so.
 
+**Review round 5** (seven findings; six applied, one left to the owner):
+
+1. The mutations checker skipped steps it did not model. It handles `replace` and refuses any
+   other unknown op, as does the oracle checker.
+2. The hybrid baseline's row lookup had become an unchecked slice; it returns a clean error
+   naming the mismatch and the rebuild.
+3. `export-vectors` reads only the sampled rows, by seek: 40 rows of FiQA cost 60 KB, not 88 MB.
+4. The checker's `--write` serialises with the generators' `sort_keys`, so both mint the same
+   bytes.
+5. The cache-key test's baseline is version 3, with 2 as the miss.
+6. The test-side quantiser was a copy of the crate's while claiming independence. The crate's
+   module is `#[doc(hidden)] pub`, the suites use it through thin wrappers, and the comments say
+   what is independent: `reference/dense_format3.py`, which mints every golden the suites
+   replay, and the suites' own accumulation, cosine, order and persistence checks.
+7. Rule 3's 800-line budget is exceeded. **Not split**: the owner waived the budget for this
+   pull request when the review rounds began; the reviewer's split (format, eval harness,
+   reference generators) is the natural one if that changes.
+
 **Evaluation, all three datasets, this build against the committed baselines.** Every delta is
 inside the 0.005 bound; no metric on any dataset dropped by more than 0.001. Recall@100 is
 unchanged everywhere except NFCorpus, where it rose by 0.0003.

@@ -218,43 +218,43 @@ pub fn hit_bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
     hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
 }
 
-// ── Feature 026: the eight-bit scheme, restated once for every suite ────────────────────────
+// ── Feature 026: the eight-bit scheme, the crate's own, in the shapes the suites use ─────────
+//
+// These are thin wrappers over `xtriever_dense::quantise`, **not** an independent restatement:
+// a copy of the crate's code would share its bugs while claiming to check them (review round
+// 5, finding 6). What is independent is `reference/dense_format3.py`, which mints every golden
+// these suites replay (`search.json`, `mutations.json`, `hybrid.json`, `v3_oracle.json`) and
+// checks them in CI. What the Rust suites add on top is independent in what they do *with* the
+// codes — accumulation, cosine, order, persistence — not in how the codes are made.
 
-/// The scheme as `src/quantise.rs` implements it, restated here rather than imported: the
-/// module is private on purpose, and a reference that called the crate's own code would prove
-/// nothing. One scale per vector — `max|component| / 127`, floored at `f32::MIN_POSITIVE` so a
-/// denormal peak never stores a zero scale — and codes rounded half away from zero and clamped
-/// to ±127. `reference/gen_026_fixtures.py` restates the same rule in Python.
+use xtriever_dense::quantise::Quantised;
+
+/// The crate's quantiser, as `(codes, scale)`.
 pub fn quantise(vector: &[f32]) -> (Vec<i8>, f32) {
-    let peak = vector.iter().fold(0.0f32, |p, v| p.max(v.abs()));
-    let scale = if peak > 0.0 {
-        (peak / 127.0).max(f32::MIN_POSITIVE)
-    } else {
-        1.0
-    };
-    let codes = vector
-        .iter()
-        .map(|v| (v / scale).round().clamp(-127.0, 127.0) as i8)
-        .collect();
-    (codes, scale)
+    let q = xtriever_dense::quantise::quantise(vector);
+    (q.codes, q.scale)
 }
 
-/// `code × scale` per component.
+/// `code × scale` per component, the crate's recovery.
 pub fn recover(codes: &[i8], scale: f32) -> Vec<f32> {
-    codes.iter().map(|c| f32::from(*c) * scale).collect()
+    xtriever_dense::quantise::recover(&Quantised {
+        codes: codes.to_vec(),
+        scale,
+    })
 }
 
 /// What the stage recovers for a stored row.
 pub fn recovered(vector: &[f32]) -> Vec<f32> {
-    let (codes, scale) = quantise(vector);
-    recover(&codes, scale)
+    xtriever_dense::quantise::recover(&xtriever_dense::quantise::quantise(vector))
 }
 
-/// The norm a stored row carries — of the row as stored, `sqrt(Σ code²) × scale`, the sum
-/// exact in integers — which is what cosine divides by (Feature 026 review, finding 6).
+/// The norm a stored row carries — of the row as stored, `sqrt(Σ code²) × scale` — which is
+/// what cosine divides by.
 pub fn recovered_norm(codes: &[i8], scale: f32) -> f64 {
-    let sum: i64 = codes.iter().map(|c| i64::from(*c) * i64::from(*c)).sum();
-    (sum as f64).sqrt() * f64::from(scale)
+    xtriever_dense::quantise::norm(&Quantised {
+        codes: codes.to_vec(),
+        scale,
+    })
 }
 
 /// Assert that `got` is what dense format 3 recovers for `expected`: every component within
