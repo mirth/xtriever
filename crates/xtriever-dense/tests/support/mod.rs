@@ -258,8 +258,11 @@ pub fn recovered_norm(codes: &[i8], scale: f32) -> f64 {
 }
 
 /// Assert that `got` is what dense format 3 recovers for `expected`: every component within
-/// half a quantisation step (Feature 026, ADR-0015). A committed row is eight-bit codes and a
-/// scale, so it never returns the bytes that were added — that is the format, not a defect.
+/// half a quantisation step — the row's scale, `max|component| / 127` floored at
+/// `f32::MIN_POSITIVE`, so a vector below the floor recovers to within half the floor and its
+/// smallest components to exactly zero (Feature 026, ADR-0015). A committed row is eight-bit
+/// codes and a scale, so it never returns the bytes that were added — that is the format, not
+/// a defect.
 #[track_caller]
 pub fn assert_recovered(got: Option<Vec<f32>>, expected: &[f32], label: &str) {
     let got = got.unwrap_or_else(|| panic!("{label}: no vector"));

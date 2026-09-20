@@ -152,7 +152,10 @@ the single-writer precondition the caller owns is unchanged.
 - The oracle that pins version 2 to version 1's results bit for bit
   (`crates/xtriever-dense/tests/support/v1_oracle.json`) is reproducible from
   `reference/gen_024_fixtures.py`, which recomputes every expectation from the contract's
-  arithmetic in Python (Principle II).
+  arithmetic in Python (Principle II). *Superseded by Feature 026 (ADR-0015): format 3 changes
+  the scores by design, so that oracle and its generator are gone; the format-3 oracle
+  (`v3_oracle.json`) is written and checked by `reference/gen_026_fixtures.py` from
+  `reference/dense_format3.py`.*
 - An observation from PR B's tests, about the *lexical* stage: the backend's BM25
   statistics are deletion-inclusive until a merge physically drops the deleted or replaced
   documents (Feature 002 FR-025), so any `merge` that drops documents — after plain deletes

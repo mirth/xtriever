@@ -100,6 +100,23 @@ corpora by the study and re-measured by PR B's three-dataset gate.
 9. **All three datasets evaluated in this pull request**, as Rule 5 requires for a
    ranking-affecting change to `dense` — PR B's gate re-runs them with the eight-bit models.
 
+**Review round 4** (six findings, all applied):
+
+1. `gen_024_fixtures.py`, the format-2 oracle's generator, pointed at a deleted file and scored
+   floats; deleted, with ADR-0013 saying why and what replaced it.
+2. `int8_reranker_study.py` still parsed format-2 rows; it reads the float sidecar.
+3. **One generator per golden.** The scheme now lives once, in `reference/dense_format3.py`;
+   `gen_004_fixtures.py` and `gen_005_fixtures.py` import it and mint format-3 expectations
+   themselves. Run fresh, both reproduce the committed goldens byte for byte. Each manifest pins
+   `scheme_sha256` beside `generator_sha256`, the fixture-validity tests assert both, and
+   `gen_026_fixtures.py` is the stdlib-only checker CI runs.
+4. `vector()`'s bound is stated with the floor: half the row's scale, which is at least half of
+   `f32::MIN_POSITIVE`; the test helper and the persistence test use the scheme's step.
+5. The scan's least norm is hoisted out of the loop and the Euclidean arm recovers from the
+   scale the check already decoded; `row_at` is gone.
+6. The eval cache is `<dataset>/{cache.json, vectors.f32.bin, index/}`: the float sidecar sits
+   beside the dense crate's directory, not inside it, so no future sweep can remove it.
+
 **Evaluation, all three datasets, this build against the committed baselines.** Every delta is
 inside the 0.005 bound; no metric on any dataset dropped by more than 0.001. Recall@100 is
 unchanged everywhere except NFCorpus, where it rose by 0.0003.

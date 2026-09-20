@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """Feature 026 goldens: the dense stage's expectations under eight-bit storage.
 
-Principle II says a golden comes from `reference/`, not from the implementation it checks. This
-recomputes, in Python, every expectation the dense stage's tests replay, under the scheme
-ADR-0015 fixes: one scale per vector (`max|component| / 127`, floored at the smallest normal
-`f32`), codes rounded **half away from zero** in `f32` arithmetic and clamped to ±127, the dot
-product accumulated exactly in integers and multiplied by the two scales once, and cosine over
-the norms of the two quantised vectors (the row's stored as `f32`). Every operation the engine
-does in `f32` is done here in `f64` and rounded to `f32` — which is the same result for one
-division, one multiplication or one square root (double rounding is innocuous at 53 bits).
+Principle II says a golden comes from `reference/`, not from the implementation it checks. The
+scheme itself lives once, in `dense_format3.py`; the goldens are minted by their own generators
+(`gen_004_fixtures.py`, `gen_005_fixtures.py`), which import it. This file is the **checker**:
+it recomputes every expectation the dense stage's tests replay from that module, so CI can
+prove the committed goldens are the scheme's without torch or a model, and it writes the
+scripted oracle's expectations.
 
-It rewrites, in place:
+It checks, or rewrites in place:
 
 * `reference/fixtures/004/search.json` — every case's expected hits and scores;
 * `reference/fixtures/004/mutations.json` — the same, after each scripted mutation;
@@ -45,83 +43,9 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "reference/fixtures/004"
 PIPELINE = ROOT / "reference/fixtures/005/hybrid.json"
 ORACLE_OUT = ROOT / "crates/xtriever-dense/tests/support/v3_oracle.json"
-F32_MIN_POSITIVE = 2.0 ** -126
+SCHEME = ROOT / "reference/dense_format3.py"
 
-
-def f32(x: float) -> float:
-    """Round to `f32`, the width the stage stores and returns."""
-    return struct.unpack("<f", struct.pack("<f", x))[0]
-
-
-def round_half_away(q: float) -> int:
-    """`f32::round`: half-way cases go away from zero. Python's `round` goes to even."""
-    magnitude = math.floor(abs(q) + 0.5)
-    return int(magnitude if q >= 0.0 else -magnitude)
-
-
-def quantise(vector: list[float]) -> tuple[list[int], float]:
-    """The scheme, restated: symmetric, one scale per vector, never code −128.
-
-    Every step is the engine's `f32` step: the scale is the `f32` quotient floored at the
-    smallest normal `f32`; each code is the `f32` quotient rounded half away from zero.
-    """
-    peak = max((abs(x) for x in vector), default=0.0)
-    scale = max(f32(peak / 127.0), F32_MIN_POSITIVE) if peak > 0.0 else 1.0
-    codes = []
-    for x in vector:
-        code = round_half_away(f32(x / scale))
-        codes.append(max(-127, min(127, code)))
-    return codes, scale
-
-
-def recovered(vector: list[float]) -> list[float]:
-    codes, scale = quantise(vector)
-    return [f32(c * scale) for c in codes]
-
-
-def recovered_norm(codes: list[int], scale: float) -> float:
-    """The norm a row stores (as `f64`; the engine rounds it to `f32` on the way to disk):
-    `sqrt(Σ code²) × scale`, the sum exact in integers."""
-    return math.sqrt(sum(c * c for c in codes)) * scale
-
-
-def norm_f64(v: list[float]) -> float:
-    return math.sqrt(sum(x * x for x in v))
-
-
-class Prepared:
-    """A vector as the stage scores it: its floats, its codes, its scale and its stored norm."""
-
-    def __init__(self, vector: list[float]) -> None:
-        self.vector = [f32(x) for x in vector]
-        self.codes, self.scale = quantise(self.vector)
-        self.norm = recovered_norm(self.codes, self.scale)      # f64, the query's form
-        self.norm_f32 = f32(self.norm)                          # the row's form
-
-
-def score(metric: str, q: Prepared, row: Prepared) -> float:
-    """One row's score, over what the stage stores rather than what was added."""
-    if metric == "euclidean":
-        # A distance is not a dot product: the float query against the recovered row.
-        acc = 0.0
-        for a, c in zip(q.vector, row.codes):
-            d = a - f32(c * row.scale)
-            acc += d * d
-        return f32(-math.sqrt(acc))
-    accumulator = sum(a * b for a, b in zip(q.codes, row.codes))   # exact, in integers
-    dot = accumulator * q.scale * row.scale
-    if metric == "dot":
-        return f32(dot)
-    if metric == "cosine":
-        return f32(dot / (q.norm * row.norm_f32))
-    raise ValueError(metric)
-
-
-def ranked(scores: dict[int, float], allowed: set[int] | None) -> list[tuple[int, float]]:
-    """`(score DESC, id ASC)`, the stage's total order."""
-    items = [(i, s) for i, s in scores.items() if allowed is None or i in allowed]
-    items.sort(key=lambda pair: (-pair[1], pair[0]))
-    return items
+from dense_format3 import Prepared, f32, ranked, score  # noqa: E402  (the scheme, once)
 
 
 def rescore_search(document: dict) -> int:
@@ -211,22 +135,23 @@ def sha256_file(path: Path) -> str:
 
 
 def refresh_manifest(directory: Path) -> None:
-    """Keep a fixture directory's `manifest.json` honest: the files' hashes, and which generator
-    recomputed them.
+    """Keep a fixture directory's `manifest.json` honest: the files' hashes and the scheme.
 
-    `generator_sha256` still names the Feature 004 (or 005) generator that produced the rows,
-    the queries and the mutation script; `rescored_by` names this file, which recomputed the
-    expectations under format 3. Neither claim is the other's. Both directories' tests hash
-    every file against the manifest, so a rescored fixture without a refreshed manifest fails.
+    `generator_sha256` names the generator that minted the fixture (Feature 004's or 005's);
+    `scheme_sha256` pins `dense_format3.py`, which that generator scores with. Both directories'
+    tests assert both hashes, so neither the generator nor the scheme can change without the
+    goldens being regenerated.
     """
     path = directory / "manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     for name in manifest["files"]:
         manifest["files"][name] = sha256_file(directory / name)
-    manifest["rescored_by"] = "reference/gen_026_fixtures.py"
-    manifest["rescored_by_sha256"] = sha256_file(Path(__file__))
+    manifest.pop("rescored_by", None)
+    manifest.pop("rescored_by_sha256", None)
+    manifest["scheme"] = "reference/dense_format3.py"
+    manifest["scheme_sha256"] = sha256_file(SCHEME)
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"  {directory.name}/manifest.json: hashes refreshed, rescored_by recorded")
+    print(f"  {directory.name}/manifest.json: hashes refreshed, scheme pinned")
 
 
 def recompute_oracle(oracle: dict, write: bool) -> tuple[int, int]:

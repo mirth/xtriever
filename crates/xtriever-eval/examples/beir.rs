@@ -266,8 +266,11 @@ fn report_line(dataset: &str, config: &str, report: &EvalReport) {
     );
 }
 
-/// The embedder's own floats for every cached row, in `DocId` order: `vectors.f32.bin` beside
-/// the index, `documents × dim` little-endian `f32`, written while the cache is embedded.
+/// The embedder's own floats for every cached row, in `DocId` order: `vectors.f32.bin` in the
+/// cache directory **beside** the index directory (`<cache>/<dataset>/{cache.json,
+/// vectors.f32.bin, index/}`), never inside it — an index directory is the dense crate's, which
+/// promises nothing about foreign files at a writable open (review round 4, finding 6) —
+/// `documents × dim` little-endian `f32`, written while the cache is embedded.
 ///
 /// Since Feature 026 the index stores eight-bit rows, so `FlatIndex::vector` returns a
 /// recovery — within half a quantisation step — not the embedding. The eval keeps the floats
@@ -277,6 +280,8 @@ fn report_line(dataset: &str, config: &str, report: &EvalReport) {
 /// embedder would (a recovered vector re-quantised is the same to within an ulp of scale, not
 /// bit-for-bit); and `reference/int8_vectors_study.py` measures the quantisation against them.
 const FLOAT_SIDECAR: &str = "vectors.f32.bin";
+/// The `FlatIndex` directory inside a dataset's cache directory.
+const CACHE_INDEX_DIR: &str = "index";
 
 struct FloatRows {
     dim: usize,
@@ -341,6 +346,7 @@ fn cached_index(
         corpus_sha256,
         documents: passages.len() as u64,
     };
+    let index_dir = dir.join(CACHE_INDEX_DIR);
     let open = |dir: &Path| -> anyhow::Result<FlatIndex> {
         Ok(match embedder.load_path() {
             LoadPath::Buffered => FlatIndex::open_for(dir, embedder)?,
@@ -348,7 +354,7 @@ fn cached_index(
         })
     };
     if key.matches(&dir) {
-        match open(&dir) {
+        match open(&index_dir) {
             Ok(index) if index.len() != passages.len() as u64 => eprintln!(
                 "cache at {} holds {} vectors, not {}; re-embedding",
                 dir.display(),
@@ -377,8 +383,9 @@ fn cached_index(
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
     }
+    std::fs::create_dir_all(&dir)?;
     let mut index = FlatIndex::create(
-        &dir,
+        &index_dir,
         embedder.dim(),
         embedder.metric(),
         embedder.fingerprint(),
@@ -502,8 +509,8 @@ fn export_vectors(a: &Args) -> anyhow::Result<()> {
     let cfg = DenseConfig::dense_baseline_v1();
     let (passages, ids) = build_passages(&ds, &cfg)?;
     let dir = dense_cache_dir(a).join(dataset);
-    let index =
-        FlatIndex::open(&dir).with_context(|| format!("opening the cache at {}", dir.display()))?;
+    let index = FlatIndex::open(&dir.join(CACHE_INDEX_DIR))
+        .with_context(|| format!("opening the cache at {}", dir.display()))?;
     if index.len() != passages.len() as u64 {
         bail!(
             "cache holds {} rows but the corpus has {}",
@@ -571,7 +578,7 @@ fn evaluate_hybrid(
             cache_dir.display()
         );
     }
-    let cache = FlatIndex::open_for(&cache_dir, &embedder)
+    let cache = FlatIndex::open_for(&cache_dir.join(CACHE_INDEX_DIR), &embedder)
         .with_context(|| format!("opening the cache at {}", cache_dir.display()))?;
     if cache.len() != ds.corpus.ids.len() as u64 {
         bail!(

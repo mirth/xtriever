@@ -13,10 +13,10 @@ use sha2::{Digest, Sha256};
 struct Manifest {
     files: BTreeMap<String, String>,
     generator_sha256: String,
-    /// Feature 026: the generator that recomputed the expectations under format 3, pinned like
-    /// the one that minted the rows (review round 3, finding 5).
-    rescored_by: String,
-    rescored_by_sha256: String,
+    /// Feature 026: the module the generator scores with (dense format 3's scheme), pinned like
+    /// the generator itself, so neither can change without the goldens being regenerated.
+    scheme: String,
+    scheme_sha256: String,
 }
 
 #[test]
@@ -40,14 +40,12 @@ fn every_fixture_matches_manifest() {
         actual, manifest.generator_sha256,
         "gen_004_fixtures.py changed; regenerate or --refresh-manifest"
     );
-    assert_eq!(manifest.rescored_by, "reference/gen_026_fixtures.py");
-    let rescorer = support::fixtures_dir().join("../../gen_026_fixtures.py");
-    let actual = hex(&Sha256::digest(
-        std::fs::read(rescorer).expect("read rescorer"),
-    ));
+    assert_eq!(manifest.scheme, "reference/dense_format3.py");
+    let scheme = support::fixtures_dir().join("../../dense_format3.py");
+    let actual = hex(&Sha256::digest(std::fs::read(scheme).expect("read scheme")));
     assert_eq!(
-        actual, manifest.rescored_by_sha256,
-        "gen_026_fixtures.py changed; run it with --write"
+        actual, manifest.scheme_sha256,
+        "dense_format3.py changed; regenerate the goldens"
     );
 }
 

@@ -313,10 +313,12 @@ impl FlatIndex {
     }
 
     /// The committed vector stored under `id`, **as the stored row recovers it**: each
-    /// component within half a quantisation step (`max|component| / 254`) of what was added,
-    /// because a row is eight-bit codes and one scale (Feature 026, ADR-0015) and the floats
-    /// are not kept. `Ok(None)` if `id` has no live row (pending changes are not visible, as
-    /// with `search`).
+    /// component within half a quantisation step of what was added, the step being the row's
+    /// scale — `max|component| / 127`, floored at `f32::MIN_POSITIVE` — because a row is
+    /// eight-bit codes and one scale (Feature 026, ADR-0015) and the floats are not kept. For a
+    /// vector whose peak is below `127 × f32::MIN_POSITIVE` the floor is the step, so components
+    /// below half of it come back as exactly zero. `Ok(None)` if `id` has no live row (pending
+    /// changes are not visible, as with `search`).
     ///
     /// # Errors
     ///
@@ -326,8 +328,10 @@ impl FlatIndex {
         let Some(r) = self.live_row(id) else {
             return Ok(None);
         };
-        self.checked_row(r, id.0)?;
-        Ok(Some(self.layout.row_at(self.bytes(), r).collect()))
+        let (scale, _) = self.checked_row(r, id.0, self.least_norm())?;
+        Ok(Some(
+            Rows::recover(self.layout.codes_at(self.bytes(), r), scale).collect(),
+        ))
     }
 
     /// Whether this handle was opened read-only (`open_read_only*`): every mutation is refused
@@ -967,19 +971,20 @@ impl VectorIndex for FlatIndex {
         if k == 0 || allowed.is_some_and(DocSet::is_empty) {
             return Ok(Vec::new());
         }
-        let bytes = self.bytes();
-        let layout = self.layout;
         // The metric was decided by `validate_query`; each arm is one loop over the rows with
-        // nothing to decide per row (review finding 5).
+        // nothing to decide per row (review finding 5), and the row's codes, scale and norm
+        // arrive decoded once by `scan`.
         let scored = match &q {
-            search::Query::Dot(codes) => self.scan(allowed, |r, scale, _| {
-                search::dot_score(codes, layout.codes_at(bytes, r), scale)
+            search::Query::Dot(codes) => self.scan(allowed, |row_codes, scale, _| {
+                search::dot_score(codes, row_codes, scale)
             }),
-            search::Query::Cosine { codes, norm } => self.scan(allowed, |r, scale, row_norm| {
-                search::cosine_score(codes, *norm, layout.codes_at(bytes, r), scale, row_norm)
-            }),
-            search::Query::Euclidean(vector) => self.scan(allowed, |r, _, _| {
-                search::euclidean_score(vector, layout.row_at(bytes, r))
+            search::Query::Cosine { codes, norm } => {
+                self.scan(allowed, |row_codes, scale, row_norm| {
+                    search::cosine_score(codes, *norm, row_codes, scale, row_norm)
+                })
+            }
+            search::Query::Euclidean(vector) => self.scan(allowed, |row_codes, scale, _| {
+                search::euclidean_score(vector, Rows::recover(row_codes, scale))
             }),
         }?;
         Ok(search::top_k(scored, k))
@@ -997,16 +1002,10 @@ impl FlatIndex {
     /// — the reader refuses the row file as corrupt (contract "Refusals"). The check lives at
     /// the readers rather than at open because an open reads nothing beyond the manifest
     /// (Feature 024); the scan and `vector` are the first readers of a row.
-    fn checked_row(&self, r: usize, id: u32) -> Result<(f32, f32)> {
+    fn checked_row(&self, r: usize, id: u32, least_norm: f32) -> Result<(f32, f32)> {
         let bytes = self.bytes();
         let scale = self.layout.scale_at(bytes, r);
         let norm = self.layout.norm_at(bytes, r);
-        // A cosine row's norm is at least its scale (one code is ±127), so at least the floor.
-        let least_norm = if self.metric() == Metric::Cosine {
-            f32::MIN_POSITIVE
-        } else {
-            0.0
-        };
         if !(scale.is_normal() && scale > 0.0 && norm.is_finite() && norm >= least_norm) {
             return Err(corrupt(format!(
                 "{} row {r} (id {id}) has scale {scale:e} and norm {norm:e}, which this engine \
@@ -1017,16 +1016,28 @@ impl FlatIndex {
         Ok((scale, norm))
     }
 
-    /// Every live, allowed row as `(score_row(r, scale, norm), id)`, with the row's scale and
-    /// norm decoded and checked once ([`Self::checked_row`]) and handed to the scorer.
+    /// The least norm a row of this index may carry: a cosine row's norm is at least its scale
+    /// (one code is ±127), so at least the floor; any other metric allows a zero row.
+    fn least_norm(&self) -> f32 {
+        if self.metric() == Metric::Cosine {
+            f32::MIN_POSITIVE
+        } else {
+            0.0
+        }
+    }
+
+    /// Every live, allowed row as `(score_row(codes, scale, norm), id)`, with the row's scale
+    /// and norm decoded and checked once ([`Self::checked_row`]) and handed to the scorer with
+    /// the codes; everything loop-invariant is decided out here.
     fn scan(
         &self,
         allowed: Option<&DocSet>,
-        mut score_row: impl FnMut(usize, f32, f32) -> f32,
+        mut score_row: impl FnMut(&[u8], f32, f32) -> f32,
     ) -> Result<Vec<(f32, u32)>> {
         let bytes = self.bytes();
         let layout = self.layout;
         let no_dead = self.dead.is_empty();
+        let least_norm = self.least_norm();
         let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
         for r in 0..layout.count {
             if !no_dead && self.dead.contains(r as u32) {
@@ -1036,8 +1047,8 @@ impl FlatIndex {
             if allowed.is_some_and(|set| !set.contains(DocId(id))) {
                 continue;
             }
-            let (scale, norm) = self.checked_row(r, id)?;
-            scored.push((score_row(r, scale, norm), id));
+            let (scale, norm) = self.checked_row(r, id, least_norm)?;
+            scored.push((score_row(layout.codes_at(bytes, r), scale, norm), id));
         }
         Ok(scored)
     }

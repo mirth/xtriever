@@ -178,13 +178,12 @@ impl Rows {
         bytes.slice(r * self.row_bytes + 12, self.dim)
     }
 
-    /// Row `r` recovered as floats — `code × scale`, which is approximate (ADR-0015). Used to
-    /// answer `vector(id)` and by the Euclidean path; the scan never materialises a row.
-    pub fn row_at<'a>(&self, bytes: RowBytes<'a>, r: usize) -> impl Iterator<Item = f32> + 'a {
-        let scale = self.scale_at(bytes, r);
-        self.codes_at(bytes, r)
-            .iter()
-            .map(move |c| f32::from(*c as i8) * scale)
+    /// `codes` recovered as floats under `scale` — `code × scale`, which is approximate
+    /// (ADR-0015): what `vector(id)` answers and what the Euclidean path compares against; the
+    /// dot-product paths never materialise a row. The scale is the caller's, decoded and
+    /// checked once.
+    pub fn recover(codes: &[u8], scale: f32) -> impl Iterator<Item = f32> + '_ {
+        codes.iter().map(move |c| f32::from(*c as i8) * scale)
     }
 
     /// The bytes of row `r`, as they are on disk.
@@ -473,7 +472,10 @@ mod tests {
         let whole = RowBytes::whole(&out);
         assert_eq!(rows.id_at(whole, 1), 9);
         assert_eq!(rows.norm_at(whole, 1), 2.0);
-        assert_eq!(rows.row_at(whole, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        assert_eq!(
+            Rows::recover(rows.codes_at(whole, 1), rows.scale_at(whole, 1)).collect::<Vec<_>>(),
+            vec![0.0, 2.0]
+        );
         // The same rows split at the row boundary between a base and a tail.
         let split = RowBytes {
             base: &out[..rows.row_bytes],
@@ -481,7 +483,10 @@ mod tests {
         };
         assert_eq!(rows.id_at(split, 0), 3);
         assert_eq!(rows.id_at(split, 1), 9);
-        assert_eq!(rows.row_at(split, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        assert_eq!(
+            Rows::recover(rows.codes_at(split, 1), rows.scale_at(split, 1)).collect::<Vec<_>>(),
+            vec![0.0, 2.0]
+        );
         assert_eq!(rows.row_bytes_at(split, 1), &out[rows.row_bytes..]);
         assert_eq!(row_file(7), "vectors.7.bin");
         assert_eq!(row_file_generation("vectors.7.bin"), Some(7));

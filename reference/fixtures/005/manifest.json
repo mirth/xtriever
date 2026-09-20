@@ -3,9 +3,9 @@
     "fusion.json": "289ae92968e82e33b1ff2d724412a76fd7b98a6c2e0946ebacc37e7599e2da0e",
     "hybrid.json": "cdc0057e37e55a3bd6c5fff97150c978bcaa0e8a9cc3567965c1d87d8bbcd9a1"
   },
-  "generator_sha256": "bb4c7fe85d5fafd94e981367df1eb79bef2aa452229945c7fd3ea195f3e886aa",
-  "python_version": "3.12.12",
-  "rescored_by": "reference/gen_026_fixtures.py",
-  "rescored_by_sha256": "dabb4099944d705a49aac1b980c00cbf2e8c1ae19ddc0e733a96259d50c31654",
-  "schema_version": 1
+  "generator_sha256": "c0fbeb80bbc42c97ba861644641708ceafd6b7665115c5c67b7a22360d2f0d89",
+  "python_version": "3.12.0",
+  "schema_version": 1,
+  "scheme": "reference/dense_format3.py",
+  "scheme_sha256": "68bff20798813695767feeb9f1c7964b617fe3b90c1f05917babfbae15740fc0"
 }

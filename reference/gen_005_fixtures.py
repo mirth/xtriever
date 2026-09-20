@@ -43,6 +43,9 @@ if sys.version_info[:2] != _REQUIRED_PY or sys.prefix == sys.base_prefix:
 
 import numpy as np  # noqa: E402
 
+from dense_format3 import Prepared  # noqa: E402  (dense format 3's scheme, once)
+from dense_format3 import score as score_f3  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 RRF_K = 60
@@ -139,13 +142,15 @@ def fdot(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def cosine_ranking(q: np.ndarray, docs: list[dict], allowed: set[str] | None) -> list[tuple[str, float]]:
-    qn = math.sqrt(fdot(q, q))
+    """The dense stage's ranking **as the engine stores and scores it** (dense format 3, Feature
+    026): the scheme in `dense_format3.py`, imported rather than restated. The `fsum` float
+    cosine this replaced minted the fixture under formats 1 and 2."""
+    prepared_q = Prepared(q.tolist())
     scored = []
     for d in docs:
         if allowed is not None and d["external_id"] not in allowed:
             continue
-        v = np.asarray(d["vector"], dtype=np.float32)
-        scored.append((d["external_id"], fdot(v, q) / (math.sqrt(fdot(v, v)) * qn)))
+        scored.append((d["external_id"], score_f3("cosine", prepared_q, Prepared(d["vector"]))))
     # Ties by ascending *internal* id = ingestion order = position in `docs`.
     order = {d["external_id"]: i for i, d in enumerate(docs)}
     scored.sort(key=lambda p: (-p[1], order[p[0]]))
@@ -313,6 +318,8 @@ def write_manifest(out: Path) -> None:
         "files": {name: sha256_file(out / name) for name in files},
         "generator_sha256": sha256_file(Path(__file__)),
         "python_version": ".".join(map(str, sys.version_info[:3])),
+        "scheme": "reference/dense_format3.py",
+        "scheme_sha256": sha256_file(Path(__file__).resolve().parent / "dense_format3.py"),
     })
 
 

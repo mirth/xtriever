@@ -136,7 +136,7 @@ def main() -> int:
               f"--config dense-baseline-v1` with this build first", file=sys.stderr)
         return 1
 
-    header, ids, norms, scales, codes = read_v3_rows(CACHE)
+    header, ids, norms, scales, codes = read_v3_rows(CACHE / "index")
     dim, rows = header["dim"], header["rows"]
     floats = read_floats(CACHE, rows, dim)
     corpus_ids = [json.loads(line)["_id"] for line in (DATASET / "corpus.jsonl").read_text().splitlines()]

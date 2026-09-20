@@ -38,13 +38,15 @@ MAX_PAIR_LEN = 512
 K = 10
 
 
-def read_rows(dense_dir: Path) -> np.ndarray:
-    manifest = (dense_dir / "manifest.bin").read_bytes()
+def read_rows(cache_dir: Path) -> np.ndarray:
+    """The embedder's own floats: `vectors.f32.bin` beside the eval cache's index directory
+    (Feature 026; the index itself holds eight-bit rows, and this study wants the embedding)."""
+    manifest = (cache_dir / "index" / "manifest.bin").read_bytes()
     header = json.loads(manifest[16 : 16 + struct.unpack("<Q", manifest[8:16])[0]])
     dim, rows = header["dim"], header["rows"]
-    raw = np.fromfile(dense_dir / f"vectors.{header['generation']}.bin", dtype=np.uint8)
-    table = raw.reshape(rows, 8 + 4 * dim)
-    return table[:, 8:].copy().view(np.float32).reshape(rows, dim)
+    floats = np.fromfile(cache_dir / "vectors.f32.bin", dtype=np.float32)
+    assert floats.size == rows * dim, (floats.size, rows * dim)
+    return floats.reshape(rows, dim)
 
 
 def embed_queries(texts: list[str]) -> np.ndarray:

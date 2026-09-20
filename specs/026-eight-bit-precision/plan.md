@@ -145,7 +145,8 @@ crates/
 
 reference/
 ├── models/manifest*.json     # the eight-bit artefacts pinned by repository, revision, checksum
-├── gen_026_fixtures.py       # the format-3 oracle, recomputed in Python
+├── dense_format3.py          # the scheme, once: imported by gen_004, gen_005 and the checker
+├── gen_026_fixtures.py       # the checker: 004/005 goldens and the format-3 oracle, from the scheme
 └── int8_*_study.py           # the three studies that justified the attempt (already committed)
 
 scripts/fetch-model.sh        # fetches whichever artefact the manifest names

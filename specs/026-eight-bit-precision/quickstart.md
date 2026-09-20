@@ -30,7 +30,8 @@ cargo nextest run -p xtriever-dense -p xtriever-rerank quantised   # expect fail
 ```bash
 cargo nextest run -p xtriever-dense
 cargo bench -p xtriever-dense --bench scan          # the changed kernel, recorded
-python3 reference/gen_026_fixtures.py --check       # the oracle, recomputed in Python
+python3 reference/gen_026_fixtures.py               # the 004/005 goldens, recomputed from dense_format3.py
+python3 reference/gen_026_fixtures.py --check-oracle  # the oracle, likewise
 ```
 
 Expected: rows are 396 bytes at dimension 384, a version-1 or version-2 file is refused by name,

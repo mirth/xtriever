@@ -52,7 +52,11 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import numpy as np  # noqa: E402
 
+from dense_format3 import Prepared  # noqa: E402  (the scheme, once)
+from dense_format3 import score as score_f3  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SCHEME = REPO_ROOT / "reference/dense_format3.py"
 MODEL_MANIFEST = REPO_ROOT / "reference/models/manifest.json"
 
 # --------------------------------------------------------------------------------------------
@@ -237,22 +241,12 @@ def fdot(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def score(metric: str, q: np.ndarray, rows: np.ndarray) -> np.ndarray:
-    """float64 scores of every row for q; inputs are float32 arrays."""
-    out = np.empty(len(rows), dtype=np.float64)
-    if metric == "cosine":
-        qn = math.sqrt(fdot(q, q))
-        for j, r in enumerate(rows):
-            out[j] = fdot(r, q) / (math.sqrt(fdot(r, r)) * qn)
-    elif metric == "dot":
-        for j, r in enumerate(rows):
-            out[j] = fdot(r, q)
-    elif metric == "euclidean":
-        for j, r in enumerate(rows):
-            d = (r.astype(np.float64) - q.astype(np.float64))
-            out[j] = -math.sqrt(math.fsum(x * x for x in d.tolist()))
-    else:
-        raise ValueError(metric)
-    return out
+    """Every row's score for q **as the engine stores and scores it** (dense format 3, Feature
+    026): the scheme in `dense_format3.py`, imported rather than restated, so one generator
+    produces goldens the engine reproduces bit for bit. The `fsum` float scorer this replaced
+    minted formats 1 and 2; `fdot` stays for the tie planting, which only needs an order."""
+    prepared_q = Prepared(q.tolist())
+    return np.array([score_f3(metric, prepared_q, Prepared(r.tolist())) for r in rows], dtype=np.float64)
 
 
 def ranked(scores: np.ndarray, ids: list[int], allowed: set[int] | None) -> list[tuple[int, float]]:
@@ -503,6 +497,8 @@ def write_manifest(out: Path) -> None:
         "files": {name: sha256_file(out / name) for name in files},
         "generator_sha256": sha256_file(Path(__file__)),
         "python_version": ".".join(map(str, sys.version_info[:3])),
+        "scheme": "reference/dense_format3.py",
+        "scheme_sha256": sha256_file(SCHEME),
     })
 
 
@@ -512,6 +508,8 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=REPO_ROOT / "reference/fixtures/004")
     ap.add_argument("--model-dir", type=Path, default=REPO_ROOT / "reference/models/all-MiniLM-L6-v2")
     ap.add_argument("--refresh-manifest", action="store_true", help="only rewrite manifest.json")
+    ap.add_argument("--keep-embeddings", action="store_true",
+                    help="regenerate search.json and mutations.json only; embeddings.json is left as committed")
     ap.add_argument("--verify-embed", type=Path, metavar="VECTORS_JSONL",
                     help="re-embed {doc_id,text,vector} lines with torch and report the worst case")
     args = ap.parse_args()
@@ -524,8 +522,11 @@ def main() -> int:
     if args.verify_embed:
         return verify_embed(args.model_dir, pins, args.verify_embed)
 
-    print("embeddings.json")
-    write_json(args.out / "embeddings.json", gen_embeddings(args.model_dir, pins, args.seed))
+    if args.keep_embeddings:
+        print("embeddings.json kept")
+    else:
+        print("embeddings.json")
+        write_json(args.out / "embeddings.json", gen_embeddings(args.model_dir, pins, args.seed))
     print("search.json")
     write_json(args.out / "search.json", gen_search(args.seed))
     print("mutations.json")

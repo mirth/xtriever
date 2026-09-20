@@ -505,8 +505,10 @@ fn vector_returns_committed_rows_within_the_quantisation_step() {
         let got = index.vector(DocId(row.id)).unwrap().unwrap();
         // Since Feature 026 a committed row is eight-bit codes and a scale, so `vector` returns
         // what those recover — never the bytes that were added (ADR-0015, spec FR-003). Every
-        // component is within half a quantisation step, which is the promise the format makes.
-        let step = row.vector.iter().fold(0.0f32, |p, v| p.max(v.abs())) / 127.0;
+        // component is within half a quantisation step — the row's scale, floored — which is
+        // the promise the format makes; the step comes from the scheme's restatement in
+        // `support`, not from an unfloored `peak / 127` (review round 4, finding 4).
+        let (_, step) = support::quantise(&row.vector);
         assert_eq!(got.len(), row.vector.len(), "row {}", row.id);
         for (i, (recovered, original)) in got.iter().zip(&row.vector).enumerate() {
             assert!(
