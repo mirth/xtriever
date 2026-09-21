@@ -370,7 +370,7 @@ impl FloatSample {
         let len = std::fs::metadata(&path)
             .map_err(|_| incomplete_sidecar(dir))?
             .len() as usize;
-        if count == 0 || len % (count * 4) != 0 {
+        if count == 0 || !len.is_multiple_of(count * 4) {
             return Err(incomplete_sidecar(dir));
         }
         Ok(Self {
