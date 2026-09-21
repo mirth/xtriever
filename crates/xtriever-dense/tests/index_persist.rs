@@ -511,4 +511,18 @@ fn vector_returns_committed_rows_within_the_quantisation_step() {
             &format!("row {}", row.id),
         );
     }
+    // An id never added: `Ok(None)`, past the last row of the binary search too.
+    assert_eq!(index.vector(DocId(u32::MAX)).unwrap(), None);
+    // A reopened handle — ordered, tombstone-free, so `vector` is the binary-search path over
+    // the file rather than a table — recovers exactly the same rows (review round 7, finding 4).
+    let reopened = FlatIndex::open(tmp.path()).unwrap();
+    for row in &set.rows {
+        assert_eq!(
+            reopened.vector(DocId(row.id)).unwrap(),
+            index.vector(DocId(row.id)).unwrap(),
+            "row {} after a reopen",
+            row.id
+        );
+    }
+    assert_eq!(reopened.vector(DocId(u32::MAX)).unwrap(), None);
 }

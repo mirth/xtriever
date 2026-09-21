@@ -167,6 +167,7 @@ fn cache_key_matches_only_when_every_field_agrees() {
         embedder_fingerprint: "fp-a".into(),
         corpus_sha256: "abc".into(),
         documents: 5183,
+        dim: 384,
     };
     assert!(!key.matches(dir.path()), "nothing written yet");
     key.write(dir.path()).unwrap();
@@ -213,6 +214,13 @@ fn cache_key_matches_only_when_every_field_agrees() {
             "format",
             EmbeddingCacheKey {
                 format_version: 2, // the layout this build cannot open: a miss, never a hit
+                ..key.clone()
+            },
+        ),
+        (
+            "dim",
+            EmbeddingCacheKey {
+                dim: 768,
                 ..key.clone()
             },
         ),

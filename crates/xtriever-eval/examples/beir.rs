@@ -305,33 +305,17 @@ fn incomplete_sidecar(dir: &Path) -> anyhow::Error {
     )
 }
 
-/// Every cached row's floats in memory, for the hybrid baseline, which ingests them all.
+/// The sidecar, opened once and read row by row: the one reader for the hybrid baseline
+/// (which ingests every row, in order) and for `export-vectors` (which samples a few dozen).
+/// Its one completeness check is the exact length, `count × dim × 4` bytes — a zero-length or
+/// wrong-width file is refused here, never derived from (review round 7, findings 1 and 3).
 struct FloatRows {
+    file: std::fs::File,
     dim: usize,
-    data: Vec<f32>,
+    count: usize,
 }
 
 impl FloatRows {
-    fn read(dir: &Path, dim: usize, count: usize) -> anyhow::Result<Self> {
-        let path = dir.join(FLOAT_SIDECAR);
-        let bytes = std::fs::read(&path)
-            .with_context(|| format!("reading the embedder's floats at {}", path.display()))?;
-        if bytes.len() != count * dim * 4 {
-            bail!(
-                "{} holds {} bytes, not {} × {} × 4: {}",
-                path.display(),
-                bytes.len(),
-                count,
-                dim,
-                incomplete_sidecar(dir)
-            );
-        }
-        Ok(Self {
-            dim,
-            data: decode_f32s(&bytes),
-        })
-    }
-
     /// Whether `dir` holds a complete sidecar for `count` rows of `dim`: a cache without one
     /// is not a hit, whatever its key says (review round 3, finding 2).
     fn is_complete(dir: &Path, dim: usize, count: usize) -> bool {
@@ -339,51 +323,29 @@ impl FloatRows {
             .is_ok_and(|m| m.len() == (count * dim * 4) as u64)
     }
 
-    /// Row `i`, or a clean error naming the mismatch: the sidecar's row count is checked
-    /// against the corpus at load, but the documents the lexical builder yields are counted
-    /// separately, and an example binary must say what went wrong, not panic on a slice.
-    fn row(&self, i: usize) -> anyhow::Result<&[f32]> {
-        let rows = self.data.len() / self.dim;
-        if i >= rows {
-            bail!(
-                "document {i} has no cached embedding: {FLOAT_SIDECAR} holds {rows} rows; the \
-                 corpus and the cache disagree — rebuild the cache with `beir run --config \
-                 dense-baseline-v1`"
-            );
-        }
-        Ok(&self.data[i * self.dim..(i + 1) * self.dim])
-    }
-}
-
-/// The sidecar opened once for a sample of its rows: `export-vectors` wants a few dozen rows
-/// of FiQA's 88 MB, not the file, and no index needs opening for that — the cache key gives
-/// the row count and the file's length gives the width.
-struct FloatSample {
-    file: std::fs::File,
-    dim: usize,
-    count: usize,
-}
-
-impl FloatSample {
-    fn open(dir: &Path, count: usize) -> anyhow::Result<Self> {
-        let path = dir.join(FLOAT_SIDECAR);
-        let len = std::fs::metadata(&path)
-            .map_err(|_| incomplete_sidecar(dir))?
-            .len() as usize;
-        if count == 0 || !len.is_multiple_of(count * 4) {
+    fn open(dir: &Path, dim: usize, count: usize) -> anyhow::Result<Self> {
+        if !Self::is_complete(dir, dim, count) {
             return Err(incomplete_sidecar(dir));
         }
         Ok(Self {
-            file: std::fs::File::open(&path)?,
-            dim: len / (count * 4),
+            file: std::fs::File::open(dir.join(FLOAT_SIDECAR))?,
+            dim,
             count,
         })
     }
 
+    /// Row `i`, or a clean error naming the mismatch: the documents the lexical builder yields
+    /// are counted separately from the corpus, and an example binary must say what went wrong,
+    /// not panic on a slice.
     fn row(&mut self, i: usize) -> anyhow::Result<Vec<f32>> {
         use std::io::{Read, Seek, SeekFrom};
         if i >= self.count {
-            bail!("row {i} is beyond the {} cached rows", self.count);
+            bail!(
+                "document {i} has no cached embedding: {FLOAT_SIDECAR} holds {} rows; the corpus \
+                 and the cache disagree — rebuild the cache with `beir run --config \
+                 dense-baseline-v1`",
+                self.count
+            );
         }
         self.file.seek(SeekFrom::Start((i * self.dim * 4) as u64))?;
         let mut bytes = vec![0u8; self.dim * 4];
@@ -415,6 +377,7 @@ fn cached_index(
         embedder_fingerprint: embedder.fingerprint().to_owned(),
         corpus_sha256,
         documents: passages.len() as u64,
+        dim: embedder.dim(),
     };
     let index_dir = dir.join(CACHE_INDEX_DIR);
     let open = |dir: &Path| -> anyhow::Result<FlatIndex> {
@@ -594,7 +557,7 @@ fn export_vectors(a: &Args) -> anyhow::Result<()> {
             passages.len()
         );
     }
-    let mut floats = FloatSample::open(&dir, passages.len())?;
+    let mut floats = FloatRows::open(&dir, key.dim, passages.len())?;
     let step = (passages.len() / sample.max(1)).max(1);
     let mut file = std::io::BufWriter::new(std::fs::File::create(out)?);
     let mut written = 0;
@@ -646,6 +609,7 @@ fn evaluate_hybrid(
         embedder_fingerprint: embedder.fingerprint().to_owned(),
         corpus_sha256,
         documents: ds.corpus.ids.len() as u64,
+        dim: embedder.dim(),
     };
     if let Some(why) = key.mismatch(&cache_dir) {
         bail!(
@@ -657,7 +621,7 @@ fn evaluate_hybrid(
     // The embedder's floats, so the hybrid index quantises once (see `FLOAT_SIDECAR`). The
     // cache's index is not opened: the key already vouches for the document count, the
     // embedder for the width, and the sidecar's length is checked on read (round 6, finding 1).
-    let floats = FloatRows::read(&cache_dir, embedder.dim(), ds.corpus.ids.len())?;
+    let mut floats = FloatRows::open(&cache_dir, embedder.dim(), ds.corpus.ids.len())?;
 
     let keep;
     let index_dir = match a.flags.get("index-dir") {
@@ -693,8 +657,7 @@ fn evaluate_hybrid(
     for (i, (external_id, fields)) in docs.into_iter().enumerate() {
         let vector = floats
             .row(i)
-            .with_context(|| format!("cache row {i} ({external_id})"))?
-            .to_vec();
+            .with_context(|| format!("cache row {i} ({external_id})"))?;
         batch.push((
             SourceDocument {
                 external_id,

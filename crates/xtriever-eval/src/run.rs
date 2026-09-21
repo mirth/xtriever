@@ -382,6 +382,9 @@ pub struct EmbeddingCacheKey {
     pub corpus_sha256: String,
     /// Corpus size.
     pub documents: u64,
+    /// The embedder's width: what the float sidecar's rows are, so a reader needs no index
+    /// open and no inference from the file's length (Feature 026, review round 7).
+    pub dim: usize,
 }
 
 impl EmbeddingCacheKey {
@@ -421,7 +424,7 @@ impl EmbeddingCacheKey {
             Ok(k) => k,
             Err(e) => return Some(format!("key file {} is unreadable ({e})", path.display())),
         };
-        let fields: [(&str, String, String); 6] = [
+        let fields: [(&str, String, String); 7] = [
             (
                 "format_version",
                 stored.format_version.to_string(),
@@ -444,6 +447,7 @@ impl EmbeddingCacheKey {
                 stored.documents.to_string(),
                 self.documents.to_string(),
             ),
+            ("dim", stored.dim.to_string(), self.dim.to_string()),
         ];
         fields
             .into_iter()

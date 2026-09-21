@@ -179,6 +179,24 @@ that the correctness surface is clean and what remained was cleanup and one soft
    metrics against the intact index's bits; the contract's refusal row says which metric
    reads the norm.
 
+**Review round 7** (seven findings, all applied):
+
+1. and 3. My round-6 sampler derived the width from the file's length, so an empty sidecar
+   passed as width zero and the export wrote empty vectors with exit 0. There is one reader now,
+   opened once, reading rows on demand for both the export and the hybrid baseline, with one
+   completeness check: the exact length. The embedder's width is a field of the cache key, so
+   no reader infers it. An empty sidecar is refused with the rebuild instruction (verified).
+   The cache-key test caught the first version of this: the field was written and read but not
+   compared, so a width change would have been a hit; `mismatch` compares it now.
+2. The stored norm is computed once at `add` and carried in the pending set beside the codes;
+   commit and compaction copy it.
+4. The persistence test again asserts that an id never added returns nothing and that a
+   reopened handle — the binary-search path — recovers the same rows.
+5. T016 names the checker's real invocations; the flag it named did not exist.
+6. The exported quantiser asserts finiteness in debug builds and says callers validate first.
+7. Rule 3: the task list claimed each PR stays under 800 lines; it no longer does. The branch
+   carries about 1,550 inserted lines of Rust, which the owner waived for this pull request.
+
 **Evaluation, all three datasets, this build against the committed baselines.** Every delta is
 inside the 0.005 bound; no metric on any dataset dropped by more than 0.001. Recall@100 is
 unchanged everywhere except NFCorpus, where it rose by 0.0003.

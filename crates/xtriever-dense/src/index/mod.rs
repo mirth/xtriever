@@ -16,9 +16,7 @@ use crate::FORMAT_VERSION;
 use crate::LoadPath;
 use crate::bytes::{self, Bytes};
 use crate::error::{corrupt, dim_mismatch, schema_err};
-use format::{Header, MANIFEST, MANIFEST_TMP, RowBytes, Rows, V1_FILE};
-
-use crate::quantise::Quantised;
+use format::{Header, MANIFEST, MANIFEST_TMP, RowBytes, Rows, StagedRow, V1_FILE};
 
 /// What the manifest says about the committed state — for tests, records and `about`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,10 +84,10 @@ pub struct FlatIndex {
     /// row ids, and a read-only open touches nothing beyond the manifest.
     table: Option<BTreeMap<u32, u32>>,
     /// `Some(vector)` = add or replace, `None` = delete. Invisible until `commit`.
-    /// Staged changes: `Some` an insert or replacement, already quantised (once, at `add`,
-    /// where it is validated — a quarter of the memory of the floats, and `commit` and
-    /// `compact` only copy bytes); `None` a delete.
-    pending: BTreeMap<DocId, Option<Quantised>>,
+    /// Staged changes: `Some` an insert or replacement, already quantised and with its norm
+    /// (once, at `add`, where it is validated — a quarter of the memory of the floats, and
+    /// `commit` and `compact` only copy bytes); `None` a delete.
+    pending: BTreeMap<DocId, Option<StagedRow>>,
     /// `commit` rewrites instead of appending when the dead share it would leave exceeds this
     /// (`None` = only on `compact`).
     compaction_threshold: Option<f32>,
@@ -724,7 +722,7 @@ impl FlatIndex {
     }
 
     /// Validate `v` for this index and return it as the row it will be stored as.
-    fn validate_vector(&self, id: DocId, v: &[f32]) -> Result<Quantised> {
+    fn validate_vector(&self, id: DocId, v: &[f32]) -> Result<StagedRow> {
         if v.len() != self.header.dim {
             return Err(dim_mismatch(self.header.dim, v.len()));
         }
@@ -737,8 +735,8 @@ impl FlatIndex {
         // that cosine divides by (ADR-0015). A zero vector, and a vector whose every component
         // is below half the scale floor, both quantise to all-zero codes: one check covers both,
         // and it is the stored row that cosine cannot point with.
-        let quantised = crate::quantise::quantise(v);
-        let norm = crate::quantise::norm(&quantised);
+        let staged = StagedRow::new(v);
+        let norm = f64::from(staged.norm);
         if self.metric() == Metric::Cosine && norm == 0.0 {
             return Err(schema_err(format!(
                 "vector for {id} has zero norm at eight-bit precision; cosine similarity is \
@@ -747,12 +745,13 @@ impl FlatIndex {
         }
         // The norm is persisted as f32; a finite vector such as [f32::MAX, f32::MAX] has a norm
         // that only fits f64, and storing it as +inf would silently score its own cosine as 0.
-        if !(norm as f32).is_finite() {
+        if !staged.norm.is_finite() {
             return Err(schema_err(format!(
-                "vector for {id} has norm {norm:e}, which does not fit a finite f32"
+                "vector for {id} has norm {:e}, which does not fit a finite f32",
+                crate::quantise::norm(&staged.quantised)
             )));
         }
-        Ok(quantised)
+        Ok(staged)
     }
 }
 
@@ -773,8 +772,8 @@ impl VectorIndex for FlatIndex {
         if self.read_only {
             return Err(Error::read_only());
         }
-        let quantised = self.validate_vector(id, vector)?;
-        self.pending.insert(id, Some(quantised));
+        let staged = self.validate_vector(id, vector)?;
+        self.pending.insert(id, Some(staged));
         Ok(())
     }
 
@@ -1077,7 +1076,7 @@ impl FlatIndex {
 /// A row of the merged (committed ⊕ pending) sequence a rewrite emits.
 enum Merged<'a> {
     Kept(usize),
-    Pending(u32, &'a Quantised),
+    Pending(u32, &'a StagedRow),
 }
 
 /// The ascending merge of the committed live rows with the pending changes.
@@ -1093,7 +1092,7 @@ where
 impl<'a, C, P> Iterator for Merge<C, P>
 where
     C: Iterator<Item = (u32, usize)>,
-    P: Iterator<Item = (u32, Option<&'a Quantised>)>,
+    P: Iterator<Item = (u32, Option<&'a StagedRow>)>,
 {
     type Item = Merged<'a>;
 

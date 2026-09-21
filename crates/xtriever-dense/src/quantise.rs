@@ -44,11 +44,18 @@ pub struct Quantised {
     pub scale: f32,
 }
 
-/// Quantise `vector`.
+/// Quantise `vector`, whose components must be finite.
 ///
 /// A vector of all zeros — which a degenerate embedding can be — gets scale `1.0` and all-zero
-/// codes, so recovery gives back zeros instead of dividing by zero.
+/// codes, so recovery gives back zeros instead of dividing by zero. A non-finite component is
+/// a caller's bug — every caller validates first (`validate_vector`, `validate_query`) — and
+/// would break the invariants below (an infinite peak makes an infinite scale, a NaN becomes
+/// code 0), so it is asserted in debug builds rather than mapped to something plausible.
 pub fn quantise(vector: &[f32]) -> Quantised {
+    debug_assert!(
+        vector.iter().all(|v| v.is_finite()),
+        "quantise: a non-finite component; callers validate first"
+    );
     let peak = vector.iter().fold(0.0f32, |peak, v| peak.max(v.abs()));
     let scale = if peak > 0.0 {
         // The floor keeps a denormal peak from storing a zero (or denormal) scale, which no
