@@ -45,6 +45,7 @@
 mod bytes;
 mod embedder;
 mod error;
+mod gguf_header;
 mod index;
 pub mod model;
 #[doc(hidden)]

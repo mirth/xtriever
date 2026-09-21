@@ -1,5 +1,6 @@
 //! One model-backed round trip: the real embedder through the pipeline (US1 scenario 5 with the
-//! real fingerprint). Needs `reference/models/all-MiniLM-L6-v2`.
+//! real fingerprint). Needs `reference/models/all-MiniLM-L6-v2-q8` (Feature 026: the eight-bit
+//! artefact every tool defaults to; `XTRIEVER_MODEL_DIR` names another).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
@@ -162,7 +163,7 @@ fn real_reranker_over_the_real_embedder_index() {
     let rerank_dir = std::env::var_os("XTRIEVER_RERANK_MODEL_DIR").map_or_else(
         || {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../reference/models/ms-marco-MiniLM-L-6-v2")
+                .join("../../reference/models/ms-marco-MiniLM-L-6-v2-q8")
         },
         std::path::PathBuf::from,
     );

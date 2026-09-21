@@ -53,8 +53,17 @@ proptest! {
         let (codes, scale) = quantise(&vector);
         prop_assert!(scale.is_normal() && scale > 0.0, "{scale:e}");
         prop_assert!(codes.iter().all(|c| *c != i8::MIN));
+        // Half a step, plus what f32 arithmetic adds: the quotient `v / scale` is rounded to
+        // f32 before it is rounded to a code (a half-way quotient such as 126.5 lands on either
+        // side of it), and `code × scale` rounds once more — a few ulps of the peak, not of the
+        // scale. CI found the bound short by that much on `[-1.9813946, 1.9892262]`.
+        let peak = vector.iter().fold(0.0f32, |p, v| p.max(v.abs()));
+        let slack = 4.0 * f32::EPSILON * peak.max(scale);
         for (original, recovered) in vector.iter().zip(recover(&codes, scale)) {
-            prop_assert!((original - recovered).abs() <= scale / 2.0 + f32::EPSILON * scale);
+            prop_assert!(
+                (original - recovered).abs() <= scale / 2.0 + slack,
+                "{original} recovered as {recovered}, step {scale}"
+            );
         }
     }
 

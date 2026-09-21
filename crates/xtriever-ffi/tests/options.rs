@@ -216,10 +216,13 @@ fn rerank_mode_wire_defaults() {
     );
 }
 
-/// The pre-015 re-ranked order of the first golden query (`expected.json` on `main`,
-/// query `q0` "zephyr", k 10, depth 5): what `Replace` must still produce.
+/// The pre-015 re-ranked order of the first golden query (query `q0` "zephyr", k 10, depth 5):
+/// what `Replace` must still produce — the re-ranker's order over the top five, then the fused
+/// order. Minted with the eight-bit artefacts (Feature 026): the head is the float era's, and
+/// the tail is the fused tail the re-minted `expected.json` records, where the eight-bit
+/// embedder places `d038` before `d008`.
 const Q0_REPLACE_ORDER: [&str; 10] = [
-    "d016", "d011", "d031", "d026", "d001", "d032", "d020", "d008", "d038", "d030",
+    "d016", "d011", "d031", "d026", "d001", "d032", "d020", "d038", "d008", "d030",
 ];
 
 #[test]

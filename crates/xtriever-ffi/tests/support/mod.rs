@@ -17,7 +17,7 @@ pub fn repo_root() -> PathBuf {
 /// The git-ignored embedder directory, overridable with `XTRIEVER_MODEL_DIR`.
 pub fn embedder_dir() -> PathBuf {
     std::env::var_os("XTRIEVER_MODEL_DIR").map_or_else(
-        || repo_root().join("reference/models/all-MiniLM-L6-v2"),
+        || repo_root().join("reference/models/all-MiniLM-L6-v2-q8"),
         PathBuf::from,
     )
 }
@@ -25,7 +25,7 @@ pub fn embedder_dir() -> PathBuf {
 /// The git-ignored re-rank model directory, overridable with `XTRIEVER_RERANK_MODEL_DIR`.
 pub fn reranker_dir() -> PathBuf {
     std::env::var_os("XTRIEVER_RERANK_MODEL_DIR").map_or_else(
-        || repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2"),
+        || repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2-q8"),
         PathBuf::from,
     )
 }
@@ -94,11 +94,15 @@ pub fn bits32(x: f32) -> u32 {
     x.to_bits()
 }
 
-/// A writable copy of a model directory for tamper tests.
+/// A writable copy of a model directory for tamper tests: every file in it, whichever pinned
+/// artefact it holds (Feature 026: the eight-bit directory has the GGUF, the float
+/// configuration and tokenizer, and for the re-ranker the borrowed pooler).
 pub fn model_copy(src: &Path) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    for name in ["config.json", "tokenizer.json", "model.safetensors"] {
-        std::fs::copy(src.join(name), dir.path().join(name)).unwrap();
+    for entry in std::fs::read_dir(src).unwrap().filter_map(Result::ok) {
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            std::fs::copy(entry.path(), dir.path().join(entry.file_name())).unwrap();
+        }
     }
     dir
 }

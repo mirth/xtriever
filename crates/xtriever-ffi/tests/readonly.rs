@@ -121,12 +121,16 @@ fn open_failures_name_what_failed() {
         }
         other => panic!("{other:?}"),
     }
-    // The wrong model as the embedder (its pins fail).
+    // The wrong model as the embedder: its directory holds the re-ranker's weights file, not
+    // either of the embedder's (Feature 026), so it is refused naming what was expected — or,
+    // were the names to coincide, by its pins.
     match open(&marker, &support::reranker_dir(), None) {
         Err(XtrieverError::Model { model, message }) => {
             assert!(!model.is_empty());
             assert!(
-                message.contains("bytes") || message.contains("sha256"),
+                message.contains("neither")
+                    || message.contains("bytes")
+                    || message.contains("sha256"),
                 "{message}"
             );
         }
@@ -135,18 +139,28 @@ fn open_failures_name_what_failed() {
     // A tampered weights file: size mismatch naming the file and both sizes.
     let good = tmp.path().join("good");
     drop(support::build_fixture_index(&good));
+    // Whichever pinned artefact the copy holds (Feature 026: the eight-bit GGUF by default, the
+    // float file with XTRIEVER_MODEL_DIR): the engine names the file and both sizes.
     let copy = support::model_copy(&e);
+    let weights = std::fs::read_dir(copy.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .find(|name| name == "model.safetensors" || name.ends_with(".gguf"))
+        .expect("a weights file in the model copy");
+    let pinned = std::fs::metadata(copy.path().join(&weights)).unwrap().len();
     std::fs::OpenOptions::new()
         .append(true)
-        .open(copy.path().join("model.safetensors"))
+        .open(copy.path().join(&weights))
         .unwrap()
         .write_all(b"\0")
         .unwrap();
     match open(&good, copy.path(), None) {
         Err(XtrieverError::Model { message, .. }) => {
-            assert!(message.contains("model.safetensors"), "{message}");
+            assert!(message.contains(&weights), "{message}");
             assert!(
-                message.contains("90868376") && message.contains("90868377"),
+                message.contains(&pinned.to_string())
+                    && message.contains(&(pinned + 1).to_string()),
                 "{message}"
             );
         }

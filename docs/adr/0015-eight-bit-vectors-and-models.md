@@ -81,12 +81,16 @@ repository ships one. The artefact supplies weights only.
 
 **The matrices are multiplied in f16** (owner's decision, 2026-09-21). candle's eight-bit CPU
 kernel is 3.7× slower than the float path for the 256-token sequences this engine feeds it, and
-quality is the same under eight-bit, f16 and f32 arithmetic to three decimals on SciFact, because
-the weight rounding, not the arithmetic, is what the artefact changes. Each eight-bit tensor is
-expanded to `f16` once at load — half the float model's RAM, float speed — and the fingerprints
-say so (`compute=f16`); the mode is fixed in code, never read from the environment. A kernel of
-our own for eight-bit arithmetic at float speed is out of scope (a commodity component, Principle
-I).
+quality is the same under eight-bit, f16 and f32 arithmetic to three decimals on SciFact. Each
+eight-bit tensor is expanded to `f16` once at load — half the float model's RAM, float speed —
+and the fingerprints say so (`compute=f16`); the mode is fixed in code, never read from the
+environment. The expansion is itself a rounding: a code times its `f16` block scale needs up to
+19 significant bits and `f16` holds 11, so most weights are rounded once more at load,
+deterministically, which is part of what `compute=f16` names; an `f32` expansion would hold the
+products exactly at the float model's RAM. The artefact's own rounding is what the SciFact
+numbers show to be the dominant change; the f16 rounding on top of it did not move them. A
+kernel of our own for eight-bit arithmetic at float speed is out of scope (a commodity component,
+Principle I).
 
 **The re-ranker's pooler is borrowed too** (owner's decision, 2026-09-21). The published
 cross-encoder scores `classifier(tanh(pooler(CLS)))`; the pinned eight-bit file carries the

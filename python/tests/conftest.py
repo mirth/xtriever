@@ -15,9 +15,9 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE_INDEX = REPO / "swift/Xtriever/Tests/Fixtures/index"
-EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/all-MiniLM-L6-v2"))
+EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/all-MiniLM-L6-v2-q8"))
 RERANKER = Path(
-    os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2")
+    os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2-q8")
 )
 GOLDENS = REPO / "swift/Xtriever/Tests/Fixtures/expected.json"
 FIXTURE_DOCS = REPO / "reference/fixtures/005/hybrid.json"

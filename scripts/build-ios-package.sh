@@ -120,8 +120,10 @@ if [ "$with_models" = true ]; then
     reranker_manifest="${XTRIEVER_RERANK_MODEL_MANIFEST:-$repo_root/reference/models/manifest-rerank-q8.json}"
     "$repo_root/scripts/fetch-model.sh" --manifest "$embedder_manifest" >/dev/null
     "$repo_root/scripts/fetch-model.sh" --manifest "$reranker_manifest" >/dev/null
-    embedder_dir="$repo_root/reference/models/$(jq -er '.local_dir' "$embedder_manifest")"
-    reranker_dir="$repo_root/reference/models/$(jq -er '.local_dir' "$reranker_manifest")"
+    # `.local_dir` with the fetch script's own default, so a manifest without it (the float
+    # embedder's had none until Feature 026) selects the directory the fetch script filled.
+    embedder_dir="$repo_root/reference/models/$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$embedder_manifest")"
+    reranker_dir="$repo_root/reference/models/$(jq -r '.local_dir // "ms-marco-MiniLM-L-6-v2"' "$reranker_manifest")"
     rm -rf "$resources/models"; mkdir -p "$resources/models"
     cp -R "$embedder_dir" "$resources/models/embedder"
     cp -R "$reranker_dir" "$resources/models/reranker"

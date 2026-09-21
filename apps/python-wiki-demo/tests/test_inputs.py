@@ -34,8 +34,8 @@ def test_defaults_resolve_against_the_repo_root(monkeypatch):
     assert p.corpus_json == REPO / "target/xt-wiki/index/corpus.json"
     assert p.attribution == REPO / "target/xt-wiki/ATTRIBUTION.txt"
     assert p.expected == REPO / "target/xt-wiki/expected.json"
-    assert p.embedder == REPO / "reference/models/all-MiniLM-L6-v2"
-    assert p.reranker == REPO / "reference/models/ms-marco-MiniLM-L-6-v2"
+    assert p.embedder == REPO / "reference/models/all-MiniLM-L6-v2-q8"
+    assert p.reranker == REPO / "reference/models/ms-marco-MiniLM-L-6-v2-q8"
     assert p.snapshot == REPO / "reference/datasets/wiki/simple.jsonl"
     assert p.manifest == REPO / "reference/datasets/wiki-manifest.json"
     assert p.queries == REPO / "reference/fixtures/008/queries.json"
@@ -63,8 +63,10 @@ def test_flag_beats_env_beats_default(monkeypatch, tmp_path):
 def test_missing_input_names_the_producer(tmp_path):
     p = resolve(_args(artefact=str(tmp_path / "none"), embedder=str(tmp_path / "e"), reranker=str(tmp_path / "r"), snapshot=str(tmp_path / "s.jsonl"), queries=str(tmp_path / "q.json")))
     assert first_missing(p, ["artefact"]) == ("the Wikipedia artefact", p.index_dir / "xtriever-pipeline.json", PRODUCERS["artefact"])
-    assert first_missing(p, ["embedder"]) == ("the embedder", p.embedder / "model.safetensors", "scripts/fetch-model.sh")
-    assert first_missing(p, ["reranker"]) == ("the re-ranker", p.reranker / "model.safetensors", "scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json")
+    # Feature 026: an absent eight-bit directory is named by the float file, the name a reader
+    # recognises; the producer is the eight-bit manifest's fetch.
+    assert first_missing(p, ["embedder"]) == ("the embedder", p.embedder / "model.safetensors", "scripts/fetch-model.sh --manifest reference/models/manifest-q8.json")
+    assert first_missing(p, ["reranker"]) == ("the re-ranker", p.reranker / "model.safetensors", "scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json")
     assert first_missing(p, ["snapshot"]) == ("the snapshot", p.snapshot, "scripts/fetch-wiki.sh")
     assert first_missing(p, ["expected"])[2].startswith("cargo run --release -p xtriever-cli -- wiki expected")
     assert first_missing(p, ["queries"])[0] == "the measurement queries"

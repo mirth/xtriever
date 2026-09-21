@@ -37,6 +37,7 @@
 mod budget;
 mod bytes;
 mod error;
+mod gguf_header;
 pub mod model;
 mod quantised_bert;
 mod scorer;

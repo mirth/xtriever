@@ -75,12 +75,33 @@ done
 if [ "$(jq -r '.borrows // empty' "$manifest")" != "" ]; then
     borrowed_manifest="$(dirname "$manifest")/$(jq -er '.borrows.manifest' "$manifest")"
     borrowed_dir="$repo_root/reference/models/$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$borrowed_manifest")"
-    "$0" --manifest "$borrowed_manifest" >/dev/null
+    borrowed_repository="$(jq -er '.repository' "$borrowed_manifest")"
+    borrowed_revision="$(jq -er '.revision' "$borrowed_manifest")"
+    if [ "$(jq -r '.borrows.tensors // empty' "$manifest")" != "" ]; then
+        # Tensors are cut out of the float weights, so the whole float manifest is needed.
+        "$0" --manifest "$borrowed_manifest" >/dev/null
+    fi
+    mkdir -p "$borrowed_dir"
     m="$(jq -r '.borrows.files | length' "$manifest")"
     for ((j = 0; j < m; j++)); do
         name="$(jq -er ".borrows.files[$j]" "$manifest")"
         want_bytes="$(jq -er --arg n "$name" '.files[] | select(.name == $n) | .bytes' "$borrowed_manifest")"
         want_sha="$(jq -er --arg n "$name" '.files[] | select(.name == $n) | .sha256' "$borrowed_manifest")"
+        # Only the borrowed file is fetched — not the float weights beside it, which an
+        # eight-bit embedder never uses — into the float directory, where it is what the float
+        # manifest pins, then copied here and verified against that pin.
+        if [ ! -f "$borrowed_dir/$name" ]; then
+            url="https://huggingface.co/$borrowed_repository/resolve/$borrowed_revision/$name"
+            printf 'fetch-model: downloading %s\n' "$url"
+            if ! curl -sSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 20 \
+                    -o "$borrowed_dir/$name.part" "$url"; then
+                rm -f "$borrowed_dir/$name.part"
+                printf 'fetch-model: FAIL — download failed for %s (network/source problem, not a hash mismatch)\n' "$url" >&2
+                exit 1
+            fi
+            mv "$borrowed_dir/$name.part" "$borrowed_dir/$name"
+        fi
+        verify "$borrowed_dir/$name" "$want_bytes" "$want_sha" >/dev/null
         cp "$borrowed_dir/$name" "$dest/$name"
         verify "$dest/$name" "$want_bytes" "$want_sha"
     done

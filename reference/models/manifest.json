@@ -2,6 +2,7 @@
   "schema_version": 1,
   "repository": "sentence-transformers/all-MiniLM-L6-v2",
   "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "local_dir": "all-MiniLM-L6-v2",
   "files": [
     {
       "name": "config.json",

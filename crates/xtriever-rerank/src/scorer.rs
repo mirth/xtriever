@@ -18,9 +18,24 @@ use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Budget, Passage, Reranker, Result};
 
 use crate::error::model_err;
+use crate::gguf_header::GgufHeader;
 use crate::model::{MODEL_ID, MODEL_ID_Q8, PINNED, PINNED_Q8, Precision};
 use crate::quantised_bert::{QuantisedBert, Shape};
 use crate::{LoadPath, bytes};
+use candle_transformers::quantized_var_builder::VarBuilder as QuantisedVarBuilder;
+
+/// A GGUF that declares a layer-norm epsilon must declare the pinned configuration's (compared
+/// as `f32`, the width the file stores); a file that declares none uses the configuration's.
+fn assert_layer_norm_epsilon(header: &GgufHeader, configured: f64) -> Result<()> {
+    if let Some(declared) = header.layer_norm_epsilon(PINNED_Q8.architecture)?
+        && declared != configured as f32
+    {
+        return Err(model_err(format!(
+            "GGUF header layer_norm_epsilon is {declared:e}, config.json says {configured:e}"
+        )));
+    }
+    Ok(())
+}
 
 /// The encoder behind the cross-encoder: candle's float BERT, or this crate's over the
 /// eight-bit artefact. The head — pooler, tanh, classifier — is the same float arithmetic
@@ -68,17 +83,23 @@ impl std::fmt::Debug for MiniLmCrossEncoder {
 }
 
 impl MiniLmCrossEncoder {
-    /// Verify (FR-003), assert (FR-002) and build. `dir` holds the three pinned files.
+    /// Verify (FR-003), assert (FR-002) and build. `dir` holds one pinned artefact: the float
+    /// files (`config.json`, `tokenizer.json`, `model.safetensors`) or the eight-bit ones (the
+    /// same configuration and tokenizer beside the pinned GGUF, and `pooler.safetensors`, the
+    /// float model's pooler cut byte for byte) — which one is what the manifest the installation
+    /// fetched decided (Feature 026, spec FR-012).
     ///
-    /// Order: every file's size and hash → `config.json` parsed and asserted → tokenizer built
-    /// from the verified bytes → weights read through `load_path` and the safetensors header
-    /// asserted → encoder, pooler and classifier built. Nothing is parsed before its bytes are
-    /// verified.
+    /// Order: the directory's form (exactly one weights file) → every file's size and hash →
+    /// `config.json` parsed and asserted → tokenizer built from the verified bytes → the
+    /// weights' header asserted (safetensors, or GGUF against the pin including the
+    /// classification head) → weights read through `load_path` → encoder, pooler and
+    /// classifier built. Nothing is parsed before its bytes are verified.
     ///
     /// # Errors
     ///
     /// `Error::Model` for any verification, assertion or construction failure, naming the file
-    /// and both values where a pin is violated.
+    /// and both values where a pin is violated; a directory holding both weights files, or
+    /// neither, is refused naming both.
     pub fn load(dir: &Path, load_path: LoadPath) -> Result<Self> {
         let float = PINNED.files[2].name;
         let eight_bit = PINNED_Q8.files[2].name;
@@ -147,7 +168,10 @@ impl MiniLmCrossEncoder {
         let weights_path = dir.join(PINNED_Q8.files[2].name);
         let weights = bytes::read(&weights_path, load_path)
             .map_err(|e| model_err(format!("cannot read {}: {e}", weights_path.display())))?;
-        crate::model::assert_gguf_header(weights.as_slice())?;
+        let header = crate::model::checked_gguf_header(weights.as_slice())?;
+        // The pinned configuration is the one source of the layer-norm epsilon; a file that
+        // declares a different one is refused naming both, like every other pinned field.
+        assert_layer_norm_epsilon(&header, config.layer_norm_eps)?;
 
         let device = Device::Cpu;
         let shape = Shape {
@@ -156,12 +180,14 @@ impl MiniLmCrossEncoder {
             hidden: PINNED_Q8.embedding_length,
             feed_forward: PINNED_Q8.feed_forward_length,
             context_length: PINNED_Q8.context_length,
-            layer_norm_eps: crate::model::gguf_layer_norm_epsilon(weights.as_slice())
-                .unwrap_or(config.layer_norm_eps),
+            layer_norm_eps: config.layer_norm_eps,
         };
-        let encoder = QuantisedBert::from_gguf(weights.as_slice(), shape, &device)
+        // Every tensor is read once, here, for the encoder and the classifier alike.
+        let vb = QuantisedVarBuilder::from_gguf_buffer(weights.as_slice(), &device)
+            .map_err(|e| model_err(format!("cannot read the eight-bit tensors: {e}")))?;
+        let encoder = QuantisedBert::from_gguf(&vb, shape)
             .map_err(|e| model_err(format!("cannot build the eight-bit encoder: {e}")))?;
-        let classifier = classifier_from_gguf(weights.as_slice(), &device)?;
+        let classifier = classifier_from_gguf(&vb, &device)?;
 
         let pooler_path = dir.join(PINNED_Q8.files[3].name);
         let pooler_bytes = std::fs::read(&pooler_path)
@@ -290,10 +316,7 @@ impl Reranker for MiniLmCrossEncoder {
 /// The classification head from the eight-bit artefact: `classifier.weight` (stored flat, 384)
 /// and `classifier.bias` (1), float in the file, reshaped to the `(1, hidden)` linear the float
 /// path builds. The header check already required both tensors.
-fn classifier_from_gguf(bytes: &[u8], device: &Device) -> Result<Linear> {
-    let vb =
-        candle_transformers::quantized_var_builder::VarBuilder::from_gguf_buffer(bytes, device)
-            .map_err(|e| model_err(format!("cannot read the classifier: {e}")))?;
+fn classifier_from_gguf(vb: &QuantisedVarBuilder, device: &Device) -> Result<Linear> {
     let weight = vb
         .get_no_shape("classifier.weight")
         .and_then(|t| t.dequantize(device))

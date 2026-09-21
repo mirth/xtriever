@@ -14,6 +14,7 @@
 use std::path::Path;
 
 use crate::error::model_err;
+use crate::gguf_header::GgufHeader;
 
 /// One pinned model file: name, exact size and SHA-256 (spec FR-003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,6 +258,11 @@ pub fn verify_files_q8(dir: &Path) -> xtriever_core::Result<()> {
 ///
 /// `Error::Model` naming the field and both values, or the missing tensor.
 pub fn assert_gguf_header(bytes: &[u8]) -> xtriever_core::Result<()> {
+    checked_gguf_header(bytes).map(|_| ())
+}
+
+/// [`assert_gguf_header`], returning the header it checked so a loader parses the file once.
+pub(crate) fn checked_gguf_header(bytes: &[u8]) -> xtriever_core::Result<GgufHeader> {
     let header = GgufHeader::read(bytes)?;
     let architecture = header.string("general.architecture")?;
     if architecture != PINNED_Q8.architecture {
@@ -296,92 +302,7 @@ pub fn assert_gguf_header(bytes: &[u8]) -> xtriever_core::Result<()> {
             PINNED_Q8.quantisation, PINNED_Q8.quantised_tensors
         )));
     }
-    Ok(())
-}
-
-/// What a GGUF header declares, read with the pinned engine's own reader.
-struct GgufHeader {
-    content: candle_core::quantized::gguf_file::Content,
-}
-
-impl GgufHeader {
-    fn read(bytes: &[u8]) -> xtriever_core::Result<Self> {
-        let mut cursor = std::io::Cursor::new(bytes);
-        let content = candle_core::quantized::gguf_file::Content::read(&mut cursor)
-            .map_err(|e| model_err(format!("not a GGUF file this engine can read: {e}")))?;
-        Ok(Self { content })
-    }
-
-    fn string(&self, key: &str) -> xtriever_core::Result<&str> {
-        self.content
-            .metadata
-            .get(key)
-            .ok_or_else(|| model_err(format!("GGUF header declares no {key}")))?
-            .to_string()
-            .map(String::as_str)
-            .map_err(|e| model_err(format!("GGUF header {key}: {e}")))
-    }
-
-    fn number(&self, key: &str) -> xtriever_core::Result<usize> {
-        use candle_core::quantized::gguf_file::Value;
-        let value = self
-            .content
-            .metadata
-            .get(key)
-            .ok_or_else(|| model_err(format!("GGUF header declares no {key}")))?;
-        let n: u64 = match value {
-            Value::U8(n) => u64::from(*n),
-            Value::U16(n) => u64::from(*n),
-            Value::U32(n) => u64::from(*n),
-            Value::U64(n) => *n,
-            Value::I8(n) if *n >= 0 => *n as u64,
-            Value::I16(n) if *n >= 0 => *n as u64,
-            Value::I32(n) if *n >= 0 => *n as u64,
-            Value::I64(n) if *n >= 0 => *n as u64,
-            other => {
-                return Err(model_err(format!(
-                    "GGUF header {key} is {other:?}, not a non-negative integer"
-                )));
-            }
-        };
-        usize::try_from(n).map_err(|_| model_err(format!("GGUF header {key} = {n} does not fit")))
-    }
-
-    fn expect_number(&self, key: &str, expected: usize) -> xtriever_core::Result<()> {
-        let actual = self.number(key)?;
-        if actual == expected {
-            Ok(())
-        } else {
-            let field = key.rsplit('.').next().unwrap_or(key);
-            Err(model_err(format!(
-                "GGUF header {field} is {actual}, expected {expected} ({key})"
-            )))
-        }
-    }
-
-    fn quantised_tensors(&self) -> usize {
-        self.content
-            .tensor_infos
-            .values()
-            .filter(|t| t.ggml_dtype == candle_core::quantized::GgmlDType::Q8_0)
-            .count()
-    }
-
-    fn has_tensor(&self, name: &str) -> bool {
-        self.content.tensor_infos.contains_key(name)
-    }
-}
-
-/// The layer-norm epsilon the artefact declares, when it does (the pinned files do: 1e-12,
-/// the float configuration's value); `None` to use the configuration's.
-pub(crate) fn gguf_layer_norm_epsilon(bytes: &[u8]) -> Option<f64> {
-    let header = GgufHeader::read(bytes).ok()?;
-    header
-        .content
-        .metadata
-        .get("bert.attention.layer_norm_epsilon")
-        .and_then(|v| v.to_f32().ok())
-        .map(f64::from)
+    Ok(header)
 }
 
 fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {

@@ -43,13 +43,15 @@ fn info_reports_the_index_identity() {
     let info = ffi.info();
     assert_eq!(info.documents, 40);
     assert_eq!(info.format_version, xtriever_pipeline::FORMAT_VERSION);
+    // Feature 026: the fixture is minted with, and the test support defaults to, the eight-bit
+    // artefacts; the identities the surface reports are theirs.
     assert_eq!(
         info.embedder_fingerprint,
-        xtriever_dense::model::FINGERPRINT
+        xtriever_dense::model::FINGERPRINT_Q8
     );
     assert_eq!(
         info.reranker_model_id.as_deref(),
-        Some(xtriever_rerank::model::MODEL_ID)
+        Some(xtriever_rerank::model::MODEL_ID_Q8)
     );
     assert_eq!(
         (info.candidate_depth, info.rerank_depth, info.rrf_k),

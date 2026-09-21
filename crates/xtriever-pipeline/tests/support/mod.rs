@@ -20,7 +20,7 @@ pub fn fixtures_dir() -> PathBuf {
 
 pub fn model_dir() -> PathBuf {
     std::env::var_os("XTRIEVER_MODEL_DIR").map_or_else(
-        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../reference/models/all-MiniLM-L6-v2"),
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../reference/models/all-MiniLM-L6-v2-q8"),
         PathBuf::from,
     )
 }

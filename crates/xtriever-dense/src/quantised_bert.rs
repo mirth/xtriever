@@ -8,25 +8,27 @@
 //! `blk.N.attn_q`, `blk.N.ffn_up`, …); the norms, biases, token-type and position tables are
 //! dequantised once at load (they are float in the file anyway).
 //!
-//! **The arithmetic is f16 over the eight-bit-rounded weights** (owner's decision, 2026-09-21;
-//! the fingerprint names it, `compute=f16`, from the same literal as the pins in `model.rs`). Every weight matrix is expanded from its eight-bit blocks to `f16` once at
-//! load — the values stay exactly what the artefact fixed, the storage halves the float
-//! model's — and each multiply converts the activations to `f16`, runs the float kernel, and
-//! converts back. Measured on SciFact before the choice: candle's eight-bit CPU kernel (built
-//! for one token at a time, fed 256) took 442 ms per embedding against 120 ms for this path and
-//! 125 ms for the float artefact, with nDCG@10 0.64646 / 0.64642 / 0.64631 for the eight-bit,
-//! f16 and f32 arithmetic — the weight rounding, not the arithmetic, is what the artefact
-//! changes. The mode is fixed here in code: candle's `QMatMul::from_arc` reads it from two
-//! environment variables, and an environment variable must not be able to change a vector,
-//! so the matmul is constructed explicitly and `from_arc` is never called.
+//! **The arithmetic is f16 over the eight-bit weights** (owner's decision, 2026-09-21; the
+//! fingerprint names it, `compute=f16`, from the same literal as the pins in `model.rs`). Each
+//! weight matrix is expanded from its eight-bit blocks once at load and held as `f16` — half
+//! the float model's RAM — and each multiply converts the activations to `f16`, runs the float
+//! kernel, and converts back. The expansion is not exact: a code times its `f16` block scale
+//! needs up to 19 significant bits and `f16` holds 11, so most weights are rounded once more
+//! at load (candle's `dequantize_f16` expands to `f32` and narrows). That rounding is
+//! deterministic and is part of what `compute=f16` names; an `f32` expansion would hold every
+//! product exactly, at the float model's RAM. Measured on SciFact before the choice (the
+//! embedder, 256-token inputs): candle's eight-bit CPU kernel, built for one token at a time,
+//! took 442 ms per embedding against 120 ms for this path and 125 ms for the float artefact,
+//! with nDCG@10 0.64646 / 0.64642 / 0.64631 for the eight-bit, f16 and f32 arithmetic. The
+//! mode is fixed here in code: candle's `QMatMul::from_arc` reads it from two environment
+//! variables, and an environment variable must not be able to change a number, so the matmul
+//! is constructed explicitly and `from_arc` is never called.
 //!
-//! The arithmetic is the reference's: embeddings summed then normalised; per block, scaled
-//! dot-product attention with the extended mask (`(1 − mask) × f32::MIN`), a residual and a
-//! norm, then the erf GELU feed-forward, a residual and a norm. Nothing is batched across
-//! texts, as in the float path.
+//! This file is byte-identical in `xtriever-dense` and `xtriever-rerank` (see `gguf_header.rs`
+//! for why); `tests/twins.rs` in the dense crate fails if the two copies ever differ.
 
 use candle_core::quantized::QMatMul;
-use candle_core::{D, DType, Device, Module, Result, Tensor};
+use candle_core::{D, DType, Module, Result, Tensor};
 use candle_nn::LayerNorm;
 use candle_transformers::quantized_nn::{Embedding, layer_norm};
 use candle_transformers::quantized_var_builder::VarBuilder;
@@ -86,9 +88,9 @@ pub(crate) struct QuantisedBert {
 }
 
 impl QuantisedBert {
-    /// Build from a whole GGUF file's bytes (the header was asserted against the pin first).
-    pub fn from_gguf(bytes: &[u8], shape: Shape, device: &Device) -> Result<Self> {
-        let vb = VarBuilder::from_gguf_buffer(bytes, device)?;
+    /// Build from the file's tensors, read once by the caller (the header was asserted against
+    /// the pin first, and a re-ranker takes its classification head from the same builder).
+    pub fn from_gguf(vb: &VarBuilder, shape: Shape) -> Result<Self> {
         let vocabulary = vb.get_no_shape("token_embd.weight")?.shape().dims()[0];
         let word = Embedding::new(vocabulary, shape.hidden, vb.pp("token_embd"))?;
         let position = Embedding::new(shape.context_length, shape.hidden, vb.pp("position_embd"))?;
