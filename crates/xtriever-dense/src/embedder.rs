@@ -16,10 +16,10 @@ use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Embedder, Metric, Result, TextKind, Vector};
 
 use crate::error::model_err;
-use crate::model::{FINGERPRINT, PINNED};
+use crate::model::{FINGERPRINT, PINNED, Precision};
 use crate::{LoadPath, bytes};
 
-/// The pinned `all-MiniLM-L6-v2` embedder.
+/// The pinned `all-MiniLM-L6-v2` embedder, from either pinned artefact (Feature 026).
 pub struct MiniLmEmbedder {
     tokenizer: Tokenizer,
     /// The same `tokenizer.json` without truncation or padding — answers "how many positions
@@ -28,12 +28,16 @@ pub struct MiniLmEmbedder {
     model: BertModel,
     device: Device,
     load_path: LoadPath,
+    /// Which artefact the weights came from, and the fingerprint that names it.
+    precision: Precision,
+    fingerprint: &'static str,
 }
 
 impl std::fmt::Debug for MiniLmEmbedder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MiniLmEmbedder")
-            .field("fingerprint", &FINGERPRINT)
+            .field("fingerprint", &self.fingerprint)
+            .field("precision", &self.precision)
             .field("load_path", &self.load_path)
             .finish_non_exhaustive()
     }
@@ -76,6 +80,8 @@ impl MiniLmEmbedder {
             model,
             device,
             load_path,
+            precision: Precision::Float,
+            fingerprint: FINGERPRINT,
         })
     }
 
@@ -83,6 +89,12 @@ impl MiniLmEmbedder {
     #[must_use]
     pub fn load_path(&self) -> LoadPath {
         self.load_path
+    }
+
+    /// Which pinned artefact the weights came from (spec FR-012).
+    #[must_use]
+    pub fn precision(&self) -> Precision {
+        self.precision
     }
 
     /// candle's effective thread count (`RAYON_NUM_THREADS`, else the CPU count).
@@ -204,7 +216,7 @@ impl Embedder for MiniLmEmbedder {
     }
 
     fn fingerprint(&self) -> &str {
-        FINGERPRINT
+        self.fingerprint
     }
 
     fn max_input_tokens(&self) -> Option<usize> {

@@ -20,6 +20,16 @@ pub fn model_dir() -> PathBuf {
     )
 }
 
+/// The git-ignored eight-bit model directory (Feature 026), overridable with
+/// `XTRIEVER_MODEL_DIR_Q8`: the owner-pinned GGUF beside the float model's configuration and
+/// tokenizer, staged by `scripts/fetch-model.sh --manifest reference/models/manifest-q8.json`.
+pub fn model_dir_q8() -> PathBuf {
+    std::env::var_os("XTRIEVER_MODEL_DIR_Q8").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../reference/models/all-MiniLM-L6-v2-q8"),
+        PathBuf::from,
+    )
+}
+
 pub fn load_json<T: for<'de> Deserialize<'de>>(name: &str) -> T {
     let path = fixtures_dir().join(name);
     let text =

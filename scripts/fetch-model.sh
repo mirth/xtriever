@@ -69,4 +69,21 @@ for ((i = 0; i < n; i++)); do
     fi
     verify "$path" "$want_bytes" "$want_sha"
 done
+# Feature 026: an eight-bit artefact supplies weights only. Its manifest's `borrows` names the
+# float manifest whose `config.json` and `tokenizer.json` sit beside the weights, fetched (if
+# absent) and verified against *that* manifest's pins, then copied here and verified again.
+if [ "$(jq -r '.borrows // empty' "$manifest")" != "" ]; then
+    borrowed_manifest="$(dirname "$manifest")/$(jq -er '.borrows.manifest' "$manifest")"
+    borrowed_dir="$repo_root/reference/models/$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$borrowed_manifest")"
+    "$0" --manifest "$borrowed_manifest" >/dev/null
+    m="$(jq -r '.borrows.files | length' "$manifest")"
+    for ((j = 0; j < m; j++)); do
+        name="$(jq -er ".borrows.files[$j]" "$manifest")"
+        want_bytes="$(jq -er --arg n "$name" '.files[] | select(.name == $n) | .bytes' "$borrowed_manifest")"
+        want_sha="$(jq -er --arg n "$name" '.files[] | select(.name == $n) | .sha256' "$borrowed_manifest")"
+        cp "$borrowed_dir/$name" "$dest/$name"
+        verify "$dest/$name" "$want_bytes" "$want_sha"
+    done
+    printf 'fetch-model: borrowed %s from %s\n' "$(jq -r '.borrows.files | join(", ")' "$manifest")" "$borrowed_dir"
+fi
 printf 'fetch-model: PASS — %s at %s verified in %s\n' "$repository" "$revision" "$dest"

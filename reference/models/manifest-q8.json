@@ -16,6 +16,13 @@
   "hidden": 384,
   "max_tokens": 512,
   "weight_tensors": 37,
-  "tokenizer_from": "all-MiniLM-L6-v2",
-  "supplied_by": "the owner, 2026-09-20 (Feature 026): the artefact is never produced or converted locally"
+  "supplied_by": "the owner, 2026-09-20 (Feature 026): the artefact is never produced or converted locally",
+  "borrows": {
+    "manifest": "manifest.json",
+    "files": [
+      "config.json",
+      "tokenizer.json"
+    ],
+    "why": "the artefact supplies weights only; the tokenizer and configuration are the pinned float model's, verified against that manifest"
+  }
 }

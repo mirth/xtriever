@@ -18,10 +18,10 @@ use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Budget, Passage, Reranker, Result};
 
 use crate::error::model_err;
-use crate::model::{MODEL_ID, PINNED};
+use crate::model::{MODEL_ID, PINNED, Precision};
 use crate::{LoadPath, bytes};
 
-/// The pinned `ms-marco-MiniLM-L-6-v2` cross-encoder.
+/// The pinned `ms-marco-MiniLM-L-6-v2` cross-encoder, from either pinned artefact (Feature 026).
 pub struct MiniLmCrossEncoder {
     tokenizer: Tokenizer,
     encoder: BertModel,
@@ -29,12 +29,16 @@ pub struct MiniLmCrossEncoder {
     classifier: Linear,
     device: Device,
     load_path: LoadPath,
+    /// Which artefact the weights came from, and the identity string that names it.
+    precision: Precision,
+    model_id: &'static str,
 }
 
 impl std::fmt::Debug for MiniLmCrossEncoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MiniLmCrossEncoder")
-            .field("model_id", &MODEL_ID)
+            .field("model_id", &self.model_id)
+            .field("precision", &self.precision)
             .field("load_path", &self.load_path)
             .finish_non_exhaustive()
     }
@@ -82,6 +86,8 @@ impl MiniLmCrossEncoder {
             classifier,
             device,
             load_path,
+            precision: Precision::Float,
+            model_id: MODEL_ID,
         })
     }
 
@@ -89,6 +95,12 @@ impl MiniLmCrossEncoder {
     #[must_use]
     pub fn load_path(&self) -> LoadPath {
         self.load_path
+    }
+
+    /// Which pinned artefact the weights came from (spec FR-012).
+    #[must_use]
+    pub fn precision(&self) -> Precision {
+        self.precision
     }
 
     /// candle's effective thread count (`RAYON_NUM_THREADS`, else the CPU count).
@@ -170,7 +182,7 @@ impl MiniLmCrossEncoder {
 
 impl Reranker for MiniLmCrossEncoder {
     fn model_id(&self) -> &str {
-        MODEL_ID
+        self.model_id
     }
 
     fn rerank(
