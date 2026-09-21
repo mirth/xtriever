@@ -85,5 +85,16 @@ if [ "$(jq -r '.borrows // empty' "$manifest")" != "" ]; then
         verify "$dest/$name" "$want_bytes" "$want_sha"
     done
     printf 'fetch-model: borrowed %s from %s\n' "$(jq -r '.borrows.files | join(", ")' "$manifest")" "$borrowed_dir"
+    # Tensors the artefact lacks, copied byte for byte out of the borrowed float weights into a
+    # small safetensors file (deterministic, so its pin is checkable): the re-ranker's pooler.
+    if [ "$(jq -r '.borrows.tensors // empty' "$manifest")" != "" ]; then
+        command -v python3 >/dev/null || { printf 'fetch-model: FAIL — python3 not found on PATH (needed for .borrows.tensors)\n' >&2; exit 1; }
+        tfile="$(jq -er '.borrows.tensors.file' "$manifest")"
+        tfrom="$(jq -er '.borrows.tensors.from' "$manifest")"
+        names="$(jq -r '.borrows.tensors.names | join(" ")' "$manifest")"
+        # shellcheck disable=SC2086
+        python3 "$repo_root/scripts/extract_tensors.py" "$borrowed_dir/$tfrom" "$dest/$tfile" $names >/dev/null
+        verify "$dest/$tfile" "$(jq -er '.borrows.tensors.bytes' "$manifest")" "$(jq -er '.borrows.tensors.sha256' "$manifest")"
+    fi
 fi
 printf 'fetch-model: PASS — %s at %s verified in %s\n' "$repository" "$revision" "$dest"

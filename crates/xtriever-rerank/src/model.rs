@@ -107,8 +107,10 @@ pub struct PinnedArtefact {
     pub repository: &'static str,
     /// Git revision the file was fetched at.
     pub revision: &'static str,
-    /// `config.json`, `tokenizer.json` (the float model's pins) and the GGUF.
-    pub files: [PinnedFile; 3],
+    /// `config.json`, `tokenizer.json` (the float model's pins), the GGUF, and
+    /// `pooler.safetensors` — the pooler the artefact lacks, copied byte for byte out of the
+    /// pinned float weights by `scripts/extract_tensors.py` (owner's decision, 2026-09-21).
+    pub files: [PinnedFile; 4],
     /// The block format the weight matrices use, as the file's `general.file_type` names it.
     pub quantisation: &'static str,
     /// What the GGUF header must declare (research D5).
@@ -145,6 +147,11 @@ macro_rules! q8_weights_sha256 {
         "718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a"
     };
 }
+macro_rules! q8_pooler_sha256 {
+    () => {
+        "382eb35e6b806190f9781c0b3646090e696a9c4c6267eef88c4f70df949676b9"
+    };
+}
 
 /// The eight-bit artefact this crate scores with when the model directory holds it.
 pub const PINNED_Q8: PinnedArtefact = PinnedArtefact {
@@ -157,6 +164,11 @@ pub const PINNED_Q8: PinnedArtefact = PinnedArtefact {
             name: "ms-marco-MiniLM-L-6-v2-q8_0.gguf",
             bytes: 24_703_040,
             sha256: q8_weights_sha256!(),
+        },
+        PinnedFile {
+            name: "pooler.safetensors",
+            bytes: 591_538,
+            sha256: q8_pooler_sha256!(),
         },
     ],
     quantisation: "q8_0",
@@ -171,13 +183,16 @@ pub const PINNED_Q8: PinnedArtefact = PinnedArtefact {
 };
 
 /// The identity string for the eight-bit artefact: [`MODEL_ID`]'s inputs with the artefact and
-/// `dtype=q8_0` in place of the float file (spec FR-006).
+/// `dtype=q8_0` in place of the float file, and the borrowed pooler named by its own file's
+/// hash, since it too produced the score (spec FR-006).
 pub const MODEL_ID_Q8: &str = concat!(
     q8_repository!(),
     "@",
     q8_revision!(),
     ";weights=sha256:",
     q8_weights_sha256!(),
+    ";pooler=sha256:",
+    q8_pooler_sha256!(),
     ";max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=q8_0;engine=candle-0.9.2"
 );
 
@@ -230,9 +245,131 @@ pub fn verify_files_q8(dir: &Path) -> xtriever_core::Result<()> {
 ///
 /// `Error::Model` naming the field and both values, or the missing tensor.
 pub fn assert_gguf_header(bytes: &[u8]) -> xtriever_core::Result<()> {
-    // T022 (Feature 026): the check itself. At the red checkpoint nothing is refused.
-    let _ = bytes;
+    let header = GgufHeader::read(bytes)?;
+    let architecture = header.string("general.architecture")?;
+    if architecture != PINNED_Q8.architecture {
+        return Err(model_err(format!(
+            "GGUF header architecture is {architecture:?}, expected {:?}",
+            PINNED_Q8.architecture
+        )));
+    }
+    let prefix = PINNED_Q8.architecture;
+    header.expect_number(&format!("{prefix}.block_count"), PINNED_Q8.blocks)?;
+    header.expect_number(
+        &format!("{prefix}.embedding_length"),
+        PINNED_Q8.embedding_length,
+    )?;
+    header.expect_number(&format!("{prefix}.attention.head_count"), PINNED_Q8.heads)?;
+    header.expect_number(
+        &format!("{prefix}.feed_forward_length"),
+        PINNED_Q8.feed_forward_length,
+    )?;
+    header.expect_number(
+        &format!("{prefix}.context_length"),
+        PINNED_Q8.context_length,
+    )?;
+    // The classification head (spec FR-008): without it a cross-encoder produces embeddings
+    // that look like relevance scores, and must be refused rather than used.
+    for tensor in PINNED_Q8.classifier_tensors {
+        if !header.has_tensor(tensor) {
+            return Err(model_err(format!(
+                "GGUF file has no {tensor}: not a cross-encoder with its classification head"
+            )));
+        }
+    }
+    let quantised = header.quantised_tensors();
+    if quantised != PINNED_Q8.quantised_tensors {
+        return Err(model_err(format!(
+            "GGUF file holds {quantised} {} tensors, expected {} — not the pinned artefact",
+            PINNED_Q8.quantisation, PINNED_Q8.quantised_tensors
+        )));
+    }
     Ok(())
+}
+
+/// What a GGUF header declares, read with the pinned engine's own reader.
+struct GgufHeader {
+    content: candle_core::quantized::gguf_file::Content,
+}
+
+impl GgufHeader {
+    fn read(bytes: &[u8]) -> xtriever_core::Result<Self> {
+        let mut cursor = std::io::Cursor::new(bytes);
+        let content = candle_core::quantized::gguf_file::Content::read(&mut cursor)
+            .map_err(|e| model_err(format!("not a GGUF file this engine can read: {e}")))?;
+        Ok(Self { content })
+    }
+
+    fn string(&self, key: &str) -> xtriever_core::Result<&str> {
+        self.content
+            .metadata
+            .get(key)
+            .ok_or_else(|| model_err(format!("GGUF header declares no {key}")))?
+            .to_string()
+            .map(String::as_str)
+            .map_err(|e| model_err(format!("GGUF header {key}: {e}")))
+    }
+
+    fn number(&self, key: &str) -> xtriever_core::Result<usize> {
+        use candle_core::quantized::gguf_file::Value;
+        let value = self
+            .content
+            .metadata
+            .get(key)
+            .ok_or_else(|| model_err(format!("GGUF header declares no {key}")))?;
+        let n: u64 = match value {
+            Value::U8(n) => u64::from(*n),
+            Value::U16(n) => u64::from(*n),
+            Value::U32(n) => u64::from(*n),
+            Value::U64(n) => *n,
+            Value::I8(n) if *n >= 0 => *n as u64,
+            Value::I16(n) if *n >= 0 => *n as u64,
+            Value::I32(n) if *n >= 0 => *n as u64,
+            Value::I64(n) if *n >= 0 => *n as u64,
+            other => {
+                return Err(model_err(format!(
+                    "GGUF header {key} is {other:?}, not a non-negative integer"
+                )));
+            }
+        };
+        usize::try_from(n).map_err(|_| model_err(format!("GGUF header {key} = {n} does not fit")))
+    }
+
+    fn expect_number(&self, key: &str, expected: usize) -> xtriever_core::Result<()> {
+        let actual = self.number(key)?;
+        if actual == expected {
+            Ok(())
+        } else {
+            let field = key.rsplit('.').next().unwrap_or(key);
+            Err(model_err(format!(
+                "GGUF header {field} is {actual}, expected {expected} ({key})"
+            )))
+        }
+    }
+
+    fn quantised_tensors(&self) -> usize {
+        self.content
+            .tensor_infos
+            .values()
+            .filter(|t| t.ggml_dtype == candle_core::quantized::GgmlDType::Q8_0)
+            .count()
+    }
+
+    fn has_tensor(&self, name: &str) -> bool {
+        self.content.tensor_infos.contains_key(name)
+    }
+}
+
+/// The layer-norm epsilon the artefact declares, when it does (the pinned files do: 1e-12,
+/// the float configuration's value); `None` to use the configuration's.
+pub(crate) fn gguf_layer_norm_epsilon(bytes: &[u8]) -> Option<f64> {
+    let header = GgufHeader::read(bytes).ok()?;
+    header
+        .content
+        .metadata
+        .get("bert.attention.layer_norm_epsilon")
+        .and_then(|v| v.to_f32().ok())
+        .map(f64::from)
 }
 
 fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {

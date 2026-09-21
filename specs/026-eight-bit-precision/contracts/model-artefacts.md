@@ -10,6 +10,7 @@ What an installation may load for each model, how it is pinned, and what the eng
 | Chosen by | the model manifest | the model manifest |
 | Fingerprint | names the float artefact | names the eight-bit artefact |
 | Tokenizer | from the model directory | **also from the float model directory** |
+| Pooler (re-ranker only) | in the weights | **also from the float model directory**: the artefact lacks it, so its two tensors are cut byte for byte from the pinned float weights into `pooler.safetensors`, pinned and staged beside the artefact (owner's decision, 2026-09-21) |
 
 Both remain loadable (spec FR-012). Which one an installation uses is a property of the manifest
 it fetched, not a runtime switch, so an index's fingerprint always names exactly what produced
@@ -38,13 +39,22 @@ The artefacts this feature pins:
 3. **The classification head**, for the re-ranker only: a cross-encoder without one produces
    embeddings rather than relevance scores, and must be refused rather than used.
 4. **The tokenizer**, still fetched and checksummed from the float model directory.
+5. **The pooler**, for the re-ranker: `pooler.safetensors` checksummed against the manifest, and
+   its two tensors loaded as the float path loads them.
+
+**How a directory says which artefact it holds.** By the weights file it contains:
+`model.safetensors` for the float artefact, the pinned GGUF for the eight-bit one. The eight-bit
+directory carries the float model's `config.json` and `tokenizer.json` beside its weights (the
+manifest's `borrows`), so a loader needs one directory. A directory holding both weights files,
+or neither, is refused naming both.
 
 Any of these failing is a named error, never a warning and never a fallback.
 
 ## Fingerprints
 
 Each fingerprint gains the artefact it was loaded from, so that two installations using different
-precisions are distinguishable by the strings their indexes record. An index whose recorded
+precisions are distinguishable by the strings their indexes record; the re-ranker's also names
+the borrowed pooler's file, since it too produced the score. An index whose recorded
 embedder fingerprint differs from the loaded embedder's is refused at open, as it is today.
 
 ## What this contract does not promise

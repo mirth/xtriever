@@ -16,8 +16,30 @@ use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Embedder, Metric, Result, TextKind, Vector};
 
 use crate::error::model_err;
-use crate::model::{FINGERPRINT, PINNED, Precision};
+use crate::model::{FINGERPRINT, FINGERPRINT_Q8, PINNED, PINNED_Q8, Precision};
+use crate::quantised_bert::{QuantisedBert, Shape};
 use crate::{LoadPath, bytes};
+
+/// The encoder behind the embedder: candle's float BERT, or this crate's over the eight-bit
+/// artefact. The pooling, normalisation and everything else are shared.
+enum Encoder {
+    Float(BertModel),
+    EightBit(QuantisedBert),
+}
+
+impl Encoder {
+    fn forward(
+        &self,
+        ids: &Tensor,
+        type_ids: &Tensor,
+        mask: Option<&Tensor>,
+    ) -> candle_core::Result<Tensor> {
+        match self {
+            Self::Float(model) => model.forward(ids, type_ids, mask),
+            Self::EightBit(model) => model.forward(ids, type_ids, mask),
+        }
+    }
+}
 
 /// The pinned `all-MiniLM-L6-v2` embedder, from either pinned artefact (Feature 026).
 pub struct MiniLmEmbedder {
@@ -25,7 +47,7 @@ pub struct MiniLmEmbedder {
     /// The same `tokenizer.json` without truncation or padding — answers "how many positions
     /// would this text need?" (Feature 008 D7). The embedding path never uses it.
     counter: Tokenizer,
-    model: BertModel,
+    model: Encoder,
     device: Device,
     load_path: LoadPath,
     /// Which artefact the weights came from, and the fingerprint that names it.
@@ -44,17 +66,40 @@ impl std::fmt::Debug for MiniLmEmbedder {
 }
 
 impl MiniLmEmbedder {
-    /// Verify (FR-003), assert (FR-002) and build. `dir` holds the three pinned files.
+    /// Verify (FR-003), assert (FR-002) and build. `dir` holds one pinned artefact: the float
+    /// files (`config.json`, `tokenizer.json`, `model.safetensors`) or the eight-bit ones
+    /// (the same configuration and tokenizer beside the pinned GGUF) — which one is what the
+    /// manifest the installation fetched decided (Feature 026, spec FR-012).
     ///
-    /// Order: every file's size and hash → `config.json` parsed and asserted → tokenizer built
-    /// from the verified bytes → safetensors header asserted → weights loaded through
-    /// `load_path` → model built. Nothing is parsed before its bytes are verified.
+    /// Order: the directory's form (exactly one weights file) → every file's size and hash →
+    /// `config.json` parsed and asserted → tokenizer built from the verified bytes → the
+    /// weights' header asserted → weights loaded through `load_path` → model built. Nothing is
+    /// parsed before its bytes are verified.
     ///
     /// # Errors
     ///
     /// `Error::Model` for any verification, assertion or construction failure, naming the file
-    /// and both values where a pin is violated.
+    /// and both values where a pin is violated; a directory holding both weights files, or
+    /// neither, is refused naming both.
     pub fn load(dir: &Path, load_path: LoadPath) -> Result<Self> {
+        let float = PINNED.files[2].name;
+        let eight_bit = PINNED_Q8.files[2].name;
+        match (dir.join(float).is_file(), dir.join(eight_bit).is_file()) {
+            (true, true) => Err(model_err(format!(
+                "{} holds both {float} and {eight_bit}; a model directory holds one pinned \
+                 artefact, the one its manifest names",
+                dir.display()
+            ))),
+            (false, false) => Err(model_err(format!(
+                "{} holds neither {float} nor {eight_bit}; fetch one with scripts/fetch-model.sh",
+                dir.display()
+            ))),
+            (true, false) => Self::load_float(dir, load_path),
+            (false, true) => Self::load_eight_bit(dir, load_path),
+        }
+    }
+
+    fn load_float(dir: &Path, load_path: LoadPath) -> Result<Self> {
         crate::model::verify_files(dir)?;
 
         let config = load_config(dir)?;
@@ -77,11 +122,51 @@ impl MiniLmEmbedder {
         Ok(Self {
             tokenizer,
             counter,
-            model,
+            model: Encoder::Float(model),
             device,
             load_path,
             precision: Precision::Float,
             fingerprint: FINGERPRINT,
+        })
+    }
+
+    /// The eight-bit artefact (Feature 026, research D5): the same configuration and tokenizer
+    /// as the float path, the GGUF verified by checksum and then its header against the pin,
+    /// and the encoder built over its tensors. `load_path` reads the file the same two ways;
+    /// candle copies every tensor into its own storage either way, as it does for the float
+    /// weights.
+    fn load_eight_bit(dir: &Path, load_path: LoadPath) -> Result<Self> {
+        crate::model::verify_files_q8(dir)?;
+
+        let config = load_config(dir)?;
+        let tokenizer = load_tokenizer(dir)?;
+        let counter = load_counter(dir)?;
+
+        let weights_path = dir.join(PINNED_Q8.files[2].name);
+        let weights = bytes::read(&weights_path, load_path)?;
+        crate::model::assert_gguf_header(weights.as_slice())?;
+
+        let device = Device::Cpu;
+        let shape = Shape {
+            blocks: PINNED_Q8.blocks,
+            heads: PINNED_Q8.heads,
+            hidden: PINNED_Q8.embedding_length,
+            feed_forward: PINNED_Q8.feed_forward_length,
+            context_length: PINNED_Q8.context_length,
+            layer_norm_eps: crate::model::gguf_layer_norm_epsilon(weights.as_slice())
+                .unwrap_or(config.layer_norm_eps),
+        };
+        let model = QuantisedBert::from_gguf(weights.as_slice(), shape, &device)
+            .map_err(|e| model_err(format!("cannot build the eight-bit model: {e}")))?;
+
+        Ok(Self {
+            tokenizer,
+            counter,
+            model: Encoder::EightBit(model),
+            device,
+            load_path,
+            precision: Precision::EightBit,
+            fingerprint: FINGERPRINT_Q8,
         })
     }
 

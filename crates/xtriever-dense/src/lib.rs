@@ -49,6 +49,7 @@ mod index;
 pub mod model;
 #[doc(hidden)]
 pub mod quantise;
+mod quantised_bert;
 
 pub use embedder::MiniLmEmbedder;
 pub use index::{DenseStats, FlatIndex, validate_compaction_threshold};

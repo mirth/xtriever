@@ -18,13 +18,36 @@ use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Budget, Passage, Reranker, Result};
 
 use crate::error::model_err;
-use crate::model::{MODEL_ID, PINNED, Precision};
+use crate::model::{MODEL_ID, MODEL_ID_Q8, PINNED, PINNED_Q8, Precision};
+use crate::quantised_bert::{QuantisedBert, Shape};
 use crate::{LoadPath, bytes};
+
+/// The encoder behind the cross-encoder: candle's float BERT, or this crate's over the
+/// eight-bit artefact. The head — pooler, tanh, classifier — is the same float arithmetic
+/// either way.
+enum Encoder {
+    Float(BertModel),
+    EightBit(QuantisedBert),
+}
+
+impl Encoder {
+    fn forward(
+        &self,
+        ids: &Tensor,
+        type_ids: &Tensor,
+        mask: Option<&Tensor>,
+    ) -> candle_core::Result<Tensor> {
+        match self {
+            Self::Float(model) => model.forward(ids, type_ids, mask),
+            Self::EightBit(model) => model.forward(ids, type_ids, mask),
+        }
+    }
+}
 
 /// The pinned `ms-marco-MiniLM-L-6-v2` cross-encoder, from either pinned artefact (Feature 026).
 pub struct MiniLmCrossEncoder {
     tokenizer: Tokenizer,
-    encoder: BertModel,
+    encoder: Encoder,
     pooler: Linear,
     classifier: Linear,
     device: Device,
@@ -57,6 +80,24 @@ impl MiniLmCrossEncoder {
     /// `Error::Model` for any verification, assertion or construction failure, naming the file
     /// and both values where a pin is violated.
     pub fn load(dir: &Path, load_path: LoadPath) -> Result<Self> {
+        let float = PINNED.files[2].name;
+        let eight_bit = PINNED_Q8.files[2].name;
+        match (dir.join(float).is_file(), dir.join(eight_bit).is_file()) {
+            (true, true) => Err(model_err(format!(
+                "{} holds both {float} and {eight_bit}; a model directory holds one pinned \
+                 artefact, the one its manifest names",
+                dir.display()
+            ))),
+            (false, false) => Err(model_err(format!(
+                "{} holds neither {float} nor {eight_bit}; fetch one with scripts/fetch-model.sh",
+                dir.display()
+            ))),
+            (true, false) => Self::load_float(dir, load_path),
+            (false, true) => Self::load_eight_bit(dir, load_path),
+        }
+    }
+
+    fn load_float(dir: &Path, load_path: LoadPath) -> Result<Self> {
         crate::model::verify_files(dir)?;
 
         let config = load_config(dir)?;
@@ -81,13 +122,64 @@ impl MiniLmCrossEncoder {
 
         Ok(Self {
             tokenizer,
-            encoder,
+            encoder: Encoder::Float(encoder),
             pooler,
             classifier,
             device,
             load_path,
             precision: Precision::Float,
             model_id: MODEL_ID,
+        })
+    }
+
+    /// The eight-bit artefact (Feature 026, research D5): the same configuration and tokenizer
+    /// as the float path; the GGUF verified by checksum, its header asserted against the pin —
+    /// including the classification head's presence (FR-008) — and the encoder built over its
+    /// tensors; the classifier taken from the GGUF (float in the file, the published head bit
+    /// for bit); and the pooler, which the artefact lacks, from `pooler.safetensors`, the pinned
+    /// float model's own two tensors (owner's decision, 2026-09-21).
+    fn load_eight_bit(dir: &Path, load_path: LoadPath) -> Result<Self> {
+        crate::model::verify_files_q8(dir)?;
+
+        let config = load_config(dir)?;
+        let tokenizer = load_tokenizer(dir)?;
+
+        let weights_path = dir.join(PINNED_Q8.files[2].name);
+        let weights = bytes::read(&weights_path, load_path)
+            .map_err(|e| model_err(format!("cannot read {}: {e}", weights_path.display())))?;
+        crate::model::assert_gguf_header(weights.as_slice())?;
+
+        let device = Device::Cpu;
+        let shape = Shape {
+            blocks: PINNED_Q8.blocks,
+            heads: PINNED_Q8.heads,
+            hidden: PINNED_Q8.embedding_length,
+            feed_forward: PINNED_Q8.feed_forward_length,
+            context_length: PINNED_Q8.context_length,
+            layer_norm_eps: crate::model::gguf_layer_norm_epsilon(weights.as_slice())
+                .unwrap_or(config.layer_norm_eps),
+        };
+        let encoder = QuantisedBert::from_gguf(weights.as_slice(), shape, &device)
+            .map_err(|e| model_err(format!("cannot build the eight-bit encoder: {e}")))?;
+        let classifier = classifier_from_gguf(weights.as_slice(), &device)?;
+
+        let pooler_path = dir.join(PINNED_Q8.files[3].name);
+        let pooler_bytes = std::fs::read(&pooler_path)
+            .map_err(|e| model_err(format!("cannot read {}: {e}", pooler_path.display())))?;
+        let vb = VarBuilder::from_slice_safetensors(&pooler_bytes, DTYPE, &device)
+            .map_err(|e| model_err(format!("cannot load the pooler: {e}")))?;
+        let pooler = candle_nn::linear(PINNED.hidden, PINNED.hidden, vb.pp("bert.pooler.dense"))
+            .map_err(|e| model_err(format!("cannot build pooler: {e}")))?;
+
+        Ok(Self {
+            tokenizer,
+            encoder: Encoder::EightBit(encoder),
+            pooler,
+            classifier,
+            device,
+            load_path,
+            precision: Precision::EightBit,
+            model_id: MODEL_ID_Q8,
         })
     }
 
@@ -193,6 +285,25 @@ impl Reranker for MiniLmCrossEncoder {
     ) -> Result<Vec<Option<f32>>> {
         crate::budget::rerank_with(&|q, p| self.score(q, p), query, passages, budget)
     }
+}
+
+/// The classification head from the eight-bit artefact: `classifier.weight` (stored flat, 384)
+/// and `classifier.bias` (1), float in the file, reshaped to the `(1, hidden)` linear the float
+/// path builds. The header check already required both tensors.
+fn classifier_from_gguf(bytes: &[u8], device: &Device) -> Result<Linear> {
+    let vb =
+        candle_transformers::quantized_var_builder::VarBuilder::from_gguf_buffer(bytes, device)
+            .map_err(|e| model_err(format!("cannot read the classifier: {e}")))?;
+    let weight = vb
+        .get_no_shape("classifier.weight")
+        .and_then(|t| t.dequantize(device))
+        .and_then(|t| t.reshape((1, PINNED.hidden)))
+        .map_err(|e| model_err(format!("classifier.weight: {e}")))?;
+    let bias = vb
+        .get_no_shape("classifier.bias")
+        .and_then(|t| t.dequantize(device))
+        .map_err(|e| model_err(format!("classifier.bias: {e}")))?;
+    Ok(Linear::new(weight, Some(bias)))
 }
 
 /// Parse and assert `config.json` (FR-002). The bytes were verified by `verify_files`.

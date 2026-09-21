@@ -87,6 +87,16 @@ struct ArtefactManifest {
 struct Borrows {
     manifest: String,
     files: Vec<String>,
+    tensors: BorrowedTensors,
+}
+
+#[derive(Deserialize)]
+struct BorrowedTensors {
+    file: String,
+    from: String,
+    names: Vec<String>,
+    bytes: u64,
+    sha256: String,
 }
 
 /// Feature 026 (spec FR-005, FR-008): the compiled-in eight-bit pins equal
@@ -116,6 +126,20 @@ fn compiled_eight_bit_pins_match_the_committed_manifest() {
     assert_eq!(m.borrows.files, ["config.json", "tokenizer.json"]);
     assert_eq!(PINNED_Q8.files[0], PINNED.files[0]);
     assert_eq!(PINNED_Q8.files[1], PINNED.files[1]);
+    // The borrowed pooler: cut from the float weights, pinned like any other file.
+    let pooler = PINNED_Q8.files[3];
+    assert_eq!(pooler.name, m.borrows.tensors.file);
+    assert_eq!(pooler.bytes, m.borrows.tensors.bytes);
+    assert_eq!(pooler.sha256, m.borrows.tensors.sha256);
+    assert_eq!(m.borrows.tensors.from, PINNED.files[2].name);
+    assert_eq!(
+        m.borrows.tensors.names,
+        ["bert.pooler.dense.bias", "bert.pooler.dense.weight"]
+    );
+    assert!(
+        MODEL_ID_Q8.contains(pooler.sha256),
+        "the identity names the pooler it scored with"
+    );
 }
 
 /// Feature 026 (spec FR-006): the eight-bit identity names the artefact and its precision and

@@ -29,13 +29,9 @@ fn private_copy_q8(dir: &Path) -> PathBuf {
     for f in PINNED_Q8.files {
         let from = src.join(f.name);
         let to = dir.join(f.name);
-        if f.name.ends_with(".gguf") {
-            if std::fs::hard_link(&from, &to).is_err() {
-                std::fs::copy(&from, &to).unwrap();
-            }
-        } else {
-            std::fs::copy(&from, &to).unwrap();
-        }
+        // Copied, never hard-linked: a test below rewrites the artefact to flip a byte, and a
+        // hard link would carry that into the shared file (which happened once).
+        std::fs::copy(&from, &to).unwrap();
     }
     dir.to_path_buf()
 }

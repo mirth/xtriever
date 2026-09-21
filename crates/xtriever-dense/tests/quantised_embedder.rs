@@ -33,20 +33,16 @@ fn load_q8() -> MiniLmEmbedder {
         .expect("load the pinned eight-bit artefact")
 }
 
-/// A private copy of the eight-bit directory (config + tokenizer copied, weights hard-linked or
-/// copied) so a test can corrupt one file without touching the shared one.
+/// A private copy of the eight-bit directory, every file copied, so a test can corrupt one
+/// file without touching the shared one.
 fn private_copy_q8(dir: &Path) -> PathBuf {
     let src = support::model_dir_q8();
     for f in PINNED_Q8.files {
         let from = src.join(f.name);
         let to = dir.join(f.name);
-        if f.name.ends_with(".gguf") {
-            if std::fs::hard_link(&from, &to).is_err() {
-                std::fs::copy(&from, &to).unwrap();
-            }
-        } else {
-            std::fs::copy(&from, &to).unwrap();
-        }
+        // Copied, never hard-linked: a test below rewrites the artefact to flip a byte, and a
+        // hard link would carry that into the shared file (which happened once).
+        std::fs::copy(&from, &to).unwrap();
     }
     dir.to_path_buf()
 }

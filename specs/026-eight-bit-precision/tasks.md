@@ -102,17 +102,19 @@ models, every delta inside 0.005 of its committed baseline.
 
 ### Tests for User Story 2 (written first, committed failing) ⚠️
 
-- [ ] T017 [US2] Write `crates/xtriever-dense/tests/quantised_embedder.rs`: the pinned artefact loads, its fingerprint names the eight-bit file, a flipped byte is refused by checksum, and a file whose declared architecture or shape disagrees with the stage is refused by name (contracts/model-artefacts.md)
-- [ ] T018 [P] [US2] Write `crates/xtriever-rerank/tests/quantised_scorer.rs`: the same, plus the classification-head check — an artefact without `classifier.weight` and `classifier.bias` is refused, because it would otherwise produce embeddings that look like relevance scores (FR-008)
-- [ ] T019 [P] [US2] Write `crates/xtriever-dense/tests/fingerprint_mismatch.rs`: an index built with the float embedder refuses to open with the eight-bit one and the reverse, both as hard errors at open (FR-007)
+- [X] T017 [US2] Write `crates/xtriever-dense/tests/quantised_embedder.rs`: the pinned artefact loads, its fingerprint names the eight-bit file, a flipped byte is refused by checksum, and a file whose declared architecture or shape disagrees with the stage is refused by name (contracts/model-artefacts.md)
+- [X] T018 [P] [US2] Write `crates/xtriever-rerank/tests/quantised_scorer.rs`: the same, plus the classification-head check — an artefact without `classifier.weight` and `classifier.bias` is refused, because it would otherwise produce embeddings that look like relevance scores (FR-008)
+- [X] T019 [P] [US2] Write `crates/xtriever-dense/tests/fingerprint_mismatch.rs`: an index built with the float embedder refuses to open with the eight-bit one and the reverse, both as hard errors at open (FR-007)
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Read the artefact in `crates/xtriever-dense/src/embedder.rs` with `candle_core::quantized::gguf_file::Content::read`, mapping its tensors to the existing forward pass: `QMatMul::from_qtensor` for the 37 weight matrices, `QTensor::dequantize` for the float pieces (research D5)
-- [ ] T021 [US2] Relax the pinned assertions in `crates/xtriever-dense/src/model.rs` from "these exact bytes" to "the artefact the manifest names", keeping the checksum check, and extend the fingerprint to name the artefact (FR-006); the float path keeps working (FR-012)
-- [ ] T022 [US2] Do the same in `crates/xtriever-rerank/src/scorer.rs` for the 38 matrices, plus the classification head, keeping the head in float as the artefact ships it
-- [ ] T023 [US2] Make `crates/xtriever-dense/src/embedder.rs` and `crates/xtriever-rerank/src/scorer.rs` choose the artefact by what the manifest names rather than by a compile-time constant, so an installation picks its precision without a code change (FR-012)
+- [X] T020 [US2] Read the artefact in `crates/xtriever-dense/src/embedder.rs` with `candle_core::quantized::gguf_file::Content::read`, mapping its tensors to the existing forward pass: `QMatMul::from_qtensor` for the 37 weight matrices, `QTensor::dequantize` for the float pieces (research D5)
+- [X] T021 [US2] Relax the pinned assertions in `crates/xtriever-dense/src/model.rs` from "these exact bytes" to "the artefact the manifest names", keeping the checksum check, and extend the fingerprint to name the artefact (FR-006); the float path keeps working (FR-012)
+- [X] T022 [US2] Do the same in `crates/xtriever-rerank/src/scorer.rs` for the 38 matrices, plus the classification head, keeping the head in float as the artefact ships it
+- [X] T023 [US2] Make `crates/xtriever-dense/src/embedder.rs` and `crates/xtriever-rerank/src/scorer.rs` choose the artefact by what the manifest names rather than by a compile-time constant, so an installation picks its precision without a code change (FR-012)
 - [ ] T024 [US2] Rebuild every evaluation cache under `target/xt-dense-cache/` and run the quality gate: for each of SciFact, NFCorpus and FiQA, the dense and hybrid-rerank configurations through `cargo run --release -p xtriever-eval --example beir`, comparing with the baselines committed under `specs/*/baselines/`. **⛔ No dataset may fall more than 0.005 below its baseline on nDCG@10 or Recall@100 (FR-009); a larger drop stops the feature and is reported, never answered by moving the threshold.** About two hours, nearly all of it FiQA
+
+- [X] T023a [US2] The re-ranker's pooler (found missing from the pinned artefact during T022; owner's decision 2026-09-21): `scripts/extract_tensors.py` cuts the two pooler tensors byte for byte out of the pinned float weights into `pooler.safetensors`; `manifest-rerank-q8.json` pins it under `borrows.tensors`; `scripts/fetch-model.sh` stages it and every `borrows` file; the loader verifies and uses it; `MODEL_ID_Q8` names it; ADR-0015, the contract, the data model and research D6 record why
 
 **Checkpoint**: both models are eight-bit and the quality gate has passed on all three datasets.
 

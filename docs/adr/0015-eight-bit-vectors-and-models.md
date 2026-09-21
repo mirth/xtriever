@@ -79,6 +79,17 @@ rather than relevance scores. Nothing is quantised in this repository.
 The tokenizer continues to come from the pinned float model directory, because neither quantised
 repository ships one. The artefact supplies weights only.
 
+**The re-ranker's pooler is borrowed too** (owner's decision, 2026-09-21). The published
+cross-encoder scores `classifier(tanh(pooler(CLS)))`; the pinned eight-bit file carries the
+classifier bit for bit but not the 384×384 pooler that feeds it (103 tensors against the float
+file's 105). Fed as published it would compute a function the head was never trained for. The
+two pooler tensors are copied byte for byte out of the pinned float weights into
+`pooler.safetensors` by `scripts/extract_tensors.py`, pinned by size and hash in the manifest and
+staged by the fetch script beside the artefact, and the identity string names them. Nothing is
+converted: the bytes are the pinned float model's, which is the same rule the tokenizer follows.
+The alternatives were a different artefact that carries its pooler, or keeping the re-ranker
+float; the owner chose the borrow.
+
 ## Alternatives rejected
 
 - **A single global scale for the vectors** measured marginally better (0.6449 and 0.3157) and

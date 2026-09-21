@@ -86,6 +86,15 @@ the wrong kind of number.
 configuration file beside the weights. The tokenizer is not affected by weight precision, and the
 existing one is already pinned by checksum, so the eight-bit artefact supplies weights only.
 
+**Amended 2026-09-21, the re-ranker's pooler.** Implementation found the pinned re-ranker file
+carries `classifier.weight` and `classifier.bias` — identical to the float head, checked byte for
+byte — but no `bert.pooler.dense`, and declares mean pooling. The published model scores
+`classifier(tanh(pooler(CLS)))`, so the artefact cannot reproduce it alone. The owner chose to
+borrow the pooler from the pinned float weights the way the tokenizer is borrowed: cut into
+`pooler.safetensors` by `scripts/extract_tensors.py` (a byte copy, no conversion), pinned in
+`manifest-rerank-q8.json` under `borrows.tensors`, staged by the fetch script, and named in the
+identity string.
+
 ## D7 — Pinning and fingerprints
 
 **Decision**: pin each artefact in the model manifest by repository, revision and per-file

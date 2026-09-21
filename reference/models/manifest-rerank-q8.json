@@ -27,6 +27,17 @@
       "config.json",
       "tokenizer.json"
     ],
-    "why": "the artefact supplies weights only; the tokenizer and configuration are the pinned float model's, verified against that manifest"
+    "why": "the artefact supplies weights only; the tokenizer and configuration are the pinned float model's, verified against that manifest",
+    "tensors": {
+      "file": "pooler.safetensors",
+      "from": "model.safetensors",
+      "names": [
+        "bert.pooler.dense.bias",
+        "bert.pooler.dense.weight"
+      ],
+      "bytes": 591538,
+      "sha256": "382eb35e6b806190f9781c0b3646090e696a9c4c6267eef88c4f70df949676b9",
+      "why": "the artefact carries the published classifier but not the pooler it feeds on; the pooler is the pinned float model's, copied byte for byte by scripts/extract_tensors.py"
+    }
   }
 }

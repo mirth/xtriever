@@ -56,6 +56,7 @@ because nothing here depends on ordering or on a floating-point reduction order.
 | Weight matrices | float32 | eight-bit blocks |
 | Norms, biases, token types | float32 | float32 |
 | Tokenizer | `tokenizer.json` beside the weights | **the same file**; the artefact supplies weights only |
+| Pooler (re-ranker) | in `model.safetensors` | **`pooler.safetensors`**, the float model's two pooler tensors cut byte for byte and pinned: the artefact carries the classifier but not the pooler it feeds on |
 | Pinned by | repository, revision, per-file checksum | the same |
 | Fingerprint | names the float artefact | names the eight-bit artefact |
 
