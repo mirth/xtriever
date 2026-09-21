@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "repository": "cstr/ms-marco-MiniLM-L-6-v2-GGUF",
+  "revision": "1a9ef5ce8cb08936338233731314f3ff61ce0930",
+  "local_dir": "ms-marco-MiniLM-L-6-v2-q8",
+  "files": [
+    {
+      "name": "ms-marco-MiniLM-L-6-v2-q8_0.gguf",
+      "bytes": 24703040,
+      "sha256": "718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a"
+    }
+  ],
+  "quantisation": "q8_0",
+  "architecture": "bert",
+  "blocks": 6,
+  "hidden": 384,
+  "max_tokens": 512,
+  "weight_tensors": 38,
+  "classifier_tensors": ["classifier.weight", "classifier.bias"],
+  "tokenizer_from": "ms-marco-MiniLM-L-6-v2",
+  "supplied_by": "the owner, 2026-09-20 (Feature 026): the artefact is never produced or converted locally"
+}

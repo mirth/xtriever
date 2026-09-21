@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "repository": "leliuga/all-MiniLM-L6-v2-GGUF",
+  "revision": "ddf2e25d5b8530422e7b14aa39f33a657ff9aec0",
+  "local_dir": "all-MiniLM-L6-v2-q8",
+  "files": [
+    {
+      "name": "all-MiniLM-L6-v2.Q8_0.gguf",
+      "bytes": 25008064,
+      "sha256": "e5ec722e8c82dc4ffaf965175ca472f5da3f97b695590b5b0780bdbfa29bcaf3"
+    }
+  ],
+  "quantisation": "q8_0",
+  "architecture": "bert",
+  "blocks": 6,
+  "hidden": 384,
+  "max_tokens": 512,
+  "weight_tensors": 37,
+  "tokenizer_from": "all-MiniLM-L6-v2",
+  "supplied_by": "the owner, 2026-09-20 (Feature 026): the artefact is never produced or converted locally"
+}
