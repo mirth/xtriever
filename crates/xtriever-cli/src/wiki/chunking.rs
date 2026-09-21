@@ -151,7 +151,7 @@ mod tests {
     fn real_articles_shape_into_documents_matching_the_goldens() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let embedder = MiniLmEmbedder::load(
-            &repo.join("reference/models/all-MiniLM-L6-v2"),
+            &repo.join("reference/models/all-MiniLM-L6-v2-q8"),
             LoadPath::Buffered,
         )
         .unwrap();

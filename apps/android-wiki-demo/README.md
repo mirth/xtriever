@@ -24,7 +24,7 @@ refused with a sentence rather than a crash.
 | Input | Default | Produced by |
 |---|---|---|
 | the library module | `android/xtriever` | `scripts/build-android-package.sh` |
-| both pinned models | `reference/models/…` | `scripts/fetch-model.sh` (once with `--manifest reference/models/manifest-rerank.json`) |
+| both pinned models | `reference/models/…-q8` | `scripts/fetch-model.sh --manifest reference/models/manifest-q8.json`, then `--manifest reference/models/manifest-rerank-q8.json` |
 | the corpus slice | `target/xt-wiki-slice-py` | `apps/python-wiki-demo/.venv/bin/wikidemo build --limit 2000 --out target/xt-wiki-slice-py` |
 | the host goldens for that slice | `target/xt-wiki-slice-py/expected.json` | `cargo run --release -p xtriever-cli -- wiki expected --index target/xt-wiki-slice-py/index --out target/xt-wiki-slice-py/expected.json` |
 

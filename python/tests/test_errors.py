@@ -14,7 +14,13 @@ from conftest import EMBEDDER, FIXTURE_INDEX
 def test_missing_embedder_is_a_model_error(tmp_path):
     with pytest.raises(xtriever.XtrieverError.Model) as info:
         xtriever.IndexHandle.open(str(tmp_path), str(tmp_path / "no-model"), None, xtriever.LoadPath.MMAP)
-    assert "config.json" in str(info.value)
+    # Feature 026: a model directory holds one pinned artefact, told apart by its weights file,
+    # so an empty directory is refused naming both weights files and the fetch script — before
+    # any file is verified, which is where `config.json` used to be named.
+    message = str(info.value)
+    assert "no-model" in message
+    assert "model.safetensors" in message and ".gguf" in message
+    assert "fetch-model.sh" in message
 
 
 def test_the_base_class_catches_every_kind(tmp_path):

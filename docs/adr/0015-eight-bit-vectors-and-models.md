@@ -79,6 +79,30 @@ rather than relevance scores. Nothing is quantised in this repository.
 The tokenizer continues to come from the pinned float model directory, because neither quantised
 repository ships one. The artefact supplies weights only.
 
+**The matrices are multiplied in f16** (owner's decision, 2026-09-21). candle's eight-bit CPU
+kernel is 3.7× slower than the float path for the 256-token sequences this engine feeds it, and
+quality is the same under eight-bit, f16 and f32 arithmetic to three decimals on SciFact. Each
+eight-bit tensor is expanded to `f16` once at load — half the float model's RAM, float speed —
+and the fingerprints say so (`compute=f16`); the mode is fixed in code, never read from the
+environment. The expansion is itself a rounding: a code times its `f16` block scale needs up to
+19 significant bits and `f16` holds 11, so most weights are rounded once more at load,
+deterministically, which is part of what `compute=f16` names; an `f32` expansion would hold the
+products exactly at the float model's RAM. The artefact's own rounding is what the SciFact
+numbers show to be the dominant change; the f16 rounding on top of it did not move them. A
+kernel of our own for eight-bit arithmetic at float speed is out of scope (a commodity component,
+Principle I).
+
+**The re-ranker's pooler is borrowed too** (owner's decision, 2026-09-21). The published
+cross-encoder scores `classifier(tanh(pooler(CLS)))`; the pinned eight-bit file carries the
+classifier bit for bit but not the 384×384 pooler that feeds it (103 tensors against the float
+file's 105). Fed as published it would compute a function the head was never trained for. The
+two pooler tensors are copied byte for byte out of the pinned float weights into
+`pooler.safetensors` by `scripts/extract_tensors.py`, pinned by size and hash in the manifest and
+staged by the fetch script beside the artefact, and the identity string names them. Nothing is
+converted: the bytes are the pinned float model's, which is the same rule the tokenizer follows.
+The alternatives were a different artefact that carries its pooler, or keeping the re-ranker
+float; the owner chose the borrow.
+
 ## Alternatives rejected
 
 - **A single global scale for the vectors** measured marginally better (0.6449 and 0.3157) and

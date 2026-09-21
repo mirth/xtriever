@@ -9,6 +9,8 @@
 //! beir verify [--cache DIR] <dataset...>
 //! beir run    --dataset D [--config lexical-baseline-v1] [--out F] [--export-run F] [--index-dir DIR] [--cache DIR]
 //! beir run    --dataset D --config dense-baseline-v1 [--model-dir M] [--cache-dir C] [--load-path buffered|mmap] [--out F] [--export-run F]
+//!             (Feature 026: M and R may name an eight-bit directory, e.g. reference/models/all-MiniLM-L6-v2-q8; the loader
+//!              tells the artefacts apart by their weights file, and the cache key carries the fingerprint, so each precision has its own cache)
 //! beir run    --dataset D --config hybrid-baseline-v1 [--model-dir M] [--cache-dir C] [--index-dir DIR] [--load-path P] [--out F] [--export-run F] [--export-explain F]
 //! beir run    --dataset D --config hybrid-rerank-v1 [--rerank-model-dir R] (+ the hybrid flags; --load-path applies to both models)
 //! beir run    --dataset D --config lexical-baseline-v2 | hybrid-baseline-v2 | hybrid-rerank-v2   (Feature 013: one joined `contents` field for BM25; same flags as the v1)
@@ -152,14 +154,14 @@ fn model_dir(a: &Args) -> PathBuf {
     a.flags
         .get("model-dir")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repo_root().join("reference/models/all-MiniLM-L6-v2"))
+        .unwrap_or_else(|| repo_root().join("reference/models/all-MiniLM-L6-v2-q8"))
 }
 
 fn rerank_model_dir(a: &Args) -> PathBuf {
     a.flags
         .get("rerank-model-dir")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2"))
+        .unwrap_or_else(|| repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2-q8"))
 }
 
 fn rerank_load_path(a: &Args) -> anyhow::Result<xtriever_rerank::LoadPath> {

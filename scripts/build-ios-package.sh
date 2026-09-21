@@ -111,14 +111,32 @@ mkdir -p "$resources"
 printf 'Staged by scripts/build-ios-package.sh; gitignored.\n' > "$resources/README.txt"
 
 if [ "$with_models" = true ]; then
-    "$repo_root/scripts/fetch-model.sh" >/dev/null
-    "$repo_root/scripts/fetch-model.sh" --manifest "$repo_root/reference/models/manifest-rerank.json" >/dev/null
-    rm -rf "$resources/models"; mkdir -p "$resources/models/embedder" "$resources/models/reranker"
-    for f in config.json tokenizer.json model.safetensors; do
-        cp "$repo_root/reference/models/all-MiniLM-L6-v2/$f" "$resources/models/embedder/"
-        cp "$repo_root/reference/models/ms-marco-MiniLM-L-6-v2/$f" "$resources/models/reranker/"
-    done
-    printf '    models bundled (%s)\n' "$(du -sh "$resources/models" | cut -f1)"
+    # Feature 026: the eight-bit artefacts by default (25 MB each against 90), each directory
+    # staged whole — the GGUF beside the float model's config and tokenizer, and for the
+    # re-ranker the borrowed pooler — as the manifests pin them. XTRIEVER_MODEL_MANIFEST and
+    # XTRIEVER_RERANK_MODEL_MANIFEST name other manifests (e.g. the float ones); the engine
+    # tells the artefacts apart by their weights file, so nothing else changes.
+    embedder_manifest="${XTRIEVER_MODEL_MANIFEST:-$repo_root/reference/models/manifest-q8.json}"
+    reranker_manifest="${XTRIEVER_RERANK_MODEL_MANIFEST:-$repo_root/reference/models/manifest-rerank-q8.json}"
+    "$repo_root/scripts/fetch-model.sh" --manifest "$embedder_manifest" >/dev/null
+    "$repo_root/scripts/fetch-model.sh" --manifest "$reranker_manifest" >/dev/null
+    # `.local_dir` with the fetch script's own default, so a manifest without it (the float
+    # embedder's had none until Feature 026) selects the directory the fetch script filled.
+    embedder_dir="$repo_root/reference/models/$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$embedder_manifest")"
+    reranker_dir="$repo_root/reference/models/$(jq -r '.local_dir // "ms-marco-MiniLM-L-6-v2"' "$reranker_manifest")"
+    # Exactly the files the manifest pins — its own, the borrowed ones and any cut tensors —
+    # never the directory as found: a float weights file left beside the GGUF, or an
+    # interrupted download, would pass the fetch script's verification (it checks only the
+    # pinned files) and be refused by the engine on the device, or bloat the bundle.
+    stage_pinned() { # manifest source_dir dest_dir
+        mkdir -p "$3"
+        jq -r '[.files[].name] + (.borrows.files // []) + [.borrows.tensors.file // empty] | .[]' "$1" \
+            | while IFS= read -r name; do cp "$2/$name" "$3/$name"; done
+    }
+    rm -rf "$resources/models"
+    stage_pinned "$embedder_manifest" "$embedder_dir" "$resources/models/embedder"
+    stage_pinned "$reranker_manifest" "$reranker_dir" "$resources/models/reranker"
+    printf '    models bundled (%s): %s, %s\n' "$(du -sh "$resources/models" | cut -f1)" "$(basename "$embedder_dir")" "$(basename "$reranker_dir")"
 else
     printf '    models NOT bundled — pass --with-models for the Swift tests and device runs\n'
 fi

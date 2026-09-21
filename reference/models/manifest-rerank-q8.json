@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "repository": "cstr/ms-marco-MiniLM-L-6-v2-GGUF",
+  "revision": "1a9ef5ce8cb08936338233731314f3ff61ce0930",
+  "local_dir": "ms-marco-MiniLM-L-6-v2-q8",
+  "files": [
+    {
+      "name": "ms-marco-MiniLM-L-6-v2-q8_0.gguf",
+      "bytes": 24703040,
+      "sha256": "718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a"
+    }
+  ],
+  "quantisation": "q8_0",
+  "architecture": "bert",
+  "blocks": 6,
+  "hidden": 384,
+  "max_tokens": 512,
+  "weight_tensors": 38,
+  "classifier_tensors": [
+    "classifier.weight",
+    "classifier.bias"
+  ],
+  "supplied_by": "the owner, 2026-09-20 (Feature 026): the artefact is never produced or converted locally",
+  "borrows": {
+    "manifest": "manifest-rerank.json",
+    "files": [
+      "config.json",
+      "tokenizer.json"
+    ],
+    "why": "the artefact supplies weights only; the tokenizer and configuration are the pinned float model's, verified against that manifest",
+    "tensors": {
+      "file": "pooler.safetensors",
+      "from": "model.safetensors",
+      "names": [
+        "bert.pooler.dense.bias",
+        "bert.pooler.dense.weight"
+      ],
+      "bytes": 591538,
+      "sha256": "382eb35e6b806190f9781c0b3646090e696a9c4c6267eef88c4f70df949676b9",
+      "why": "the artefact carries the published classifier but not the pooler it feeds on; the pooler is the pinned float model's, copied byte for byte by scripts/extract_tensors.py"
+    }
+  }
+}

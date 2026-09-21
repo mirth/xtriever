@@ -31,9 +31,14 @@ The two pinned models are never bundled. Fetch them once with the repository's v
 script:
 
 ```sh
-scripts/fetch-model.sh                                                       # the embedder  → reference/models/all-MiniLM-L6-v2
-scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json      # the re-ranker → reference/models/ms-marco-MiniLM-L-6-v2
+scripts/fetch-model.sh --manifest reference/models/manifest-q8.json          # the embedder  → reference/models/all-MiniLM-L6-v2-q8
+scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json   # the re-ranker → reference/models/ms-marco-MiniLM-L-6-v2-q8
 ```
+
+These are the eight-bit artefacts, the default since Feature 026 (the fixture index and the
+tests expect them). The float ones (`scripts/fetch-model.sh`, and with
+`--manifest reference/models/manifest-rerank.json`) load through the same call; an index
+records which embedder built it and refuses the other.
 
 ## A first search
 
@@ -42,8 +47,8 @@ import xtriever
 
 index = xtriever.IndexHandle.open(
     "path/to/index",                                   # a hybrid index directory
-    "reference/models/all-MiniLM-L6-v2",               # the embedder (required)
-    "reference/models/ms-marco-MiniLM-L-6-v2",         # the re-ranker (or None: fused order only)
+    "reference/models/all-MiniLM-L6-v2-q8",            # the embedder (required)
+    "reference/models/ms-marco-MiniLM-L-6-v2-q8",      # the re-ranker (or None: fused order only)
     xtriever.LoadPath.MMAP,                            # both models memory-mapped
 )
 print(index.info())                                    # documents, format version, fingerprints, load times

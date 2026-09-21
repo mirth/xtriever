@@ -1,5 +1,5 @@
 """The ``wikidemo`` command line (contracts/cli.md): ``search``, ``about``, ``build``,
-``measure``. Exit 0 on success (an empty result is success), 1 on a missing input, an engine
+``measure``. Exit 0 on success (an empty result is success), 1 on a missing or unusable input, an engine
 error, a refused build or a parity FAIL, 2 on a usage error.
 """
 
@@ -13,7 +13,7 @@ import xtriever
 from . import DEFAULT_DEPTH, DEFAULT_K, DEPTHS
 from .chunking import CHUNKERS, DEFAULT_CHUNKER
 from .hits import displayed, marks
-from .inputs import MissingInput, require, resolve
+from .inputs import MissingInput, UnusableInput, require, resolve
 from .render import WARMUP_LINE, dropped_line, empty_line, error_line, list_block, open_line, stage_line, wall_line
 from .search import open_artefact, requested_mode_label, run_search
 
@@ -160,6 +160,9 @@ def main(argv=None) -> int:
         return COMMANDS[args.command](args, paths)
     except MissingInput as e:
         print(f"wikidemo: {e}\n  produce it with: {e.producer}", file=sys.stderr)
+        return 1
+    except UnusableInput as e:
+        print(f"wikidemo: {e}", file=sys.stderr)
         return 1
     except xtriever.XtrieverError as e:
         print(error_line(e), file=sys.stderr)

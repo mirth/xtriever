@@ -51,7 +51,8 @@ def test_long_and_non_ascii_queries_are_accepted(handle):
 
 
 # The pre-015 re-ranked order of the first golden query ("zephyr", k 10, depth 5) on `main`.
-Q0_REPLACE_ORDER = ["d016", "d011", "d031", "d026", "d001", "d032", "d020", "d008", "d038", "d030"]
+# The eight-bit embedder's fused tail (Feature 026) — crates/xtriever-ffi/tests/options.rs pins the same.
+Q0_REPLACE_ORDER = ["d016", "d011", "d031", "d026", "d001", "d032", "d020", "d038", "d008", "d030"]
 
 
 def test_rerank_mode_override_and_info(handle):

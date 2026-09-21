@@ -158,8 +158,8 @@ if $with_fixtures; then
     # Both models travel with the test package, as they do in the iOS package: it keeps
     # `./gradlew :android:xtriever:connectedAndroidTest` self-contained, with nothing to push
     # by hand before it runs.
-    stage_dir "${XTRIEVER_MODEL_DIR:-$repo_root/reference/models/all-MiniLM-L6-v2}" "$fixture_dir/models/embedder" "test embedder"
-    stage_dir "${XTRIEVER_RERANK_MODEL_DIR:-$repo_root/reference/models/ms-marco-MiniLM-L-6-v2}" "$fixture_dir/models/reranker" "test re-ranker"
+    stage_dir "${XTRIEVER_MODEL_DIR:-$repo_root/reference/models/all-MiniLM-L6-v2-q8}" "$fixture_dir/models/embedder" "test embedder"
+    stage_dir "${XTRIEVER_RERANK_MODEL_DIR:-$repo_root/reference/models/ms-marco-MiniLM-L-6-v2-q8}" "$fixture_dir/models/reranker" "test re-ranker"
     # The demonstration's own tests drive its model against the same 40-document index, and take
     # the models from the application's bundled ones rather than carrying a second copy.
     stage_dir "$repo_root/swift/Xtriever/Tests/Fixtures/index" "$demo_fixture_dir/index" "demo fixture index"
@@ -167,9 +167,14 @@ if $with_fixtures; then
 fi
 
 if $with_models; then
+    # Feature 026: the eight-bit artefact directories by default (staged whole: the GGUF beside
+    # the float model's config and tokenizer, and the re-ranker's borrowed pooler), fetched by
+    # `scripts/fetch-model.sh --manifest reference/models/manifest-q8.json` and
+    # `manifest-rerank-q8.json`. XTRIEVER_MODEL_DIR / XTRIEVER_RERANK_MODEL_DIR name other
+    # directories, e.g. the float ones; the engine tells the artefacts apart by their weights file.
     echo "==> staging the models"
-    stage_dir "${XTRIEVER_MODEL_DIR:-$repo_root/reference/models/all-MiniLM-L6-v2}" "$demo_assets/models/embedder" "embedder"
-    stage_dir "${XTRIEVER_RERANK_MODEL_DIR:-$repo_root/reference/models/ms-marco-MiniLM-L-6-v2}" "$demo_assets/models/reranker" "re-ranker"
+    stage_dir "${XTRIEVER_MODEL_DIR:-$repo_root/reference/models/all-MiniLM-L6-v2-q8}" "$demo_assets/models/embedder" "embedder"
+    stage_dir "${XTRIEVER_RERANK_MODEL_DIR:-$repo_root/reference/models/ms-marco-MiniLM-L-6-v2-q8}" "$demo_assets/models/reranker" "re-ranker"
 fi
 
 if $with_corpus; then

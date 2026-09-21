@@ -7,11 +7,15 @@
 #                     reference/models/all-MiniLM-L6-v2
 #   e.g. scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   (006 cross-encoder)
 #
-# The three files (config.json, tokenizer.json, model.safetensors) are downloaded from the
-# Hugging Face hub at the revision pinned in the manifest and checked against
-# the manifest — size AND sha256. A mismatch prints the path and both values and exits 1; a
-# download failure is reported as such and never as a hash failure. Idempotent: a file already
-# present is not downloaded again, but everything is re-verified. The destination is git-ignored.
+# Every file the manifest pins (a float model's config.json, tokenizer.json and
+# model.safetensors; an eight-bit artefact's one GGUF, plus what its `borrows` names from the
+# float manifest — Feature 026) is downloaded from the Hugging Face hub at the pinned revision
+# and checked against the manifest — size AND sha256. A mismatch prints the path and both values
+# and exits 1; a download failure is reported as such and never as a hash failure. Idempotent: a
+# file already present is not downloaded again, but everything is re-verified. The destination
+# is git-ignored.
+#   e.g. scripts/fetch-model.sh --manifest reference/models/manifest-q8.json        (026 eight-bit embedder)
+#        scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json (026 eight-bit re-ranker)
 
 set -euo pipefail
 
@@ -69,4 +73,61 @@ for ((i = 0; i < n; i++)); do
     fi
     verify "$path" "$want_bytes" "$want_sha"
 done
+# Feature 026: an eight-bit artefact supplies weights only. Its manifest's `borrows` names the
+# float manifest whose `config.json` and `tokenizer.json` sit beside the weights, fetched (if
+# absent) and verified against *that* manifest's pins, then copied here and verified again.
+if [ "$(jq -r '.borrows // empty' "$manifest")" != "" ]; then
+    borrowed_manifest="$(dirname "$manifest")/$(jq -er '.borrows.manifest' "$manifest")"
+    borrowed_dir="$repo_root/reference/models/$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$borrowed_manifest")"
+    borrowed_repository="$(jq -er '.repository' "$borrowed_manifest")"
+    borrowed_revision="$(jq -er '.revision' "$borrowed_manifest")"
+    # Tensors the artefact lacks are cut out of the float weights (below), which needs the whole
+    # float manifest — but only on a miss: a cut file already present is verified like any other
+    # pinned file and never re-cut, so a rebuild does not fetch 90 MB for 591 KB it has.
+    cut_tensors=false
+    if [ "$(jq -r '.borrows.tensors // empty' "$manifest")" != "" ]; then
+        tfile="$(jq -er '.borrows.tensors.file' "$manifest")"
+        if [ -f "$dest/$tfile" ]; then
+            verify "$dest/$tfile" "$(jq -er '.borrows.tensors.bytes' "$manifest")" "$(jq -er '.borrows.tensors.sha256' "$manifest")"
+        else
+            cut_tensors=true
+            "$0" --manifest "$borrowed_manifest" >/dev/null
+        fi
+    fi
+    mkdir -p "$borrowed_dir"
+    m="$(jq -r '.borrows.files | length' "$manifest")"
+    for ((j = 0; j < m; j++)); do
+        name="$(jq -er ".borrows.files[$j]" "$manifest")"
+        want_bytes="$(jq -er --arg n "$name" '.files[] | select(.name == $n) | .bytes' "$borrowed_manifest")"
+        want_sha="$(jq -er --arg n "$name" '.files[] | select(.name == $n) | .sha256' "$borrowed_manifest")"
+        # Only the borrowed file is fetched — not the float weights beside it, which an
+        # eight-bit embedder never uses — into the float directory, where it is what the float
+        # manifest pins, then copied here and verified against that pin.
+        if [ ! -f "$borrowed_dir/$name" ]; then
+            url="https://huggingface.co/$borrowed_repository/resolve/$borrowed_revision/$name"
+            printf 'fetch-model: downloading %s\n' "$url"
+            if ! curl -sSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 20 \
+                    -o "$borrowed_dir/$name.part" "$url"; then
+                rm -f "$borrowed_dir/$name.part"
+                printf 'fetch-model: FAIL — download failed for %s (network/source problem, not a hash mismatch)\n' "$url" >&2
+                exit 1
+            fi
+            mv "$borrowed_dir/$name.part" "$borrowed_dir/$name"
+        fi
+        verify "$borrowed_dir/$name" "$want_bytes" "$want_sha" >/dev/null
+        cp "$borrowed_dir/$name" "$dest/$name"
+        verify "$dest/$name" "$want_bytes" "$want_sha"
+    done
+    printf 'fetch-model: borrowed %s from %s\n' "$(jq -r '.borrows.files | join(", ")' "$manifest")" "$borrowed_dir"
+    # Tensors the artefact lacks, copied byte for byte out of the borrowed float weights into a
+    # small safetensors file (deterministic, so its pin is checkable): the re-ranker's pooler.
+    if $cut_tensors; then
+        command -v python3 >/dev/null || { printf 'fetch-model: FAIL — python3 not found on PATH (needed for .borrows.tensors)\n' >&2; exit 1; }
+        tfrom="$(jq -er '.borrows.tensors.from' "$manifest")"
+        names="$(jq -r '.borrows.tensors.names | join(" ")' "$manifest")"
+        # shellcheck disable=SC2086
+        python3 "$repo_root/scripts/extract_tensors.py" "$borrowed_dir/$tfrom" "$dest/$tfile" $names >/dev/null
+        verify "$dest/$tfile" "$(jq -er '.borrows.tensors.bytes' "$manifest")" "$(jq -er '.borrows.tensors.sha256' "$manifest")"
+    fi
+fi
 printf 'fetch-model: PASS — %s at %s verified in %s\n' "$repository" "$revision" "$dest"

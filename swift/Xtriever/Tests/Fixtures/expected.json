@@ -1,9 +1,9 @@
 {
-  "generated_by": "xtriever-ffi examples/fixture_index.rs @ 2468988d76e221556343b230d381eca5f24eca3b",
+  "generated_by": "xtriever-ffi examples/fixture_index.rs @ 4ac12f1008a756770ca530cbd44b2bea3612ebb9",
   "info": {
     "candidate_depth": 100,
     "documents": 40,
-    "embedder_fingerprint": "sentence-transformers/all-MiniLM-L6-v2@1110a243fdf4706b3f48f1d95db1a4f5529b4d41;weights=sha256:53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=f32;prefix=none;engine=candle-0.9.2",
+    "embedder_fingerprint": "leliuga/all-MiniLM-L6-v2-GGUF@ddf2e25d5b8530422e7b14aa39f33a657ff9aec0;weights=sha256:e5ec722e8c82dc4ffaf965175ca472f5da3f97b695590b5b0780bdbfa29bcaf3;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=q8_0;compute=f16;prefix=none;engine=candle-0.9.2",
     "format_version": 2,
     "rerank_depth": 20,
     "rerank_mode": {
@@ -11,7 +11,7 @@
         "alpha": 0.5
       }
     },
-    "reranker_model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2@233902d25c440f23af6f7d6e94d2946bac0bee0a;weights=sha256:821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=f32;engine=candle-0.9.2",
+    "reranker_model_id": "cstr/ms-marco-MiniLM-L-6-v2-GGUF@1a9ef5ce8cb08936338233731314f3ff61ce0930;weights=sha256:718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a;pooler=sha256:382eb35e6b806190f9781c0b3646090e696a9c4c6267eef88c4f70df949676b9;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=q8_0;compute=f16;engine=candle-0.9.2",
     "rrf_k": 60
   },
   "queries": [
@@ -24,52 +24,52 @@
         "hits": [
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3ea45e90",
+            "dense_score_bits": "3ea3e46f",
             "external_id": "d016",
             "rerank_combined_bits": "3ff0000000000000",
             "rerank_rank": 1,
-            "rerank_score_bits": "4068509b",
+            "rerank_score_bits": "40688225",
             "score_bits": "3fa0c9714fbcda3b"
           },
           {
             "bm25_score_bits": "3fedaec4",
-            "dense_score_bits": "3e80f61d",
+            "dense_score_bits": "3e838456",
             "external_id": "d001",
             "rerank_combined_bits": "3fcf5139e4d29a24",
             "rerank_rank": 2,
-            "rerank_score_bits": "3fe908ac",
+            "rerank_score_bits": "3feb0c9c",
             "score_bits": "3fa062928c418a4a"
           },
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3e489c41",
+            "dense_score_bits": "3e4afaa6",
             "external_id": "d031",
-            "rerank_combined_bits": "3fce27fad50a7258",
+            "rerank_combined_bits": "3fce0e8f44dc5526",
             "rerank_rank": 3,
-            "rerank_score_bits": "4017370c",
+            "rerank_score_bits": "4017cce4",
             "score_bits": "3fa0228e8c01864a"
           },
           {
             "bm25_score_bits": "3fdcf87b",
-            "dense_score_bits": "3e7f2125",
+            "dense_score_bits": "3e81069d",
             "external_id": "d011",
-            "rerank_combined_bits": "3fcace5f650eada9",
+            "rerank_combined_bits": "3fca9c976215e5df",
             "rerank_rank": 4,
-            "rerank_score_bits": "40247186",
+            "rerank_score_bits": "4024c3ca",
             "score_bits": "3fa0010010010010"
           },
           {
             "bm25_score_bits": "3fe24620",
-            "dense_score_bits": "3e4a1b69",
+            "dense_score_bits": "3e4c63ae",
             "external_id": "d026",
-            "rerank_combined_bits": "3fbe71e0f08b8c2a",
+            "rerank_combined_bits": "3fbed85430e39cb0",
             "rerank_rank": 5,
-            "rerank_score_bits": "40100f3c",
+            "rerank_score_bits": "40113ba9",
             "score_bits": "3fa0000000000000"
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e479592",
+            "dense_score_bits": "3e48d354",
             "external_id": "d032",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -78,7 +78,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e3e8f23",
+            "dense_score_bits": "3e41adca",
             "external_id": "d020",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -87,8 +87,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e256abf",
-            "external_id": "d008",
+            "dense_score_bits": "3e2974e8",
+            "external_id": "d038",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -96,8 +96,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e2475ed",
-            "external_id": "d038",
+            "dense_score_bits": "3e25df62",
+            "external_id": "d008",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -105,7 +105,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e1b703d",
+            "dense_score_bits": "3e1ee1e9",
             "external_id": "d030",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -127,7 +127,7 @@
         "hits": [
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3ea45e90",
+            "dense_score_bits": "3ea3e46f",
             "external_id": "d016",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -136,7 +136,7 @@
           },
           {
             "bm25_score_bits": "3fedaec4",
-            "dense_score_bits": "3e80f61d",
+            "dense_score_bits": "3e838456",
             "external_id": "d001",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -145,7 +145,7 @@
           },
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3e489c41",
+            "dense_score_bits": "3e4afaa6",
             "external_id": "d031",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -154,7 +154,7 @@
           },
           {
             "bm25_score_bits": "3fdcf87b",
-            "dense_score_bits": "3e7f2125",
+            "dense_score_bits": "3e81069d",
             "external_id": "d011",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -163,7 +163,7 @@
           },
           {
             "bm25_score_bits": "3fe24620",
-            "dense_score_bits": "3e4a1b69",
+            "dense_score_bits": "3e4c63ae",
             "external_id": "d026",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -172,7 +172,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e479592",
+            "dense_score_bits": "3e48d354",
             "external_id": "d032",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -181,7 +181,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e3e8f23",
+            "dense_score_bits": "3e41adca",
             "external_id": "d020",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -190,8 +190,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e256abf",
-            "external_id": "d008",
+            "dense_score_bits": "3e2974e8",
+            "external_id": "d038",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -199,8 +199,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e2475ed",
-            "external_id": "d038",
+            "dense_score_bits": "3e25df62",
+            "external_id": "d008",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -208,7 +208,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e1b703d",
+            "dense_score_bits": "3e1ee1e9",
             "external_id": "d030",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -233,70 +233,61 @@
         "hits": [
           {
             "bm25_score_bits": "403420cc",
-            "dense_score_bits": "3f01c6e9",
+            "dense_score_bits": "3f01ae0a",
             "external_id": "d022",
-            "rerank_combined_bits": "3fef804fd9de5b21",
+            "rerank_combined_bits": "3fef8016a1f79a28",
             "rerank_rank": 1,
-            "rerank_score_bits": "4090c1e8",
+            "rerank_score_bits": "409116ca",
             "score_bits": "3fa064b8a7de6d1e"
           },
           {
             "bm25_score_bits": "40323dd5",
-            "dense_score_bits": "3edc0e39",
+            "dense_score_bits": "3edd03bc",
             "external_id": "d002",
             "rerank_combined_bits": "3fe8c961285baa47",
             "rerank_rank": 2,
-            "rerank_score_bits": "409e3206",
+            "rerank_score_bits": "409e8bfd",
             "score_bits": "3fa0010010010010"
           },
           {
             "bm25_score_bits": "3ff958ea",
-            "dense_score_bits": "3ee7c42f",
+            "dense_score_bits": "3ee9b910",
             "external_id": "d037",
-            "rerank_combined_bits": "3fde92d5a68aa4a8",
+            "rerank_combined_bits": "3fde83abc0c7fa06",
             "rerank_rank": 3,
-            "rerank_score_bits": "bfb7562a",
+            "rerank_score_bits": "bfb8e62e",
             "score_bits": "3f9fccb9de3a6c38"
           },
           {
             "bm25_score_bits": "409bdb5f",
-            "dense_score_bits": "3ec19a2c",
+            "dense_score_bits": "3ec21891",
             "external_id": "d013",
             "rerank_combined_bits": "3fdb711711711719",
             "rerank_rank": 4,
-            "rerank_score_bits": "c1086f52",
+            "rerank_score_bits": "c108334b",
             "score_bits": "3fa04536afbeeb26"
           },
           {
             "bm25_score_bits": "3fe57ce0",
-            "dense_score_bits": "3ece30a8",
+            "dense_score_bits": "3ece374c",
             "external_id": "d017",
-            "rerank_combined_bits": "3fcf212a06bddfb9",
+            "rerank_combined_bits": "3fcef9be8cc72574",
             "rerank_rank": 5,
-            "rerank_score_bits": "bffcccc8",
+            "rerank_score_bits": "bfff4cd9",
             "score_bits": "3f9f0f0f0f0f0f0f"
           },
           {
             "bm25_score_bits": "40087c1e",
-            "dense_score_bits": "3eb3cdfd",
+            "dense_score_bits": "3eb4de36",
             "external_id": "d032",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
-            "score_bits": "3f9ecc79ce366b38"
-          },
-          {
-            "bm25_score_bits": "3f94decb",
-            "dense_score_bits": "3eb46d42",
-            "external_id": "d016",
-            "rerank_combined_bits": null,
-            "rerank_rank": null,
-            "rerank_score_bits": null,
-            "score_bits": "3f9df00c3cbfdd0a"
+            "score_bits": "3f9f07c1f07c1f08"
           },
           {
             "bm25_score_bits": "3fd48ef0",
-            "dense_score_bits": "3eab628f",
+            "dense_score_bits": "3ead205f",
             "external_id": "d007",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -304,8 +295,17 @@
             "score_bits": "3f9de63f4a6bcffc"
           },
           {
+            "bm25_score_bits": "3f94decb",
+            "dense_score_bits": "3eb4a2dd",
+            "external_id": "d016",
+            "rerank_combined_bits": null,
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9db4c41a7a2939"
+          },
+          {
             "bm25_score_bits": "3f902b4b",
-            "dense_score_bits": "3ea325c9",
+            "dense_score_bits": "3ea5304e",
             "external_id": "d027",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -314,12 +314,12 @@
           },
           {
             "bm25_score_bits": "40810fe0",
-            "dense_score_bits": "3e60c06c",
+            "dense_score_bits": "3e62b817",
             "external_id": "d039",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
-            "score_bits": "3f9ce55c8eac7900"
+            "score_bits": "3f9d0dd0dd0dd0dd"
           }
         ],
         "stages": {
@@ -336,7 +336,7 @@
         "hits": [
           {
             "bm25_score_bits": "403420cc",
-            "dense_score_bits": "3f01c6e9",
+            "dense_score_bits": "3f01ae0a",
             "external_id": "d022",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -345,7 +345,7 @@
           },
           {
             "bm25_score_bits": "409bdb5f",
-            "dense_score_bits": "3ec19a2c",
+            "dense_score_bits": "3ec21891",
             "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -354,7 +354,7 @@
           },
           {
             "bm25_score_bits": "40323dd5",
-            "dense_score_bits": "3edc0e39",
+            "dense_score_bits": "3edd03bc",
             "external_id": "d002",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -363,7 +363,7 @@
           },
           {
             "bm25_score_bits": "3ff958ea",
-            "dense_score_bits": "3ee7c42f",
+            "dense_score_bits": "3ee9b910",
             "external_id": "d037",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -372,7 +372,7 @@
           },
           {
             "bm25_score_bits": "3fe57ce0",
-            "dense_score_bits": "3ece30a8",
+            "dense_score_bits": "3ece374c",
             "external_id": "d017",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -381,25 +381,16 @@
           },
           {
             "bm25_score_bits": "40087c1e",
-            "dense_score_bits": "3eb3cdfd",
+            "dense_score_bits": "3eb4de36",
             "external_id": "d032",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
-            "score_bits": "3f9ecc79ce366b38"
-          },
-          {
-            "bm25_score_bits": "3f94decb",
-            "dense_score_bits": "3eb46d42",
-            "external_id": "d016",
-            "rerank_combined_bits": null,
-            "rerank_rank": null,
-            "rerank_score_bits": null,
-            "score_bits": "3f9df00c3cbfdd0a"
+            "score_bits": "3f9f07c1f07c1f08"
           },
           {
             "bm25_score_bits": "3fd48ef0",
-            "dense_score_bits": "3eab628f",
+            "dense_score_bits": "3ead205f",
             "external_id": "d007",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -407,8 +398,17 @@
             "score_bits": "3f9de63f4a6bcffc"
           },
           {
+            "bm25_score_bits": "3f94decb",
+            "dense_score_bits": "3eb4a2dd",
+            "external_id": "d016",
+            "rerank_combined_bits": null,
+            "rerank_rank": null,
+            "rerank_score_bits": null,
+            "score_bits": "3f9db4c41a7a2939"
+          },
+          {
             "bm25_score_bits": "3f902b4b",
-            "dense_score_bits": "3ea325c9",
+            "dense_score_bits": "3ea5304e",
             "external_id": "d027",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -417,12 +417,12 @@
           },
           {
             "bm25_score_bits": "40810fe0",
-            "dense_score_bits": "3e60c06c",
+            "dense_score_bits": "3e62b817",
             "external_id": "d039",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
-            "score_bits": "3f9ce55c8eac7900"
+            "score_bits": "3f9d0dd0dd0dd0dd"
           }
         ],
         "stages": {
@@ -442,52 +442,52 @@
         "hits": [
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3ecf7a87",
+            "dense_score_bits": "3ecec9a3",
             "external_id": "d013",
             "rerank_combined_bits": "3fea8624d4806b5c",
             "rerank_rank": 1,
-            "rerank_score_bits": "3f3627b4",
+            "rerank_score_bits": "3f347870",
             "score_bits": "3fa0421084210842"
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3eead349",
+            "dense_score_bits": "3ee9b930",
             "external_id": "d028",
-            "rerank_combined_bits": "3fe416694790feaa",
+            "rerank_combined_bits": "3fe4197cdcc2377a",
             "rerank_rank": 2,
-            "rerank_score_bits": "bf17a0f0",
+            "rerank_score_bits": "bf178758",
+            "score_bits": "3fa0853aaffeef26"
+          },
+          {
+            "bm25_score_bits": "40042b5b",
+            "dense_score_bits": "3eba018b",
+            "external_id": "d038",
+            "rerank_combined_bits": "3fe2991e1590e755",
+            "rerank_rank": 3,
+            "rerank_score_bits": "bf416a87",
             "score_bits": "3fa0853aaffeef26"
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3ebab007",
+            "dense_score_bits": "3eb91439",
             "external_id": "d008",
-            "rerank_combined_bits": "3fe1843aaeed5c82",
-            "rerank_rank": 3,
-            "rerank_score_bits": "bf107eda",
-            "score_bits": "3fa062928c418a4a"
-          },
-          {
-            "bm25_score_bits": "40042b5b",
-            "dense_score_bits": "3eba5268",
-            "external_id": "d038",
-            "rerank_combined_bits": "3fdfddb55d758054",
+            "rerank_combined_bits": "3fddc6ae18bccc97",
             "rerank_rank": 4,
-            "rerank_score_bits": "bf41c60e",
-            "score_bits": "3fa064b8a7de6d1e"
+            "rerank_score_bits": "bf102669",
+            "score_bits": "3fa0421084210842"
           },
           {
             "bm25_score_bits": "3fe7d689",
-            "dense_score_bits": "3eb1fe54",
+            "dense_score_bits": "3eb04c06",
             "external_id": "d023",
             "rerank_combined_bits": "0000000000000000",
             "rerank_rank": 5,
-            "rerank_score_bits": "bf85148c",
+            "rerank_score_bits": "bf84f302",
             "score_bits": "3f9f81f81f81f820"
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e97f6e2",
+            "dense_score_bits": "3e968229",
             "external_id": "d036",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -496,7 +496,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e84df1a",
+            "dense_score_bits": "3e8336f6",
             "external_id": "d022",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -505,7 +505,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e83c195",
+            "dense_score_bits": "3e8258c2",
             "external_id": "d037",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -514,7 +514,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e7cefe2",
+            "dense_score_bits": "3e7b1bbb",
             "external_id": "d021",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -523,7 +523,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e630bd6",
+            "dense_score_bits": "3e5fa624",
             "external_id": "d033",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -545,7 +545,7 @@
         "hits": [
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3eead349",
+            "dense_score_bits": "3ee9b930",
             "external_id": "d028",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -554,25 +554,25 @@
           },
           {
             "bm25_score_bits": "40042b5b",
-            "dense_score_bits": "3eba5268",
+            "dense_score_bits": "3eba018b",
             "external_id": "d038",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
-            "score_bits": "3fa064b8a7de6d1e"
+            "score_bits": "3fa0853aaffeef26"
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3ebab007",
+            "dense_score_bits": "3eb91439",
             "external_id": "d008",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
-            "score_bits": "3fa062928c418a4a"
+            "score_bits": "3fa0421084210842"
           },
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3ecf7a87",
+            "dense_score_bits": "3ecec9a3",
             "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -581,7 +581,7 @@
           },
           {
             "bm25_score_bits": "3fe7d689",
-            "dense_score_bits": "3eb1fe54",
+            "dense_score_bits": "3eb04c06",
             "external_id": "d023",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -590,7 +590,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e97f6e2",
+            "dense_score_bits": "3e968229",
             "external_id": "d036",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -599,7 +599,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e84df1a",
+            "dense_score_bits": "3e8336f6",
             "external_id": "d022",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -608,7 +608,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e83c195",
+            "dense_score_bits": "3e8258c2",
             "external_id": "d037",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -617,7 +617,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e7cefe2",
+            "dense_score_bits": "3e7b1bbb",
             "external_id": "d021",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -626,7 +626,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e630bd6",
+            "dense_score_bits": "3e5fa624",
             "external_id": "d033",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -651,52 +651,52 @@
         "hits": [
           {
             "bm25_score_bits": "400cef78",
-            "dense_score_bits": "3e7858ce",
+            "dense_score_bits": "3e7c3caf",
             "external_id": "d025",
             "rerank_combined_bits": "3fe0000000000000",
             "rerank_rank": 1,
-            "rerank_score_bits": "c0f0a6d2",
+            "rerank_score_bits": "c0f0f564",
             "score_bits": "3fa0a6c92bff7560"
           },
           {
             "bm25_score_bits": "400c0560",
-            "dense_score_bits": "3e295ebf",
+            "dense_score_bits": "3e2d0407",
             "external_id": "d019",
             "rerank_combined_bits": "3fe0000000000000",
             "rerank_rank": 2,
-            "rerank_score_bits": "c0ce6689",
+            "rerank_score_bits": "c0cef262",
             "score_bits": "3f9f18344b9dc4fe"
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3e6a5487",
+            "dense_score_bits": "3e6cbd53",
             "external_id": "d029",
-            "rerank_combined_bits": "3fdf5f3d9ca69320",
+            "rerank_combined_bits": "3fdf7c07dc44978a",
             "rerank_rank": 3,
-            "rerank_score_bits": "c0d988dc",
+            "rerank_score_bits": "c0d9e230",
             "score_bits": "3f9fc4e5087f1394"
           },
           {
             "bm25_score_bits": "4014dd4a",
-            "dense_score_bits": "3e33e0a3",
+            "dense_score_bits": "3e37c896",
             "external_id": "d014",
-            "rerank_combined_bits": "3fde0002b5b00119",
+            "rerank_combined_bits": "3fdd904e23fbf6f2",
             "rerank_rank": 4,
-            "rerank_score_bits": "c0e344a4",
+            "rerank_score_bits": "c0e421e2",
             "score_bits": "3fa026a923fd74e0"
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3e721b08",
+            "dense_score_bits": "3e75f0df",
             "external_id": "d004",
-            "rerank_combined_bits": "3fd6330326612af1",
+            "rerank_combined_bits": "3fd6a5549c3bcf5e",
             "rerank_rank": 5,
-            "rerank_score_bits": "c0eb1ed4",
+            "rerank_score_bits": "c0eafdca",
             "score_bits": "3fa0228e8c01864a"
           },
           {
             "bm25_score_bits": "3fe57ce0",
-            "dense_score_bits": "3e39b598",
+            "dense_score_bits": "3e3a4273",
             "external_id": "d035",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -705,7 +705,7 @@
           },
           {
             "bm25_score_bits": "3fca983d",
-            "dense_score_bits": "3e455769",
+            "dense_score_bits": "3e474772",
             "external_id": "d005",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -714,7 +714,7 @@
           },
           {
             "bm25_score_bits": "40087c1e",
-            "dense_score_bits": "3e0b4ff5",
+            "dense_score_bits": "3e0be748",
             "external_id": "d040",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -723,7 +723,7 @@
           },
           {
             "bm25_score_bits": "3fd48ef0",
-            "dense_score_bits": "3e2ddab7",
+            "dense_score_bits": "3e2f995f",
             "external_id": "d010",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -732,7 +732,7 @@
           },
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3e14cd23",
+            "dense_score_bits": "3e16f8a3",
             "external_id": "d034",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -754,7 +754,7 @@
         "hits": [
           {
             "bm25_score_bits": "400cef78",
-            "dense_score_bits": "3e7858ce",
+            "dense_score_bits": "3e7c3caf",
             "external_id": "d025",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -763,7 +763,7 @@
           },
           {
             "bm25_score_bits": "4014dd4a",
-            "dense_score_bits": "3e33e0a3",
+            "dense_score_bits": "3e37c896",
             "external_id": "d014",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -772,7 +772,7 @@
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3e721b08",
+            "dense_score_bits": "3e75f0df",
             "external_id": "d004",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -781,7 +781,7 @@
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3e6a5487",
+            "dense_score_bits": "3e6cbd53",
             "external_id": "d029",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -790,7 +790,7 @@
           },
           {
             "bm25_score_bits": "400c0560",
-            "dense_score_bits": "3e295ebf",
+            "dense_score_bits": "3e2d0407",
             "external_id": "d019",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -799,7 +799,7 @@
           },
           {
             "bm25_score_bits": "3fe57ce0",
-            "dense_score_bits": "3e39b598",
+            "dense_score_bits": "3e3a4273",
             "external_id": "d035",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -808,7 +808,7 @@
           },
           {
             "bm25_score_bits": "3fca983d",
-            "dense_score_bits": "3e455769",
+            "dense_score_bits": "3e474772",
             "external_id": "d005",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -817,7 +817,7 @@
           },
           {
             "bm25_score_bits": "40087c1e",
-            "dense_score_bits": "3e0b4ff5",
+            "dense_score_bits": "3e0be748",
             "external_id": "d040",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -826,7 +826,7 @@
           },
           {
             "bm25_score_bits": "3fd48ef0",
-            "dense_score_bits": "3e2ddab7",
+            "dense_score_bits": "3e2f995f",
             "external_id": "d010",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -835,7 +835,7 @@
           },
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3e14cd23",
+            "dense_score_bits": "3e16f8a3",
             "external_id": "d034",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -860,52 +860,52 @@
         "hits": [
           {
             "bm25_score_bits": "4101b88a",
-            "dense_score_bits": "3f20fd09",
+            "dense_score_bits": "3f218994",
             "external_id": "d029",
             "rerank_combined_bits": "3ff0000000000000",
             "rerank_rank": 1,
-            "rerank_score_bits": "40987709",
+            "rerank_score_bits": "4098bad0",
             "score_bits": "3fa0c9714fbcda3b"
           },
           {
             "bm25_score_bits": "40268848",
-            "dense_score_bits": "3f198a6a",
+            "dense_score_bits": "3f19888c",
             "external_id": "d037",
-            "rerank_combined_bits": "3fe3070172cad9de",
+            "rerank_combined_bits": "3fe2fe9a59309721",
             "rerank_rank": 2,
-            "rerank_score_bits": "40473c82",
+            "rerank_score_bits": "40463f86",
             "score_bits": "3f9fc4e5087f1394"
           },
           {
             "bm25_score_bits": "401c1bb8",
-            "dense_score_bits": "3f1b51ba",
+            "dense_score_bits": "3f1b79c9",
             "external_id": "d004",
-            "rerank_combined_bits": "3fe22c03ae79c983",
+            "rerank_combined_bits": "3fe21df2ac78cd42",
             "rerank_rank": 3,
-            "rerank_score_bits": "4019d578",
+            "rerank_score_bits": "4017d75d",
             "score_bits": "3f9fccb9de3a6c38"
           },
           {
             "bm25_score_bits": "3ffafee4",
-            "dense_score_bits": "3efeb0ce",
+            "dense_score_bits": "3eff67cf",
             "external_id": "d017",
-            "rerank_combined_bits": "3fd7dd972739edbd",
+            "rerank_combined_bits": "3fd7d63c13b4c2f2",
             "rerank_rank": 4,
-            "rerank_score_bits": "3ffcdbfb",
+            "rerank_score_bits": "3ffc662d",
             "score_bits": "3f9ed7303b5cc0ee"
           },
           {
             "bm25_score_bits": "40f483af",
-            "dense_score_bits": "3eea3aba",
+            "dense_score_bits": "3eeb03b8",
             "external_id": "d026",
             "rerank_combined_bits": "3fc67579512bde27",
             "rerank_rank": 5,
-            "rerank_score_bits": "c0c6a2f8",
+            "rerank_score_bits": "c0c69ff5",
             "score_bits": "3f9fccb9de3a6c38"
           },
           {
             "bm25_score_bits": "40df964a",
-            "dense_score_bits": "3ec27f25",
+            "dense_score_bits": "3ec2bd93",
             "external_id": "d028",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -914,7 +914,7 @@
           },
           {
             "bm25_score_bits": "409bdb5f",
-            "dense_score_bits": "3ecac2a8",
+            "dense_score_bits": "3eca56f5",
             "external_id": "d002",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -923,7 +923,7 @@
           },
           {
             "bm25_score_bits": "3fdd9505",
-            "dense_score_bits": "3ee05206",
+            "dense_score_bits": "3ee05c1a",
             "external_id": "d011",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -932,7 +932,7 @@
           },
           {
             "bm25_score_bits": "3f93601f",
-            "dense_score_bits": "3ef3dfe7",
+            "dense_score_bits": "3ef31545",
             "external_id": "d031",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -941,7 +941,7 @@
           },
           {
             "bm25_score_bits": "4000eba6",
-            "dense_score_bits": "3ebc7b2b",
+            "dense_score_bits": "3ebda468",
             "external_id": "d024",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -963,7 +963,7 @@
         "hits": [
           {
             "bm25_score_bits": "4101b88a",
-            "dense_score_bits": "3f20fd09",
+            "dense_score_bits": "3f218994",
             "external_id": "d029",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -972,7 +972,7 @@
           },
           {
             "bm25_score_bits": "401c1bb8",
-            "dense_score_bits": "3f1b51ba",
+            "dense_score_bits": "3f1b79c9",
             "external_id": "d004",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -981,7 +981,7 @@
           },
           {
             "bm25_score_bits": "40f483af",
-            "dense_score_bits": "3eea3aba",
+            "dense_score_bits": "3eeb03b8",
             "external_id": "d026",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -990,7 +990,7 @@
           },
           {
             "bm25_score_bits": "40268848",
-            "dense_score_bits": "3f198a6a",
+            "dense_score_bits": "3f19888c",
             "external_id": "d037",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -999,7 +999,7 @@
           },
           {
             "bm25_score_bits": "3ffafee4",
-            "dense_score_bits": "3efeb0ce",
+            "dense_score_bits": "3eff67cf",
             "external_id": "d017",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1008,7 +1008,7 @@
           },
           {
             "bm25_score_bits": "40df964a",
-            "dense_score_bits": "3ec27f25",
+            "dense_score_bits": "3ec2bd93",
             "external_id": "d028",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1017,7 +1017,7 @@
           },
           {
             "bm25_score_bits": "409bdb5f",
-            "dense_score_bits": "3ecac2a8",
+            "dense_score_bits": "3eca56f5",
             "external_id": "d002",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1026,7 +1026,7 @@
           },
           {
             "bm25_score_bits": "3fdd9505",
-            "dense_score_bits": "3ee05206",
+            "dense_score_bits": "3ee05c1a",
             "external_id": "d011",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1035,7 +1035,7 @@
           },
           {
             "bm25_score_bits": "3f93601f",
-            "dense_score_bits": "3ef3dfe7",
+            "dense_score_bits": "3ef31545",
             "external_id": "d031",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1044,7 +1044,7 @@
           },
           {
             "bm25_score_bits": "4000eba6",
-            "dense_score_bits": "3ebc7b2b",
+            "dense_score_bits": "3ebda468",
             "external_id": "d024",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1069,52 +1069,52 @@
         "hits": [
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dd3e2ac",
+            "dense_score_bits": "3dd517fa",
             "external_id": "d012",
             "rerank_combined_bits": "3fe3cffffffffffc",
             "rerank_rank": 1,
-            "rerank_score_bits": "c05223ae",
+            "rerank_score_bits": "c0512eee",
             "score_bits": "3f90000000000000"
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dfd9849",
+            "dense_score_bits": "3e01e450",
             "external_id": "d018",
-            "rerank_combined_bits": "3fe1f1bc17e6dafa",
+            "rerank_combined_bits": "3fe27dd853fe2b9c",
             "rerank_rank": 2,
-            "rerank_score_bits": "c08fb112",
+            "rerank_score_bits": "c08f3af6",
             "score_bits": "3f90c9714fbcda3b"
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3df29920",
+            "dense_score_bits": "3df54f84",
             "external_id": "d009",
-            "rerank_combined_bits": "3fdbf667d6ac0124",
+            "rerank_combined_bits": "3fdd104e98e7b4f3",
             "rerank_rank": 3,
-            "rerank_score_bits": "c08f0ee8",
+            "rerank_score_bits": "c08e8fc0",
             "score_bits": "3f90842108421084"
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dde438a",
+            "dense_score_bits": "3ddf2d2a",
             "external_id": "d023",
-            "rerank_combined_bits": "3fd2e22159cd8781",
+            "rerank_combined_bits": "3fd3c07af6517be4",
             "rerank_rank": 4,
-            "rerank_score_bits": "c0905ffa",
+            "rerank_score_bits": "c09043cc",
             "score_bits": "3f90410410410410"
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dc33f8d",
+            "dense_score_bits": "3dc63cf9",
             "external_id": "d010",
             "rerank_combined_bits": "0000000000000000",
             "rerank_rank": 5,
-            "rerank_score_bits": "c09508bc",
+            "rerank_score_bits": "c0965b6a",
             "score_bits": "3f8f81f81f81f820"
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dbd9662",
+            "dense_score_bits": "3dc0be15",
             "external_id": "d004",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1123,8 +1123,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dae0e1e",
-            "external_id": "d013",
+            "dense_score_bits": "3db04676",
+            "external_id": "d005",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -1132,8 +1132,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dad335b",
-            "external_id": "d005",
+            "dense_score_bits": "3dacf9a0",
+            "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -1141,7 +1141,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3da95bd2",
+            "dense_score_bits": "3dac0324",
             "external_id": "d007",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1150,7 +1150,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3da8b110",
+            "dense_score_bits": "3da9cd66",
             "external_id": "d026",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1172,7 +1172,7 @@
         "hits": [
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dfd9849",
+            "dense_score_bits": "3e01e450",
             "external_id": "d018",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1181,7 +1181,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3df29920",
+            "dense_score_bits": "3df54f84",
             "external_id": "d009",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1190,7 +1190,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dde438a",
+            "dense_score_bits": "3ddf2d2a",
             "external_id": "d023",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1199,7 +1199,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dd3e2ac",
+            "dense_score_bits": "3dd517fa",
             "external_id": "d012",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1208,7 +1208,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dc33f8d",
+            "dense_score_bits": "3dc63cf9",
             "external_id": "d010",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1217,7 +1217,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dbd9662",
+            "dense_score_bits": "3dc0be15",
             "external_id": "d004",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1226,8 +1226,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dae0e1e",
-            "external_id": "d013",
+            "dense_score_bits": "3db04676",
+            "external_id": "d005",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -1235,8 +1235,8 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3dad335b",
-            "external_id": "d005",
+            "dense_score_bits": "3dacf9a0",
+            "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
             "rerank_score_bits": null,
@@ -1244,7 +1244,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3da95bd2",
+            "dense_score_bits": "3dac0324",
             "external_id": "d007",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1253,7 +1253,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3da8b110",
+            "dense_score_bits": "3da9cd66",
             "external_id": "d026",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1278,52 +1278,52 @@
         "hits": [
           {
             "bm25_score_bits": "3ff958ea",
-            "dense_score_bits": "3ecbf178",
+            "dense_score_bits": "3eccb0fe",
             "external_id": "d037",
-            "rerank_combined_bits": "3fef185381f6e4fc",
+            "rerank_combined_bits": "3fef18e99d84cf72",
             "rerank_rank": 1,
-            "rerank_score_bits": "405e4218",
+            "rerank_score_bits": "405f7461",
             "score_bits": "3fa0a6c92bff7560"
           },
           {
             "bm25_score_bits": "3febbf1d",
-            "dense_score_bits": "3e88c78d",
+            "dense_score_bits": "3e86fd1d",
             "external_id": "d022",
             "rerank_combined_bits": "3fe7c9d08c6d8dfd",
             "rerank_rank": 2,
-            "rerank_score_bits": "4067224d",
+            "rerank_score_bits": "406855a3",
             "score_bits": "3fa0410410410410"
           },
           {
             "bm25_score_bits": "40087c1e",
-            "dense_score_bits": "3e815abd",
+            "dense_score_bits": "3e82291c",
             "external_id": "d032",
-            "rerank_combined_bits": "3fe06d8be7e41614",
+            "rerank_combined_bits": "3fe06aecfe8d2494",
             "rerank_rank": 3,
-            "rerank_score_bits": "4002b02a",
+            "rerank_score_bits": "40037c8d",
             "score_bits": "3fa064b8a7de6d1e"
           },
           {
             "bm25_score_bits": "3fe57ce0",
-            "dense_score_bits": "3e8012af",
+            "dense_score_bits": "3e7eda73",
             "external_id": "d017",
-            "rerank_combined_bits": "3fcf85732b95a598",
+            "rerank_combined_bits": "3fcf3fa6d94a49fa",
             "rerank_rank": 4,
-            "rerank_score_bits": "40177f78",
+            "rerank_score_bits": "4017c9f8",
             "score_bits": "3f9fc0fc0fc0fc10"
           },
           {
             "bm25_score_bits": "3fd48ef0",
-            "dense_score_bits": "3e8c4e6f",
+            "dense_score_bits": "3e8c9af4",
             "external_id": "d007",
             "rerank_combined_bits": "3fc5529477afa2a9",
             "rerank_rank": 5,
-            "rerank_score_bits": "3f946b38",
+            "rerank_score_bits": "3f95e0c6",
             "score_bits": "3fa0228e8c01864a"
           },
           {
             "bm25_score_bits": "3fca983d",
-            "dense_score_bits": "3e729331",
+            "dense_score_bits": "3e72505b",
             "external_id": "d002",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1332,7 +1332,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e2e867a",
+            "dense_score_bits": "3e2fda6a",
             "external_id": "d033",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1341,7 +1341,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e2326ff",
+            "dense_score_bits": "3e24d83f",
             "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1350,7 +1350,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e17b96f",
+            "dense_score_bits": "3e1ac6e4",
             "external_id": "d010",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1359,7 +1359,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e124976",
+            "dense_score_bits": "3e138d09",
             "external_id": "d027",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1381,7 +1381,7 @@
         "hits": [
           {
             "bm25_score_bits": "3ff958ea",
-            "dense_score_bits": "3ecbf178",
+            "dense_score_bits": "3eccb0fe",
             "external_id": "d037",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1390,7 +1390,7 @@
           },
           {
             "bm25_score_bits": "40087c1e",
-            "dense_score_bits": "3e815abd",
+            "dense_score_bits": "3e82291c",
             "external_id": "d032",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1399,7 +1399,7 @@
           },
           {
             "bm25_score_bits": "3febbf1d",
-            "dense_score_bits": "3e88c78d",
+            "dense_score_bits": "3e86fd1d",
             "external_id": "d022",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1408,7 +1408,7 @@
           },
           {
             "bm25_score_bits": "3fd48ef0",
-            "dense_score_bits": "3e8c4e6f",
+            "dense_score_bits": "3e8c9af4",
             "external_id": "d007",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1417,7 +1417,7 @@
           },
           {
             "bm25_score_bits": "3fe57ce0",
-            "dense_score_bits": "3e8012af",
+            "dense_score_bits": "3e7eda73",
             "external_id": "d017",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1426,7 +1426,7 @@
           },
           {
             "bm25_score_bits": "3fca983d",
-            "dense_score_bits": "3e729331",
+            "dense_score_bits": "3e72505b",
             "external_id": "d002",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1435,7 +1435,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e2e867a",
+            "dense_score_bits": "3e2fda6a",
             "external_id": "d033",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1444,7 +1444,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e2326ff",
+            "dense_score_bits": "3e24d83f",
             "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1453,7 +1453,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e17b96f",
+            "dense_score_bits": "3e1ac6e4",
             "external_id": "d010",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1462,7 +1462,7 @@
           },
           {
             "bm25_score_bits": null,
-            "dense_score_bits": "3e124976",
+            "dense_score_bits": "3e138d09",
             "external_id": "d027",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1487,52 +1487,52 @@
         "hits": [
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3e8c37b4",
+            "dense_score_bits": "3e8bc049",
             "external_id": "d016",
             "rerank_combined_bits": "3ff0000000000000",
             "rerank_rank": 1,
-            "rerank_score_bits": "c0977c16",
+            "rerank_score_bits": "c096be83",
             "score_bits": "3fa026a923fd74e0"
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3ebb8026",
+            "dense_score_bits": "3eba6ec6",
             "external_id": "d008",
             "rerank_combined_bits": "3fd8b95b9356816a",
             "rerank_rank": 2,
-            "rerank_score_bits": "c126e3d4",
+            "rerank_score_bits": "c126ed36",
             "score_bits": "3fa0090512da9af7"
           },
           {
             "bm25_score_bits": "40042b5b",
-            "dense_score_bits": "3e957a99",
+            "dense_score_bits": "3e96059f",
             "external_id": "d038",
-            "rerank_combined_bits": "3fd128cf68b932d4",
+            "rerank_combined_bits": "3fd14b6c406068c9",
             "rerank_rank": 3,
-            "rerank_score_bits": "c12019b8",
+            "rerank_score_bits": "c11fb850",
             "score_bits": "3f9fc0fc0fc0fc10"
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3eafe0c9",
+            "dense_score_bits": "3eaf0e87",
             "external_id": "d028",
-            "rerank_combined_bits": "3fc47a508f0ee0f2",
+            "rerank_combined_bits": "3fc49b42e481055c",
             "rerank_rank": 4,
-            "rerank_score_bits": "c123cd67",
+            "rerank_score_bits": "c123a420",
             "score_bits": "3f9f933017511f93"
           },
           {
             "bm25_score_bits": "400c0560",
-            "dense_score_bits": "3e8aa335",
+            "dense_score_bits": "3e8a7588",
             "external_id": "d019",
-            "rerank_combined_bits": "3fb5c7c7ce1a41c7",
+            "rerank_combined_bits": "3fb57afdded272b6",
             "rerank_rank": 5,
-            "rerank_score_bits": "c117615e",
+            "rerank_score_bits": "c1178ff3",
             "score_bits": "3f9f4898d5f85bb4"
           },
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3e6fa10d",
+            "dense_score_bits": "3e71db33",
             "external_id": "d031",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1541,7 +1541,7 @@
           },
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3ea44efc",
+            "dense_score_bits": "3ea42512",
             "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1550,7 +1550,7 @@
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3e8391a5",
+            "dense_score_bits": "3e8434ae",
             "external_id": "d004",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1559,7 +1559,7 @@
           },
           {
             "bm25_score_bits": "3fe24620",
-            "dense_score_bits": "3e934ad9",
+            "dense_score_bits": "3e931808",
             "external_id": "d026",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1568,7 +1568,7 @@
           },
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3e7babcd",
+            "dense_score_bits": "3e7b83dc",
             "external_id": "d034",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1590,7 +1590,7 @@
         "hits": [
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3e8c37b4",
+            "dense_score_bits": "3e8bc049",
             "external_id": "d016",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1599,7 +1599,7 @@
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3ebb8026",
+            "dense_score_bits": "3eba6ec6",
             "external_id": "d008",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1608,7 +1608,7 @@
           },
           {
             "bm25_score_bits": "40042b5b",
-            "dense_score_bits": "3e957a99",
+            "dense_score_bits": "3e96059f",
             "external_id": "d038",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1617,7 +1617,7 @@
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3eafe0c9",
+            "dense_score_bits": "3eaf0e87",
             "external_id": "d028",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1626,7 +1626,7 @@
           },
           {
             "bm25_score_bits": "400c0560",
-            "dense_score_bits": "3e8aa335",
+            "dense_score_bits": "3e8a7588",
             "external_id": "d019",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1635,7 +1635,7 @@
           },
           {
             "bm25_score_bits": "4019b7fd",
-            "dense_score_bits": "3e6fa10d",
+            "dense_score_bits": "3e71db33",
             "external_id": "d031",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1644,7 +1644,7 @@
           },
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3ea44efc",
+            "dense_score_bits": "3ea42512",
             "external_id": "d013",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1653,7 +1653,7 @@
           },
           {
             "bm25_score_bits": "3ffa4d93",
-            "dense_score_bits": "3e8391a5",
+            "dense_score_bits": "3e8434ae",
             "external_id": "d004",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1662,7 +1662,7 @@
           },
           {
             "bm25_score_bits": "3fe24620",
-            "dense_score_bits": "3e934ad9",
+            "dense_score_bits": "3e931808",
             "external_id": "d026",
             "rerank_combined_bits": null,
             "rerank_rank": null,
@@ -1671,7 +1671,7 @@
           },
           {
             "bm25_score_bits": "3ff3d463",
-            "dense_score_bits": "3e7babcd",
+            "dense_score_bits": "3e7b83dc",
             "external_id": "d034",
             "rerank_combined_bits": null,
             "rerank_rank": null,

@@ -20,8 +20,8 @@ ENV = {
 
 DEFAULTS = {
     "artefact": "target/xt-wiki",
-    "embedder": "reference/models/all-MiniLM-L6-v2",
-    "reranker": "reference/models/ms-marco-MiniLM-L-6-v2",
+    "embedder": "reference/models/all-MiniLM-L6-v2-q8",
+    "reranker": "reference/models/ms-marco-MiniLM-L-6-v2-q8",
     "chonky": "reference/models/chonky_distilbert_base_uncased_1",
     "snapshot": "reference/datasets/wiki/simple.jsonl",
     "manifest": "reference/datasets/wiki-manifest.json",
@@ -34,14 +34,14 @@ PRODUCERS = {
         "cargo run --release -p xtriever-cli -- wiki build --out target/xt-wiki   "
         "(the full corpus, hours) or: wikidemo build --limit N --out DIR   (a slice, minutes)"
     ),
-    "embedder": "scripts/fetch-model.sh",
-    "reranker": "scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json",
+    "embedder": "scripts/fetch-model.sh --manifest reference/models/manifest-q8.json",
+    "reranker": "scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json",
     "chonky": "scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json",
     "snapshot": "scripts/fetch-wiki.sh",
     "manifest": "git checkout -- reference/datasets/wiki-manifest.json   (it is in the tree)",
     "expected": (
         "cargo run --release -p xtriever-cli -- wiki expected --index target/xt-wiki/index "
-        "--embedder-dir reference/models/all-MiniLM-L6-v2 --reranker-dir reference/models/ms-marco-MiniLM-L-6-v2 "
+        "--embedder-dir reference/models/all-MiniLM-L6-v2-q8 --reranker-dir reference/models/ms-marco-MiniLM-L-6-v2-q8 "
         "--queries reference/fixtures/008/queries.json --out target/xt-wiki/expected.json"
     ),
     "queries": "git checkout -- reference/fixtures/008/queries.json   (it is in the tree)",
@@ -120,11 +120,50 @@ def resolve(args) -> Paths:
     )
 
 
+def weights_files(model_dir: Path) -> list[Path]:
+    """Every file in `model_dir` the engine would take for weights: the float
+    `model.safetensors` and each `*.gguf`, in that order."""
+    found = []
+    if (model_dir / "model.safetensors").exists():
+        found.append(model_dir / "model.safetensors")
+    if model_dir.is_dir():
+        found.extend(sorted(model_dir.glob("*.gguf")))
+    return found
+
+
+def weights(model_dir: Path) -> Path | None:
+    """The one weights file `model_dir` holds, or None when it holds none or several.
+
+    The engine loads a directory holding exactly one — the float `model.safetensors` or the
+    eight-bit GGUF (Feature 026) — and refuses one holding both, so neither a preference nor
+    the first of several would be what it loads. It checks in addition that the file is the
+    pinned artefact, by name and by hash, which nothing here can do.
+    """
+    found = weights_files(model_dir)
+    return found[0] if len(found) == 1 else None
+
+
+def unusable_weights(model_dir: Path) -> str | None:
+    """Why a directory holding weights could not be loaded, or None. Holding none is not
+    reported here: that is a missing input, named with the command that produces it."""
+    found = weights_files(model_dir)
+    if len(found) > 1:
+        names = ", ".join(p.name for p in found)
+        return f"{model_dir} holds {names}; a model directory holds exactly one weights file"
+    return None
+
+
+def _weights(model_dir: Path) -> Path:
+    """`weights`, or — when the directory holds none — a path naming both forms, so the
+    missing-input message never names a file the producer it recommends cannot create."""
+    return weights(model_dir) or model_dir / "{model.safetensors,*.gguf}"
+
+
 def _sentinel(paths: Paths, name: str) -> Path:
     return {
         "artefact": paths.index_dir / "xtriever-pipeline.json",
-        "embedder": paths.embedder / "model.safetensors",
-        "reranker": paths.reranker / "model.safetensors",
+        "embedder": _weights(paths.embedder),
+        "reranker": _weights(paths.reranker),
         "chonky": paths.chonky / "model.safetensors",
         "snapshot": paths.snapshot,
         "manifest": paths.manifest,
@@ -133,22 +172,50 @@ def _sentinel(paths: Paths, name: str) -> Path:
     }[name]
 
 
-def first_missing(paths: Paths, needs) -> tuple[str, Path, str] | None:
-    """`(what, path, producer)` for the first needed input that is absent, in `needs` order."""
-    for name in needs:
-        path = _sentinel(paths, name)
-        if not path.exists():
-            return WHAT[name], path, PRODUCERS[name]
-    return None
-
-
 class MissingInput(Exception):
     def __init__(self, what: str, path: Path, producer: str):
         super().__init__(f"missing {what}: {path}")
         self.what, self.path, self.producer = what, path, producer
 
 
+class UnusableInput(Exception):
+    """An input that is present but the engine would refuse: a model directory holding more
+    than one weights file. Reported here rather than left to fail at open, with what is wrong
+    rather than a command that would not mend it."""
+
+    def __init__(self, what: str, why: str):
+        super().__init__(f"{what} is unusable: {why}")
+        self.what, self.why = what, why
+
+
+def _first_problem(paths: Paths, needs) -> Exception | None:
+    """The first input in `needs` order that is absent or unusable, as the exception to raise."""
+    for name in needs:
+        if name in ("embedder", "reranker"):
+            why = unusable_weights(getattr(paths, name))
+            if why is not None:
+                return UnusableInput(WHAT[name], why)
+        path = _sentinel(paths, name)
+        if not path.exists():
+            return MissingInput(WHAT[name], path, PRODUCERS[name])
+    return None
+
+
+def first_missing(paths: Paths, needs) -> tuple[str, Path, str] | None:
+    """`(what, path, producer)` for the first needed input that is absent, in `needs` order.
+
+    A model directory that is present but unusable is not reported here; `require` reports it.
+    """
+    problem = _first_problem(paths, needs)
+    if isinstance(problem, MissingInput):
+        return problem.what, problem.path, problem.producer
+    return None
+
+
 def require(paths: Paths, needs) -> None:
-    missing = first_missing(paths, needs)
-    if missing is not None:
-        raise MissingInput(*missing)
+    """Refuse before anything loads: the first needed input that is absent, named with the
+    command that produces it, or the first that is present and unusable, named with what is
+    wrong with it."""
+    problem = _first_problem(paths, needs)
+    if problem is not None:
+        raise problem

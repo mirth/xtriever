@@ -9,11 +9,9 @@ __pycache__/
 # scripts/fetch-model.sh (004), NEVER committed. reference/fixtures/ IS tracked — those are the
 # goldens — and so is reference/models/manifest.json, the pins the fetch script verifies against.
 reference/models/*
-!reference/models/manifest.json
-!reference/models/manifest-rerank.json
-!reference/models/manifest-sparse-doc-v2.json
-!reference/models/manifest-sparse-doc-v3.json
-!reference/models/manifest-chonky.json
+# Every manifest is tracked, by pattern: a per-file list silently dropped the eight-bit
+# manifests of Feature 026 from PR A, which never showed in `git status`.
+!reference/models/manifest*.json
 *.safetensors
 
 # uniffi bindgen output (quickstart Step 3)

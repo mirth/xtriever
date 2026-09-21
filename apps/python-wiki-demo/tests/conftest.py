@@ -17,13 +17,14 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
+from wikidemo.inputs import unusable_weights, weights
 
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE_INDEX = REPO / "swift/Xtriever/Tests/Fixtures/index"
 FIXTURE_GOLDENS = REPO / "swift/Xtriever/Tests/Fixtures/expected.json"
-EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/all-MiniLM-L6-v2"))
+EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/all-MiniLM-L6-v2-q8"))
 RERANKER = Path(
-    os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2")
+    os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2-q8")
 )
 CHONKY = Path(
     os.environ.get("XTRIEVER_CHONKY_MODEL_DIR", REPO / "reference/models/chonky_distilbert_base_uncased_1")
@@ -36,13 +37,14 @@ MANIFEST_008 = REPO / "reference/datasets/wiki-manifest.json"
 
 
 def missing_for_models():
-    """The first prerequisite of the model-backed tests that is absent, or None."""
-    for path in (
-        EMBEDDER / "model.safetensors",
-        RERANKER / "model.safetensors",
-        FIXTURE_INDEX / "xtriever-pipeline.json",
-        FIXTURE_GOLDENS,
-    ):
+    """The first prerequisite of the model-backed tests that is absent or unusable, or None."""
+    for model_dir in (EMBEDDER, RERANKER):
+        why = unusable_weights(model_dir)
+        if why is not None:
+            return why
+        if weights(model_dir) is None:
+            return model_dir / "{model.safetensors,*.gguf}"
+    for path in (FIXTURE_INDEX / "xtriever-pipeline.json", FIXTURE_GOLDENS):
         if not path.exists():
             return path
     return None
@@ -66,7 +68,7 @@ def pytest_collection_modifyitems(config, items):
     missing_chonky = missing_for_chonky()
     for item in items:
         if missing is not None and "models" in item.keywords:
-            item.add_marker(pytest.mark.skip(reason=f"models/fixture not on disk: {missing}"))
+            item.add_marker(pytest.mark.skip(reason=f"models/fixture absent or unusable: {missing}"))
         if missing_chonky is not None and "chonky" in item.keywords:
             item.add_marker(pytest.mark.skip(reason=missing_chonky))
 

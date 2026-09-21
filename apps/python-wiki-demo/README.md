@@ -21,8 +21,8 @@ demo: ten documents in one file, build and search, under 80 lines, no snapshot (
 | Input | Default | Override | Produced by |
 |---|---|---|---|
 | the `xtriever` wheel | — | — | `cd python && .venv/bin/maturin build --release` (→ `target/wheels/`) |
-| the embedder | `reference/models/all-MiniLM-L6-v2` | `--embedder`, `XTRIEVER_MODEL_DIR` | `scripts/fetch-model.sh` |
-| the re-ranker | `reference/models/ms-marco-MiniLM-L-6-v2` | `--reranker`, `XTRIEVER_RERANK_MODEL_DIR` | `scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json` |
+| the embedder | `reference/models/all-MiniLM-L6-v2-q8` | `--embedder`, `XTRIEVER_MODEL_DIR` | `scripts/fetch-model.sh --manifest reference/models/manifest-q8.json` |
+| the re-ranker | `reference/models/ms-marco-MiniLM-L-6-v2-q8` | `--reranker`, `XTRIEVER_RERANK_MODEL_DIR` | `scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json` |
 | the Wikipedia artefact (`index/`, `ATTRIBUTION.txt`, `expected.json`) | `target/xt-wiki` | `--artefact`, `XTRIEVER_WIKI_ARTEFACT` | `cargo run --release -p xtriever-cli -- wiki build --out target/xt-wiki` (hours) or `wikidemo build --limit N --out DIR` (minutes) |
 | the snapshot (for `build`) | `reference/datasets/wiki/simple.jsonl` | `--snapshot` | `scripts/fetch-wiki.sh` |
 | the chonky splitter model (for `build --chunker chonky` only) | `reference/models/chonky_distilbert_base_uncased_1` | `--chonky`, `XTRIEVER_CHONKY_MODEL_DIR` | `scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json` |
@@ -49,7 +49,7 @@ with the install command. The tests need `pytest`.
 ## In run order
 
 ```bash
-scripts/fetch-model.sh && scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   # the two engine models
+scripts/fetch-model.sh --manifest reference/models/manifest-q8.json && scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json   # the two engine models (eight-bit, the default since Feature 026)
 scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json                            # optional: the chonky splitter, for build --chunker chonky
 scripts/fetch-wiki.sh                                                                             # the snapshot (once)
 (cd python && .venv/bin/maturin build --release)                                                  # the wheel

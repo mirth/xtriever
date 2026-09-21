@@ -71,6 +71,21 @@ artefacts use. What it does not have is a quantised BERT — its twenty-two quan
 all decoder-style language models — but both of our crates already write their own forward pass,
 so what changes is which multiply they call, not the shape of the computation.
 
+**Amended 2026-09-21, the arithmetic.** candle's eight-bit CPU kernel is built for one token
+at a time; fed the 256-token sequences this stage embeds it ran at 442 ms per embedding against
+125 ms for the float artefact (clean, release, 10 threads). Expanding the eight-bit tensors to
+`f16` at load and multiplying with the float kernel ran at 120 ms — float speed at half the
+float model's RAM — and to `f32` at 123 ms with no RAM saving. SciFact nDCG@10 under the three
+arithmetics: 0.64646, 0.64642, 0.64631, Recall@100 0.92167 in all three: the artefact's own
+rounding is the dominant change and the arithmetic on top of it did not move the numbers. **The
+owner chose f16.** The f16 expansion is itself a rounding — a code times its `f16` block scale
+needs up to 19 significant bits, `f16` holds 11 — deterministic and part of what `compute=f16`
+names; only an `f32` expansion holds the products exactly. The mode is fixed in
+code (candle's `QMatMul::from_arc` would read it from two environment variables, which must
+never be able to change a vector) and the fingerprints name it (`compute=f16`). Eight-bit
+arithmetic at float speed would need a matrix kernel of our own for the sequence-length case —
+a commodity component the constitution asks an ADR for — and is deliberately not done here.
+
 **What the artefacts contain** (inspected 2026-09-20): architecture `bert`, six blocks, embedding
 length 384, context length 512; 37 eight-bit matrices in the embedder and 38 in the re-ranker,
 with layer norms, biases and token-type embeddings left in float. The re-ranker carries
@@ -85,6 +100,15 @@ the wrong kind of number.
 **Rationale**: neither eight-bit repository ships a `tokenizer.json` — the embedder's has only a
 configuration file beside the weights. The tokenizer is not affected by weight precision, and the
 existing one is already pinned by checksum, so the eight-bit artefact supplies weights only.
+
+**Amended 2026-09-21, the re-ranker's pooler.** Implementation found the pinned re-ranker file
+carries `classifier.weight` and `classifier.bias` — identical to the float head, checked byte for
+byte — but no `bert.pooler.dense`, and declares mean pooling. The published model scores
+`classifier(tanh(pooler(CLS)))`, so the artefact cannot reproduce it alone. The owner chose to
+borrow the pooler from the pinned float weights the way the tokenizer is borrowed: cut into
+`pooler.safetensors` by `scripts/extract_tensors.py` (a byte copy, no conversion), pinned in
+`manifest-rerank-q8.json` under `borrows.tensors`, staged by the fetch script, and named in the
+identity string.
 
 ## D7 — Pinning and fingerprints
 

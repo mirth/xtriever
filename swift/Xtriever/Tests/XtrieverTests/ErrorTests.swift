@@ -67,7 +67,15 @@ final class ErrorTests: XCTestCase {
         let f = try Support.fixture()
         let copy = try Support.copy(m.embedder)
         defer { try? FileManager.default.removeItem(at: copy) }
-        let weights = copy.appendingPathComponent("model.safetensors")
+        // Whichever pinned artefact the package bundles (Feature 026: the eight-bit GGUF by
+        // default, the float file when built with the float manifest): the engine names the
+        // file and its pinned size.
+        let names = try FileManager.default.contentsOfDirectory(atPath: copy.path)
+        guard let weightsName = names.first(where: { $0 == "model.safetensors" || $0.hasSuffix(".gguf") }) else {
+            return XCTFail("no weights file in \(names)")
+        }
+        let weights = copy.appendingPathComponent(weightsName)
+        let pinnedBytes = try FileManager.default.attributesOfItem(atPath: weights.path)[.size] as? UInt64 ?? 0
         let handle = try FileHandle(forWritingTo: weights)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data([0]))
@@ -76,8 +84,8 @@ final class ErrorTests: XCTestCase {
             _ = try await open(f.index, embedder: copy)
             XCTFail("must throw")
         } catch XtrieverError.Model(_, let message) {
-            XCTAssertTrue(message.contains("model.safetensors"), message)
-            XCTAssertTrue(message.contains("90868376"), message)
+            XCTAssertTrue(message.contains(weightsName), message)
+            XCTAssertTrue(message.contains(String(pinnedBytes)), message)
         }
     }
 

@@ -1,12 +1,21 @@
-//! The pinned model: identity, file pins and the fingerprint (research D4, D6).
+//! The pinned models: identity, file pins and the fingerprints (research D4, D6; Feature 026
+//! research D7, D8).
 //!
-//! Every value here is a literal so the fingerprint can be assembled at compile time from the
-//! same pieces as the pins — the two cannot disagree. `reference/models/manifest.json` carries the
-//! same pins for `scripts/fetch-model.sh`; `tests/model_pins.rs` keeps them equal.
+//! Every value here is a literal so a fingerprint can be assembled at compile time from the
+//! same pieces as the pins — the two cannot disagree. `reference/models/manifest.json` and
+//! `manifest-q8.json` carry the same pins for `scripts/fetch-model.sh`; `tests/model_pins.rs`
+//! keeps them equal.
+//!
+//! Two artefacts are pinned (Feature 026, ADR-0015): the as-published float weights and the
+//! owner-supplied eight-bit GGUF. A model directory holds one or the other, and the loader tells
+//! them apart by which weights file is present; the eight-bit directory carries the float
+//! model's `config.json` and `tokenizer.json` beside its weights (the artefact supplies weights
+//! only), verified against the same pins.
 
 use std::path::Path;
 
 use crate::error::model_err;
+use crate::gguf_header::{BertPin, GgufHeader};
 
 /// One pinned model file: name, exact size and SHA-256 (spec FR-003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +92,112 @@ pub const PINNED: PinnedModel = PinnedModel {
 /// Short model name used in `Error::Model { model, .. }`.
 pub const MODEL_NAME: &str = "all-MiniLM-L6-v2";
 
+/// Which artefact a loaded embedder came from (Feature 026, spec FR-012).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Precision {
+    /// `model.safetensors`, the as-published float weights ([`PINNED`]).
+    Float,
+    /// The eight-bit GGUF the owner pinned ([`PINNED_Q8`]); the weight matrices are eight-bit
+    /// blocks, norms, biases and token types stay float, and the tokenizer is the float model's.
+    EightBit,
+}
+
+/// The eight-bit artefact: weights in one GGUF file, plus the float model's configuration and
+/// tokenizer beside it (Feature 026 research D5–D7; `reference/models/manifest-q8.json`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PinnedArtefact {
+    /// Hugging Face repository of the eight-bit file.
+    pub repository: &'static str,
+    /// Git revision the file was fetched at.
+    pub revision: &'static str,
+    /// `config.json`, `tokenizer.json` (both the float model's pins) and the GGUF, in
+    /// verification order.
+    pub files: [PinnedFile; 3],
+    /// The block format the weight matrices use, as the file's `general.file_type` names it.
+    pub quantisation: &'static str,
+    /// What the GGUF header must declare: architecture, block count, embedding length, head
+    /// count, feed-forward length and context length — the shape the forward pass is written
+    /// for (research D5).
+    pub architecture: &'static str,
+    /// What `bert.block_count` must say.
+    pub blocks: usize,
+    /// What `bert.embedding_length` must say: the hidden size.
+    pub embedding_length: usize,
+    /// What `bert.attention.head_count` must say.
+    pub heads: usize,
+    /// What `bert.feed_forward_length` must say.
+    pub feed_forward_length: usize,
+    /// What `bert.context_length` must say, exactly: the encoder sizes its position table
+    /// from it (the window the stage feeds is at most this).
+    pub context_length: usize,
+    /// How many tensors the file stores in eight-bit blocks (the weight matrices).
+    pub quantised_tensors: usize,
+}
+
+macro_rules! q8_repository {
+    () => {
+        "leliuga/all-MiniLM-L6-v2-GGUF"
+    };
+}
+macro_rules! q8_revision {
+    () => {
+        "ddf2e25d5b8530422e7b14aa39f33a657ff9aec0"
+    };
+}
+/// The arithmetic the eight-bit matrices are multiplied in (`quantised_bert`): expanded to
+/// `f16` at load, multiplied by the float kernel — the owner's choice over candle's eight-bit
+/// CPU kernel, which is 3.7× slower for the sequences this stage feeds. A different arithmetic
+/// would be different numbers, so the fingerprint names it.
+macro_rules! compute {
+    () => {
+        "f16"
+    };
+}
+macro_rules! q8_weights_sha256 {
+    () => {
+        "e5ec722e8c82dc4ffaf965175ca472f5da3f97b695590b5b0780bdbfa29bcaf3"
+    };
+}
+
+/// The eight-bit artefact this crate embeds with when the model directory holds it.
+pub const PINNED_Q8: PinnedArtefact = PinnedArtefact {
+    repository: q8_repository!(),
+    revision: q8_revision!(),
+    files: [
+        PINNED.files[0],
+        PINNED.files[1],
+        PinnedFile {
+            name: "all-MiniLM-L6-v2.Q8_0.gguf",
+            bytes: 25_008_064,
+            sha256: q8_weights_sha256!(),
+        },
+    ],
+    quantisation: "q8_0",
+    architecture: "bert",
+    blocks: 6,
+    embedding_length: 384,
+    heads: 12,
+    feed_forward_length: 1536,
+    context_length: 512,
+    quantised_tensors: 37,
+};
+
+/// The embedder fingerprint for the eight-bit artefact: the same inputs as [`FINGERPRINT`] with
+/// the artefact and `dtype=q8_0` in place of the float file, plus `compute=f16`, the arithmetic
+/// the matrices are multiplied in (`compute!()`) — a different arithmetic would be
+/// a different vector — so an index records which weights produced it and a float index refuses
+/// to open with this embedder (spec FR-006, FR-007).
+pub const FINGERPRINT_Q8: &str = concat!(
+    q8_repository!(),
+    "@",
+    q8_revision!(),
+    ";weights=sha256:",
+    q8_weights_sha256!(),
+    ";dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=q8_0;compute=",
+    compute!(),
+    ";prefix=none;engine=candle-0.9.2"
+);
+
 /// The embedder fingerprint (spec FR-004, research D6): every input whose change would change
 /// the vectors — model identity, pooling, normalisation, truncation length, weight precision,
 /// prefixes (none) and the inference engine version (ADR-0001). Not included: thread count and
@@ -110,6 +225,54 @@ pub fn verify_files(dir: &Path) -> xtriever_core::Result<()> {
         verify_file(dir, pin)?;
     }
     Ok(())
+}
+
+/// Verify the eight-bit directory's files ([`PINNED_Q8`]) the same way.
+///
+/// # Errors
+///
+/// `Error::Model` naming the file and both sizes or both hashes.
+pub fn verify_files_q8(dir: &Path) -> xtriever_core::Result<()> {
+    for pin in &PINNED_Q8.files {
+        verify_file(dir, pin)?;
+    }
+    Ok(())
+}
+
+/// Assert what an eight-bit artefact's GGUF header declares against [`PINNED_Q8`]: the
+/// architecture, block count, embedding length, head count, feed-forward length, context
+/// length and the number of eight-bit tensors. The bytes were verified by [`verify_files_q8`];
+/// this guards the pin itself — a pinned file that is not the model the forward pass is written
+/// for is refused by name, not run. The assertion is the header reader's, shared with the
+/// re-ranker byte for byte.
+///
+/// # Errors
+///
+/// `Error::Model` naming the field and both values.
+pub fn assert_gguf_header(bytes: &[u8]) -> xtriever_core::Result<()> {
+    checked_gguf_header(bytes).map(|_| ())
+}
+
+/// [`assert_gguf_header`], returning the header it checked so a loader parses the file once.
+pub(crate) fn checked_gguf_header(bytes: &[u8]) -> xtriever_core::Result<GgufHeader> {
+    let header = GgufHeader::read(bytes)?;
+    header.assert_bert(&bert_pin())?;
+    Ok(header)
+}
+
+/// The part of [`PINNED_Q8`] the header reader asserts.
+fn bert_pin() -> BertPin {
+    BertPin {
+        architecture: PINNED_Q8.architecture,
+        blocks: PINNED_Q8.blocks,
+        embedding_length: PINNED_Q8.embedding_length,
+        heads: PINNED_Q8.heads,
+        feed_forward_length: PINNED_Q8.feed_forward_length,
+        context_length: PINNED_Q8.context_length,
+        required_tensors: &[],
+        quantisation: PINNED_Q8.quantisation,
+        quantised_tensors: PINNED_Q8.quantised_tensors,
+    }
 }
 
 fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {

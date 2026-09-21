@@ -11,7 +11,20 @@ pub fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../reference/fixtures/006")
 }
 
-/// The git-ignored model directory, overridable with `XTRIEVER_RERANK_MODEL_DIR`.
+/// The git-ignored eight-bit model directory (Feature 026), overridable with
+/// `XTRIEVER_RERANK_MODEL_DIR_Q8`, staged by
+/// `scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json`.
+pub fn model_dir_q8() -> PathBuf {
+    std::env::var_os("XTRIEVER_RERANK_MODEL_DIR_Q8").map_or_else(
+        || {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../reference/models/ms-marco-MiniLM-L-6-v2-q8")
+        },
+        PathBuf::from,
+    )
+}
+
+/// The git-ignored float model directory, overridable with `XTRIEVER_RERANK_MODEL_DIR`.
 pub fn model_dir() -> PathBuf {
     std::env::var_os("XTRIEVER_RERANK_MODEL_DIR").map_or_else(
         || {
