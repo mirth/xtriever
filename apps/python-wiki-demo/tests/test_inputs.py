@@ -63,10 +63,10 @@ def test_flag_beats_env_beats_default(monkeypatch, tmp_path):
 def test_missing_input_names_the_producer(tmp_path):
     p = resolve(_args(artefact=str(tmp_path / "none"), embedder=str(tmp_path / "e"), reranker=str(tmp_path / "r"), snapshot=str(tmp_path / "s.jsonl"), queries=str(tmp_path / "q.json")))
     assert first_missing(p, ["artefact"]) == ("the Wikipedia artefact", p.index_dir / "xtriever-pipeline.json", PRODUCERS["artefact"])
-    # Feature 026: an absent eight-bit directory is named by the float file, the name a reader
-    # recognises; the producer is the eight-bit manifest's fetch.
-    assert first_missing(p, ["embedder"]) == ("the embedder", p.embedder / "model.safetensors", "scripts/fetch-model.sh --manifest reference/models/manifest-q8.json")
-    assert first_missing(p, ["reranker"]) == ("the re-ranker", p.reranker / "model.safetensors", "scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json")
+    # Feature 026: an absent model directory is named with both weights forms — never the float
+    # file alone, which the eight-bit fetch it recommends does not create.
+    assert first_missing(p, ["embedder"]) == ("the embedder", p.embedder / "{model.safetensors,*.gguf}", "scripts/fetch-model.sh --manifest reference/models/manifest-q8.json")
+    assert first_missing(p, ["reranker"]) == ("the re-ranker", p.reranker / "{model.safetensors,*.gguf}", "scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json")
     assert first_missing(p, ["snapshot"]) == ("the snapshot", p.snapshot, "scripts/fetch-wiki.sh")
     assert first_missing(p, ["expected"])[2].startswith("cargo run --release -p xtriever-cli -- wiki expected")
     assert first_missing(p, ["queries"])[0] == "the measurement queries"

@@ -7,11 +7,15 @@
 #                     reference/models/all-MiniLM-L6-v2
 #   e.g. scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json   (006 cross-encoder)
 #
-# The three files (config.json, tokenizer.json, model.safetensors) are downloaded from the
-# Hugging Face hub at the revision pinned in the manifest and checked against
-# the manifest — size AND sha256. A mismatch prints the path and both values and exits 1; a
-# download failure is reported as such and never as a hash failure. Idempotent: a file already
-# present is not downloaded again, but everything is re-verified. The destination is git-ignored.
+# Every file the manifest pins (a float model's config.json, tokenizer.json and
+# model.safetensors; an eight-bit artefact's one GGUF, plus what its `borrows` names from the
+# float manifest — Feature 026) is downloaded from the Hugging Face hub at the pinned revision
+# and checked against the manifest — size AND sha256. A mismatch prints the path and both values
+# and exits 1; a download failure is reported as such and never as a hash failure. Idempotent: a
+# file already present is not downloaded again, but everything is re-verified. The destination
+# is git-ignored.
+#   e.g. scripts/fetch-model.sh --manifest reference/models/manifest-q8.json        (026 eight-bit embedder)
+#        scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json (026 eight-bit re-ranker)
 
 set -euo pipefail
 
@@ -77,9 +81,18 @@ if [ "$(jq -r '.borrows // empty' "$manifest")" != "" ]; then
     borrowed_dir="$repo_root/reference/models/$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$borrowed_manifest")"
     borrowed_repository="$(jq -er '.repository' "$borrowed_manifest")"
     borrowed_revision="$(jq -er '.revision' "$borrowed_manifest")"
+    # Tensors the artefact lacks are cut out of the float weights (below), which needs the whole
+    # float manifest — but only on a miss: a cut file already present is verified like any other
+    # pinned file and never re-cut, so a rebuild does not fetch 90 MB for 591 KB it has.
+    cut_tensors=false
     if [ "$(jq -r '.borrows.tensors // empty' "$manifest")" != "" ]; then
-        # Tensors are cut out of the float weights, so the whole float manifest is needed.
-        "$0" --manifest "$borrowed_manifest" >/dev/null
+        tfile="$(jq -er '.borrows.tensors.file' "$manifest")"
+        if [ -f "$dest/$tfile" ]; then
+            verify "$dest/$tfile" "$(jq -er '.borrows.tensors.bytes' "$manifest")" "$(jq -er '.borrows.tensors.sha256' "$manifest")"
+        else
+            cut_tensors=true
+            "$0" --manifest "$borrowed_manifest" >/dev/null
+        fi
     fi
     mkdir -p "$borrowed_dir"
     m="$(jq -r '.borrows.files | length' "$manifest")"
@@ -108,9 +121,8 @@ if [ "$(jq -r '.borrows // empty' "$manifest")" != "" ]; then
     printf 'fetch-model: borrowed %s from %s\n' "$(jq -r '.borrows.files | join(", ")' "$manifest")" "$borrowed_dir"
     # Tensors the artefact lacks, copied byte for byte out of the borrowed float weights into a
     # small safetensors file (deterministic, so its pin is checkable): the re-ranker's pooler.
-    if [ "$(jq -r '.borrows.tensors // empty' "$manifest")" != "" ]; then
+    if $cut_tensors; then
         command -v python3 >/dev/null || { printf 'fetch-model: FAIL — python3 not found on PATH (needed for .borrows.tensors)\n' >&2; exit 1; }
-        tfile="$(jq -er '.borrows.tensors.file' "$manifest")"
         tfrom="$(jq -er '.borrows.tensors.from' "$manifest")"
         names="$(jq -r '.borrows.tensors.names | join(" ")' "$manifest")"
         # shellcheck disable=SC2086

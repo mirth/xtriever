@@ -5,8 +5,10 @@
 //!   as the float one, the eight-bit fingerprint, and `Precision::EightBit`;
 //! - a flipped byte in the artefact is refused by checksum, naming the file and both hashes,
 //!   before anything is parsed;
-//! - a GGUF whose declared architecture or shape disagrees with the stage is refused by name —
-//!   the guard on the pin itself, exercised through `assert_gguf_header` on hand-built headers;
+//! - a GGUF declaring what the artefact declares is accepted — the guard on the pin cannot
+//!   refuse everything — and one whose architecture or shape disagrees is refused by name, one
+//!   with an eight-bit tensor fewer or more by count: the guard on the pin itself, exercised
+//!   through `assert_gguf_header` on hand-built headers;
 //! - a directory holding both weights files, or neither, is refused naming what was expected;
 //! - the eight-bit vectors are unit-length, deterministic, and point where the float reference
 //!   points: within a stated cosine of every case in the 004 goldens.
@@ -64,12 +66,25 @@ enum Meta {
     U32(u32),
 }
 
+/// A tensor as the header table declares it: name, dims, ggml type (0 = F32, 8 = Q8_0).
+struct TensorInfo {
+    name: String,
+    dims: Vec<u64>,
+    ggml_type: u32,
+}
+
 /// A GGUF v3 file with `metadata` and no tensors: magic, version, tensor count, key-value
 /// count, then each pair as `string key · u32 type · value` (type 8 = string, 4 = u32).
 fn gguf_with(metadata: &[(&str, Meta)]) -> Vec<u8> {
+    gguf_bytes(metadata, &[])
+}
+
+/// `gguf_with`, followed by the tensor table: each as `string name · u32 rank · u64 dims · u32
+/// ggml type · u64 offset`. The header only: enough for a header check, never for a load.
+fn gguf_bytes(metadata: &[(&str, Meta)], tensors: &[TensorInfo]) -> Vec<u8> {
     let mut out = b"GGUF".to_vec();
     out.extend_from_slice(&3u32.to_le_bytes());
-    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&(tensors.len() as u64).to_le_bytes());
     out.extend_from_slice(&(metadata.len() as u64).to_le_bytes());
     let put_str = |out: &mut Vec<u8>, s: &str| {
         out.extend_from_slice(&(s.len() as u64).to_le_bytes());
@@ -88,7 +103,28 @@ fn gguf_with(metadata: &[(&str, Meta)]) -> Vec<u8> {
             }
         }
     }
+    for t in tensors {
+        put_str(&mut out, &t.name);
+        out.extend_from_slice(&(t.dims.len() as u32).to_le_bytes());
+        for d in &t.dims {
+            out.extend_from_slice(&d.to_le_bytes());
+        }
+        out.extend_from_slice(&t.ggml_type.to_le_bytes());
+        out.extend_from_slice(&0u64.to_le_bytes()); // offset
+    }
     out
+}
+
+/// What the artefact's tensor table declares, in kind and count: the pinned number of weight
+/// matrices in eight-bit blocks (its float norms and biases do not count).
+fn pinned_tensors() -> Vec<TensorInfo> {
+    (0..PINNED_Q8.quantised_tensors)
+        .map(|i| TensorInfo {
+            name: format!("blk.{i}.weight"),
+            dims: vec![384, 384],
+            ggml_type: 8,
+        })
+        .collect()
 }
 
 /// The pinned artefact's declarations, as `gguf_dump` read them on 2026-09-20.
@@ -109,6 +145,32 @@ fn header_message(metadata: &[(&str, Meta)]) -> String {
         xtriever_dense::model::assert_gguf_header(&gguf_with(metadata))
             .expect_err("a header disagreeing with the pin must be refused"),
     )
+}
+
+/// The guard must accept the artefact it guards: the pinned declarations, in metadata and in
+/// the tensor table, pass — and one eight-bit tensor fewer or more fails by count, naming both.
+#[test]
+fn the_pinned_declarations_are_accepted_and_the_tensor_count_is_exact() {
+    xtriever_dense::model::assert_gguf_header(&gguf_bytes(&pinned_metadata(), &pinned_tensors()))
+        .expect("the pin accepts what the artefact declares");
+    let mut fewer = pinned_tensors();
+    fewer.remove(0);
+    let mut more = pinned_tensors();
+    more.push(TensorInfo {
+        name: "blk.extra.weight".into(),
+        dims: vec![384, 384],
+        ggml_type: 8,
+    });
+    for (tensors, count) in [(fewer, "36"), (more, "38")] {
+        let msg = model_message(
+            xtriever_dense::model::assert_gguf_header(&gguf_bytes(&pinned_metadata(), &tensors))
+                .expect_err("a tensor count off by one must be refused"),
+        );
+        assert!(
+            msg.contains("tensors") && msg.contains(count) && msg.contains("37"),
+            "{msg}"
+        );
+    }
 }
 
 #[test]

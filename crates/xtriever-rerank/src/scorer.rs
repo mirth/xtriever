@@ -177,9 +177,9 @@ impl MiniLmCrossEncoder {
         let classifier = classifier_from_gguf(&vb, &device)?;
 
         let pooler_path = dir.join(PINNED_Q8.files[3].name);
-        let pooler_bytes = std::fs::read(&pooler_path)
+        let pooler_bytes = bytes::read(&pooler_path, load_path)
             .map_err(|e| model_err(format!("cannot read {}: {e}", pooler_path.display())))?;
-        let vb = VarBuilder::from_slice_safetensors(&pooler_bytes, DTYPE, &device)
+        let vb = VarBuilder::from_slice_safetensors(pooler_bytes.as_slice(), DTYPE, &device)
             .map_err(|e| model_err(format!("cannot load the pooler: {e}")))?;
         let pooler = candle_nn::linear(PINNED.hidden, PINNED.hidden, vb.pp("bert.pooler.dense"))
             .map_err(|e| model_err(format!("cannot build pooler: {e}")))?;

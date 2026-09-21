@@ -5,7 +5,7 @@
 mod support;
 
 use serde::Deserialize;
-use xtriever_dense::model::{FINGERPRINT, FINGERPRINT_Q8, PINNED, PINNED_Q8};
+use xtriever_dense::model::{FINGERPRINT, FINGERPRINT_Q8, MODEL_NAME, PINNED, PINNED_Q8};
 
 #[derive(Deserialize)]
 struct ManifestFile {
@@ -50,6 +50,7 @@ fn compiled_pins_match_the_committed_manifest() {
 struct ArtefactManifest {
     repository: String,
     revision: String,
+    local_dir: String,
     files: Vec<ManifestFile>,
     quantisation: String,
     architecture: String,
@@ -75,6 +76,9 @@ fn compiled_eight_bit_pins_match_the_committed_manifest() {
         serde_json::from_str(&std::fs::read_to_string(&path).expect("read manifest")).unwrap();
     assert_eq!(PINNED_Q8.repository, m.repository);
     assert_eq!(PINNED_Q8.revision, m.revision);
+    // Every default in the tree names this directory; the fetch script fills whatever the
+    // manifest says, so the two must agree here.
+    assert_eq!(m.local_dir, format!("{MODEL_NAME}-q8"));
     assert_eq!(PINNED_Q8.quantisation, m.quantisation);
     assert_eq!(PINNED_Q8.architecture, m.architecture);
     assert_eq!(PINNED_Q8.blocks, m.blocks);

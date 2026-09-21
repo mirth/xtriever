@@ -19,14 +19,16 @@ EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/al
 RERANKER = Path(os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2-q8"))
 
 
-def weights(model_dir):
-    """The weights file a pinned model directory holds — the float ``model.safetensors`` or
-    the eight-bit ``*.gguf`` (Feature 026; the engine tells them apart) — or None."""
-    float_weights = model_dir / "model.safetensors"
-    if float_weights.exists():
-        return float_weights
-    ggufs = sorted(model_dir.glob("*.gguf")) if model_dir.is_dir() else []
-    return ggufs[0] if ggufs else None
+def _load_by_path(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# The engine suite's rule for which weights file a model directory holds (Feature 026), loaded
+# by path like the demo itself: the demo depends on nothing but the wheel.
+weights = _load_by_path("model_dirs", REPO / "python/tests/model_dirs.py").weights
 
 
 def pytest_configure(config):
@@ -45,10 +47,7 @@ def pytest_collection_modifyitems(config, items):
 
 def load_demo():
     """The demo module, loaded from its file."""
-    spec = importlib.util.spec_from_file_location("demo", DEMO)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return _load_by_path("demo", DEMO)
 
 
 def f64_bits(x):

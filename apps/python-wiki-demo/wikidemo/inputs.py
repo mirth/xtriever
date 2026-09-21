@@ -132,9 +132,9 @@ def weights(model_dir: Path) -> Path | None:
 
 
 def _weights(model_dir: Path) -> Path:
-    """`weights`, or the float name when the directory holds neither, so the missing-file
-    message names something a reader recognises."""
-    return weights(model_dir) or model_dir / "model.safetensors"
+    """`weights`, or — when the directory holds neither — a path naming both forms, so the
+    missing-input message never names a file the producer it recommends cannot create."""
+    return weights(model_dir) or model_dir / "{model.safetensors,*.gguf}"
 
 
 def _sentinel(paths: Paths, name: str) -> Path:

@@ -124,9 +124,18 @@ if [ "$with_models" = true ]; then
     # embedder's had none until Feature 026) selects the directory the fetch script filled.
     embedder_dir="$repo_root/reference/models/$(jq -r '.local_dir // "all-MiniLM-L6-v2"' "$embedder_manifest")"
     reranker_dir="$repo_root/reference/models/$(jq -r '.local_dir // "ms-marco-MiniLM-L-6-v2"' "$reranker_manifest")"
-    rm -rf "$resources/models"; mkdir -p "$resources/models"
-    cp -R "$embedder_dir" "$resources/models/embedder"
-    cp -R "$reranker_dir" "$resources/models/reranker"
+    # Exactly the files the manifest pins — its own, the borrowed ones and any cut tensors —
+    # never the directory as found: a float weights file left beside the GGUF, or an
+    # interrupted download, would pass the fetch script's verification (it checks only the
+    # pinned files) and be refused by the engine on the device, or bloat the bundle.
+    stage_pinned() { # manifest source_dir dest_dir
+        mkdir -p "$3"
+        jq -r '[.files[].name] + (.borrows.files // []) + [.borrows.tensors.file // empty] | .[]' "$1" \
+            | while IFS= read -r name; do cp "$2/$name" "$3/$name"; done
+    }
+    rm -rf "$resources/models"
+    stage_pinned "$embedder_manifest" "$embedder_dir" "$resources/models/embedder"
+    stage_pinned "$reranker_manifest" "$reranker_dir" "$resources/models/reranker"
     printf '    models bundled (%s): %s, %s\n' "$(du -sh "$resources/models" | cut -f1)" "$(basename "$embedder_dir")" "$(basename "$reranker_dir")"
 else
     printf '    models NOT bundled — pass --with-models for the Swift tests and device runs\n'
