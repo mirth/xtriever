@@ -15,7 +15,7 @@
 use std::path::Path;
 
 use crate::error::model_err;
-use crate::gguf_header::GgufHeader;
+use crate::gguf_header::{BertPin, GgufHeader};
 
 /// One pinned model file: name, exact size and SHA-256 (spec FR-003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,7 +127,8 @@ pub struct PinnedArtefact {
     pub heads: usize,
     /// What `bert.feed_forward_length` must say.
     pub feed_forward_length: usize,
-    /// What `bert.context_length` must say: at least the window the stage feeds.
+    /// What `bert.context_length` must say, exactly: the encoder sizes its position table
+    /// from it (the window the stage feeds is at most this).
     pub context_length: usize,
     /// How many tensors the file stores in eight-bit blocks (the weight matrices).
     pub quantised_tensors: usize,
@@ -242,7 +243,8 @@ pub fn verify_files_q8(dir: &Path) -> xtriever_core::Result<()> {
 /// architecture, block count, embedding length, head count, feed-forward length, context
 /// length and the number of eight-bit tensors. The bytes were verified by [`verify_files_q8`];
 /// this guards the pin itself — a pinned file that is not the model the forward pass is written
-/// for is refused by name, not run.
+/// for is refused by name, not run. The assertion is the header reader's, shared with the
+/// re-ranker byte for byte.
 ///
 /// # Errors
 ///
@@ -254,36 +256,23 @@ pub fn assert_gguf_header(bytes: &[u8]) -> xtriever_core::Result<()> {
 /// [`assert_gguf_header`], returning the header it checked so a loader parses the file once.
 pub(crate) fn checked_gguf_header(bytes: &[u8]) -> xtriever_core::Result<GgufHeader> {
     let header = GgufHeader::read(bytes)?;
-    let architecture = header.string("general.architecture")?;
-    if architecture != PINNED_Q8.architecture {
-        return Err(model_err(format!(
-            "GGUF header architecture is {architecture:?}, expected {:?}",
-            PINNED_Q8.architecture
-        )));
-    }
-    let prefix = PINNED_Q8.architecture;
-    header.expect_number(&format!("{prefix}.block_count"), PINNED_Q8.blocks)?;
-    header.expect_number(
-        &format!("{prefix}.embedding_length"),
-        PINNED_Q8.embedding_length,
-    )?;
-    header.expect_number(&format!("{prefix}.attention.head_count"), PINNED_Q8.heads)?;
-    header.expect_number(
-        &format!("{prefix}.feed_forward_length"),
-        PINNED_Q8.feed_forward_length,
-    )?;
-    header.expect_number(
-        &format!("{prefix}.context_length"),
-        PINNED_Q8.context_length,
-    )?;
-    let quantised = header.quantised_tensors();
-    if quantised != PINNED_Q8.quantised_tensors {
-        return Err(model_err(format!(
-            "GGUF file holds {quantised} {} tensors, expected {} — not the pinned artefact",
-            PINNED_Q8.quantisation, PINNED_Q8.quantised_tensors
-        )));
-    }
+    header.assert_bert(&bert_pin())?;
     Ok(header)
+}
+
+/// The part of [`PINNED_Q8`] the header reader asserts.
+fn bert_pin() -> BertPin {
+    BertPin {
+        architecture: PINNED_Q8.architecture,
+        blocks: PINNED_Q8.blocks,
+        embedding_length: PINNED_Q8.embedding_length,
+        heads: PINNED_Q8.heads,
+        feed_forward_length: PINNED_Q8.feed_forward_length,
+        context_length: PINNED_Q8.context_length,
+        required_tensors: &[],
+        quantisation: PINNED_Q8.quantisation,
+        quantised_tensors: PINNED_Q8.quantised_tensors,
+    }
 }
 
 fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {

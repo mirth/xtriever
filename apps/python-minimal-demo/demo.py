@@ -4,8 +4,8 @@
     python apps/python-minimal-demo/demo.py "how do bees make honey"
 
 Needs a Python with the `xtriever` wheel (cd python && .venv/bin/maturin build --release) and
-the two pinned models (scripts/fetch-model.sh, once with --manifest
-reference/models/manifest-rerank.json); XTRIEVER_MODEL_DIR / XTRIEVER_RERANK_MODEL_DIR override.
+the two pinned eight-bit models (scripts/fetch-model.sh --manifest reference/models/manifest-q8.json,
+then --manifest reference/models/manifest-rerank-q8.json); XTRIEVER_MODEL_DIR / XTRIEVER_RERANK_MODEL_DIR override.
 Left out on purpose: chunking and a real corpus (apps/python-wiki-demo), explanations, marks
 and the stage report (`wikidemo search --explain`), the phone (apps/ios-wiki-demo).
 """
@@ -28,8 +28,8 @@ DOCS = [
 ]
 
 ROOT = Path(__file__).resolve().parents[2]
-EMBEDDER = os.environ.get("XTRIEVER_MODEL_DIR", str(ROOT / "reference/models/all-MiniLM-L6-v2"))
-RERANKER = os.environ.get("XTRIEVER_RERANK_MODEL_DIR", str(ROOT / "reference/models/ms-marco-MiniLM-L-6-v2"))
+EMBEDDER = os.environ.get("XTRIEVER_MODEL_DIR", str(ROOT / "reference/models/all-MiniLM-L6-v2-q8"))
+RERANKER = os.environ.get("XTRIEVER_RERANK_MODEL_DIR", str(ROOT / "reference/models/ms-marco-MiniLM-L-6-v2-q8"))
 
 # the schema: one text field, also the dense field (Feature 013's layout)
 SCHEMA = xtriever.IndexConfig(

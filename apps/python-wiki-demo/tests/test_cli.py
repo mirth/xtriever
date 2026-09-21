@@ -71,7 +71,7 @@ def test_build_refuses_a_missing_splitter_model_before_loading_torch(tmp_path):
     import sys
     import time
 
-    from conftest import EMBEDDER, RERANKER, REPO
+    from conftest import EMBEDDER, RERANKER, REPO, weights
 
     had_torch = "torch" in sys.modules
     t = time.perf_counter()
@@ -81,7 +81,7 @@ def test_build_refuses_a_missing_splitter_model_before_loading_torch(tmp_path):
         {"XTRIEVER_MODEL_DIR": str(EMBEDDER), "XTRIEVER_RERANK_MODEL_DIR": str(RERANKER)},
     )
     assert time.perf_counter() - t < 1.0
-    if not (EMBEDDER / "model.safetensors").exists() or not (REPO / "reference/datasets/wiki/simple.jsonl").exists():
+    if weights(EMBEDDER) is None or weights(RERANKER) is None or not (REPO / "reference/datasets/wiki/simple.jsonl").exists():
         assert code == 1 and err.startswith("wikidemo: missing")  # an earlier input is reported first
         return
     assert code == 1, err

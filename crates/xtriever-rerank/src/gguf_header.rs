@@ -15,6 +15,24 @@ pub(crate) struct GgufHeader {
     content: Content,
 }
 
+/// What a pinned BERT artefact's header must declare: the part of each stage crate's pin that
+/// the two crates assert alike. Each crate builds one from its own `PINNED_Q8`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BertPin {
+    pub architecture: &'static str,
+    pub blocks: usize,
+    pub embedding_length: usize,
+    pub heads: usize,
+    pub feed_forward_length: usize,
+    pub context_length: usize,
+    /// Tensors the file must carry by name (the re-ranker's classification head; none for the
+    /// embedder), checked after the shape and before the count so a file that is the right
+    /// model without its head is refused for the head.
+    pub required_tensors: &'static [&'static str],
+    pub quantisation: &'static str,
+    pub quantised_tensors: usize,
+}
+
 impl GgufHeader {
     pub fn read(bytes: &[u8]) -> xtriever_core::Result<Self> {
         let mut cursor = std::io::Cursor::new(bytes);
@@ -70,9 +88,67 @@ impl GgufHeader {
         }
     }
 
+    /// Assert the header against a pin: the architecture, block count, embedding length, head
+    /// count, feed-forward length, context length (exactly: the encoder sizes its position
+    /// table from it), the tensors required by name and the number of eight-bit tensors. The
+    /// bytes were verified against the
+    /// pin's hash before; this guards the pin itself — a pinned file that is not the model the
+    /// forward pass is written for is refused by name, not run.
+    pub fn assert_bert(&self, pin: &BertPin) -> xtriever_core::Result<()> {
+        let architecture = self.string("general.architecture")?;
+        if architecture != pin.architecture {
+            return Err(model_err(format!(
+                "GGUF header architecture is {architecture:?}, expected {:?}",
+                pin.architecture
+            )));
+        }
+        let prefix = pin.architecture;
+        self.expect_number(&format!("{prefix}.block_count"), pin.blocks)?;
+        self.expect_number(&format!("{prefix}.embedding_length"), pin.embedding_length)?;
+        self.expect_number(&format!("{prefix}.attention.head_count"), pin.heads)?;
+        self.expect_number(
+            &format!("{prefix}.feed_forward_length"),
+            pin.feed_forward_length,
+        )?;
+        self.expect_number(&format!("{prefix}.context_length"), pin.context_length)?;
+        for tensor in pin.required_tensors {
+            if !self.has_tensor(tensor) {
+                return Err(model_err(format!(
+                    "GGUF file has no {tensor}: not a cross-encoder with its classification head"
+                )));
+            }
+        }
+        let quantised = self.quantised_tensors();
+        if quantised != pin.quantised_tensors {
+            return Err(model_err(format!(
+                "GGUF file holds {quantised} {} tensors, expected {} — not the pinned artefact",
+                pin.quantisation, pin.quantised_tensors
+            )));
+        }
+        Ok(())
+    }
+
+    /// A file that declares a layer-norm epsilon must declare the pinned configuration's
+    /// (compared as `f32`, the width the file stores); a file that declares none uses the
+    /// configuration's. Refused naming both, like every other pinned field.
+    pub fn assert_layer_norm_epsilon(
+        &self,
+        architecture: &str,
+        configured: f64,
+    ) -> xtriever_core::Result<()> {
+        if let Some(declared) = self.layer_norm_epsilon(architecture)?
+            && declared != configured as f32
+        {
+            return Err(model_err(format!(
+                "GGUF header layer_norm_epsilon is {declared:e}, config.json says {configured:e}"
+            )));
+        }
+        Ok(())
+    }
+
     /// The layer-norm epsilon the file declares, if it declares one; an error if it declares
-    /// something that is not a float. The loader asserts it against the pinned configuration.
-    pub fn layer_norm_epsilon(&self, architecture: &str) -> xtriever_core::Result<Option<f32>> {
+    /// something that is not a float.
+    fn layer_norm_epsilon(&self, architecture: &str) -> xtriever_core::Result<Option<f32>> {
         let key = format!("{architecture}.attention.layer_norm_epsilon");
         match self.content.metadata.get(&key) {
             None => Ok(None),
@@ -91,10 +167,7 @@ impl GgufHeader {
             .count()
     }
 
-    // Unused in the dense crate — no tensor its pin requires by name — and used by the
-    // re-ranker for its classification head; the two files are identical by test.
-    #[allow(dead_code)]
-    pub fn has_tensor(&self, name: &str) -> bool {
+    fn has_tensor(&self, name: &str) -> bool {
         self.content.tensor_infos.contains_key(name)
     }
 }

@@ -18,24 +18,10 @@ use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Budget, Passage, Reranker, Result};
 
 use crate::error::model_err;
-use crate::gguf_header::GgufHeader;
 use crate::model::{MODEL_ID, MODEL_ID_Q8, PINNED, PINNED_Q8, Precision};
 use crate::quantised_bert::{QuantisedBert, Shape};
 use crate::{LoadPath, bytes};
 use candle_transformers::quantized_var_builder::VarBuilder as QuantisedVarBuilder;
-
-/// A GGUF that declares a layer-norm epsilon must declare the pinned configuration's (compared
-/// as `f32`, the width the file stores); a file that declares none uses the configuration's.
-fn assert_layer_norm_epsilon(header: &GgufHeader, configured: f64) -> Result<()> {
-    if let Some(declared) = header.layer_norm_epsilon(PINNED_Q8.architecture)?
-        && declared != configured as f32
-    {
-        return Err(model_err(format!(
-            "GGUF header layer_norm_epsilon is {declared:e}, config.json says {configured:e}"
-        )));
-    }
-    Ok(())
-}
 
 /// The encoder behind the cross-encoder: candle's float BERT, or this crate's over the
 /// eight-bit artefact. The head — pooler, tanh, classifier — is the same float arithmetic
@@ -171,10 +157,11 @@ impl MiniLmCrossEncoder {
         let header = crate::model::checked_gguf_header(weights.as_slice())?;
         // The pinned configuration is the one source of the layer-norm epsilon; a file that
         // declares a different one is refused naming both, like every other pinned field.
-        assert_layer_norm_epsilon(&header, config.layer_norm_eps)?;
+        header.assert_layer_norm_epsilon(PINNED_Q8.architecture, config.layer_norm_eps)?;
 
         let device = Device::Cpu;
         let shape = Shape {
+            vocabulary: config.vocab_size,
             blocks: PINNED_Q8.blocks,
             heads: PINNED_Q8.heads,
             hidden: PINNED_Q8.embedding_length,

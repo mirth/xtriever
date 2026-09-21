@@ -120,14 +120,21 @@ def resolve(args) -> Paths:
     )
 
 
-def _weights(model_dir: Path) -> Path:
+def weights(model_dir: Path) -> Path | None:
     """The weights file a pinned model directory holds: the float `model.safetensors`, or the
-    eight-bit GGUF (Feature 026; the engine tells them apart). Absent either, the float name, so
-    the missing-file message names something a reader recognises."""
-    if not (model_dir / "model.safetensors").exists():
-        for candidate in sorted(model_dir.glob("*.gguf")) if model_dir.is_dir() else []:
-            return candidate
-    return model_dir / "model.safetensors"
+    eight-bit GGUF (Feature 026; the engine tells them apart); None when it holds neither. The
+    tests skip by this same rule, so a skip and a `missing` message never disagree."""
+    float_weights = model_dir / "model.safetensors"
+    if float_weights.exists():
+        return float_weights
+    ggufs = sorted(model_dir.glob("*.gguf")) if model_dir.is_dir() else []
+    return ggufs[0] if ggufs else None
+
+
+def _weights(model_dir: Path) -> Path:
+    """`weights`, or the float name when the directory holds neither, so the missing-file
+    message names something a reader recognises."""
+    return weights(model_dir) or model_dir / "model.safetensors"
 
 
 def _sentinel(paths: Paths, name: str) -> Path:

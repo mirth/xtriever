@@ -23,14 +23,22 @@ GOLDENS = REPO / "swift/Xtriever/Tests/Fixtures/expected.json"
 FIXTURE_DOCS = REPO / "reference/fixtures/005/hybrid.json"
 
 
+def weights(model_dir):
+    """The weights file a pinned model directory holds — the float ``model.safetensors`` or
+    the eight-bit ``*.gguf`` (Feature 026; the engine tells them apart) — or None."""
+    float_weights = model_dir / "model.safetensors"
+    if float_weights.exists():
+        return float_weights
+    ggufs = sorted(model_dir.glob("*.gguf")) if model_dir.is_dir() else []
+    return ggufs[0] if ggufs else None
+
+
 def missing_for_models():
     """The first prerequisite of the model-backed tests that is absent, or None."""
-    for path in (
-        EMBEDDER / "model.safetensors",
-        RERANKER / "model.safetensors",
-        FIXTURE_INDEX / "xtriever-pipeline.json",
-        GOLDENS,
-    ):
+    for model_dir in (EMBEDDER, RERANKER):
+        if weights(model_dir) is None:
+            return model_dir / "{model.safetensors,*.gguf}"
+    for path in (FIXTURE_INDEX / "xtriever-pipeline.json", GOLDENS):
         if not path.exists():
             return path
     return None

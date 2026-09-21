@@ -58,6 +58,7 @@ impl Module for Linear {
 /// The shape the encoder is built for: what the header declared and the pin asserted.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Shape {
+    pub vocabulary: usize,
     pub blocks: usize,
     pub heads: usize,
     pub hidden: usize,
@@ -91,8 +92,7 @@ impl QuantisedBert {
     /// Build from the file's tensors, read once by the caller (the header was asserted against
     /// the pin first, and a re-ranker takes its classification head from the same builder).
     pub fn from_gguf(vb: &VarBuilder, shape: Shape) -> Result<Self> {
-        let vocabulary = vb.get_no_shape("token_embd.weight")?.shape().dims()[0];
-        let word = Embedding::new(vocabulary, shape.hidden, vb.pp("token_embd"))?;
+        let word = Embedding::new(shape.vocabulary, shape.hidden, vb.pp("token_embd"))?;
         let position = Embedding::new(shape.context_length, shape.hidden, vb.pp("position_embd"))?;
         let token_type = Embedding::new(2, shape.hidden, vb.pp("token_types"))?;
         let embedding_norm =

@@ -1,7 +1,8 @@
 """Paths, the `models` skip and a loader for the demo file (Feature 020; the 011/019 pattern).
 
 The demo is one script, not a package: the tests load it by path. Tests marked ``models``
-need the two pinned models (``scripts/fetch-model.sh``); without them they skip with the
+need the two pinned models (``scripts/fetch-model.sh --manifest reference/models/manifest-q8.json``
+and ``--manifest reference/models/manifest-rerank-q8.json``); without them they skip with the
 missing path in the reason — never silently green.
 """
 
@@ -14,8 +15,18 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[3]
 DEMO = REPO / "apps/python-minimal-demo/demo.py"
-EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/all-MiniLM-L6-v2"))
-RERANKER = Path(os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2"))
+EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/all-MiniLM-L6-v2-q8"))
+RERANKER = Path(os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2-q8"))
+
+
+def weights(model_dir):
+    """The weights file a pinned model directory holds — the float ``model.safetensors`` or
+    the eight-bit ``*.gguf`` (Feature 026; the engine tells them apart) — or None."""
+    float_weights = model_dir / "model.safetensors"
+    if float_weights.exists():
+        return float_weights
+    ggufs = sorted(model_dir.glob("*.gguf")) if model_dir.is_dir() else []
+    return ggufs[0] if ggufs else None
 
 
 def pytest_configure(config):
@@ -23,9 +34,9 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    for path in (EMBEDDER / "model.safetensors", RERANKER / "model.safetensors"):
-        if not path.exists():
-            skip = pytest.mark.skip(reason=f"model not on disk: {path}")
+    for model_dir in (EMBEDDER, RERANKER):
+        if weights(model_dir) is None:
+            skip = pytest.mark.skip(reason=f"model not on disk: {model_dir}/{{model.safetensors,*.gguf}}")
             for item in items:
                 if "models" in item.keywords:
                     item.add_marker(skip)

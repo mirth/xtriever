@@ -131,7 +131,7 @@ fn real_embedder_round_trip_and_fingerprint_mismatch() {
 
 /// Feature 006: the real cross-encoder attached to the real embedder's index.
 #[test]
-#[ignore = "needs both models (scripts/fetch-model.sh, scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json)"]
+#[ignore = "needs both models (scripts/fetch-model.sh --manifest reference/models/manifest-q8.json, then --manifest reference/models/manifest-rerank-q8.json)"]
 fn real_reranker_over_the_real_embedder_index() {
     use xtriever_core::Reranker;
     let tmp = tempfile::tempdir().unwrap();

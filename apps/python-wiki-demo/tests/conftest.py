@@ -17,6 +17,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
+from wikidemo.inputs import weights
 
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE_INDEX = REPO / "swift/Xtriever/Tests/Fixtures/index"
@@ -37,12 +38,10 @@ MANIFEST_008 = REPO / "reference/datasets/wiki-manifest.json"
 
 def missing_for_models():
     """The first prerequisite of the model-backed tests that is absent, or None."""
-    for path in (
-        EMBEDDER / "model.safetensors",
-        RERANKER / "model.safetensors",
-        FIXTURE_INDEX / "xtriever-pipeline.json",
-        FIXTURE_GOLDENS,
-    ):
+    for model_dir in (EMBEDDER, RERANKER):
+        if weights(model_dir) is None:
+            return model_dir / "{model.safetensors,*.gguf}"
+    for path in (FIXTURE_INDEX / "xtriever-pipeline.json", FIXTURE_GOLDENS):
         if not path.exists():
             return path
     return None

@@ -81,7 +81,9 @@ def test_build_produces_the_artefact(built):
     assert sidecar["exclusions"] == manifest["exclusions"]
     assert sidecar["chunker"] == CONTRACT_CHUNKER
     assert sidecar["chunker"] == {"version": 1, "budget": "256 - token_count(title)", "cost": "MiniLmEmbedder::token_count(unit) - 2"}
-    assert sidecar["embedder_fingerprint"].startswith("sentence-transformers/all-MiniLM-L6-v2@")
+    # Whichever pinned artefact the default directory holds (Feature 026): the model, not the file.
+    fingerprint = sidecar["embedder_fingerprint"]
+    assert "all-MiniLM-L6-v2" in fingerprint and ";dim=384;" in fingerprint and ";engine=candle-" in fingerprint
     counts = sidecar["counts"]
     assert counts["articles"] == 3 and counts["selected"] == 2
     assert counts["excluded"] == {"title_suffix: (disambiguation)": 1, "lead_contains:may refer to:300": 0, "lead_contains:may mean:300": 0}

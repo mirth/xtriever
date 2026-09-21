@@ -25,9 +25,11 @@ scripts/check-toolchain.sh                                  # rustup toolchain, 
 scripts/build-ios-package.sh --with-models --with-fixtures  # staticlibs, bindings, XCFramework, staged resources
 ```
 
-Both models must be fetched first (`scripts/fetch-model.sh`, and
-`scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json`); the script verifies
-them before staging.
+Both eight-bit models must be fetched first
+(`scripts/fetch-model.sh --manifest reference/models/manifest-q8.json`, and
+`--manifest reference/models/manifest-rerank-q8.json`); the script verifies them before
+staging. `XTRIEVER_MODEL_MANIFEST` / `XTRIEVER_RERANK_MODEL_MANIFEST` name another manifest
+(the float ones) to stage instead.
 
 ## Run the tests on the simulator
 
