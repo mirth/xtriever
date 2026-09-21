@@ -1,15 +1,19 @@
-//! Feature 026: how long one embedding takes, per artefact and per candle matmul mode.
+//! Feature 026: how long one embedding takes, in the arithmetic the engine actually runs.
 //!
 //! ```sh
 //! cargo run --release -p xtriever-dense --example embed_timing -- <model dir> [texts]
-//! CANDLE_DEQUANTIZE_ALL=1     cargo run --release -p xtriever-dense --example embed_timing -- <q8 dir>
-//! CANDLE_DEQUANTIZE_ALL_F16=1 cargo run --release -p xtriever-dense --example embed_timing -- <q8 dir>
 //! ```
 //!
-//! The two environment variables are candle 0.9.2's own switches (`quantized::QMatMul::from_arc`):
-//! dequantise every weight matrix to f32 or f16 at load and run the float kernel, instead of the
-//! eight-bit kernel. Loading is excluded from the timing; the first embedding is discarded as a
-//! warm-up. A record for the report, not a benchmark the feature claims.
+//! The directory decides what is timed, and nothing else does: float weights run candle's float
+//! kernel, and the eight-bit artefact is expanded to `f16` at load and run through the same
+//! kernel (ADR-0015). The encoder constructs each matmul as `QMatMul::TensorF16` itself rather
+//! than through candle's `from_arc`, so candle 0.9.2's `CANDLE_DEQUANTIZE_ALL` and
+//! `CANDLE_DEQUANTIZE_ALL_F16` switches cannot change a number this prints — the mode
+//! comparison that chose `f16` (442 ms per embedding on the eight-bit kernel, 120 in `f16`, 123
+//! in `f32`, 125 float) was measured with this tool while those switches still governed the
+//! encoder, before the mode was fixed in code. Loading is excluded from the timing; the first
+//! embedding is discarded as a warm-up. A record for the report, not a benchmark the feature
+//! claims.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout)]
 
 use std::path::PathBuf;

@@ -28,7 +28,8 @@ def _load_by_path(name, path):
 
 # The engine suite's rule for which weights file a model directory holds (Feature 026), loaded
 # by path like the demo itself: the demo depends on nothing but the wheel.
-weights = _load_by_path("model_dirs", REPO / "python/tests/model_dirs.py").weights
+_model_dirs = _load_by_path("model_dirs", REPO / "python/tests/model_dirs.py")
+weights, unusable_weights = _model_dirs.weights, _model_dirs.unusable_weights
 
 
 def pytest_configure(config):
@@ -37,8 +38,11 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     for model_dir in (EMBEDDER, RERANKER):
-        if weights(model_dir) is None:
-            skip = pytest.mark.skip(reason=f"model not on disk: {model_dir}/{{model.safetensors,*.gguf}}")
+        why = unusable_weights(model_dir)
+        if why is None and weights(model_dir) is None:
+            why = f"model not on disk: {model_dir}/{{model.safetensors,*.gguf}}"
+        if why is not None:
+            skip = pytest.mark.skip(reason=why)
             for item in items:
                 if "models" in item.keywords:
                     item.add_marker(skip)

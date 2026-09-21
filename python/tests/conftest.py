@@ -12,7 +12,7 @@ import struct
 from pathlib import Path
 
 import pytest
-from model_dirs import weights
+from model_dirs import unusable_weights, weights
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE_INDEX = REPO / "swift/Xtriever/Tests/Fixtures/index"
@@ -25,8 +25,11 @@ FIXTURE_DOCS = REPO / "reference/fixtures/005/hybrid.json"
 
 
 def missing_for_models():
-    """The first prerequisite of the model-backed tests that is absent, or None."""
+    """The first prerequisite of the model-backed tests that is absent or unusable, or None."""
     for model_dir in (EMBEDDER, RERANKER):
+        why = unusable_weights(model_dir)
+        if why is not None:
+            return why
         if weights(model_dir) is None:
             return model_dir / "{model.safetensors,*.gguf}"
     for path in (FIXTURE_INDEX / "xtriever-pipeline.json", GOLDENS):
@@ -39,7 +42,7 @@ def pytest_collection_modifyitems(config, items):
     missing = missing_for_models()
     if missing is None:
         return
-    skip = pytest.mark.skip(reason=f"models/fixture not on disk: {missing}")
+    skip = pytest.mark.skip(reason=f"models/fixture absent or unusable: {missing}")
     for item in items:
         if "models" in item.keywords:
             item.add_marker(skip)

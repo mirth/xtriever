@@ -6,7 +6,16 @@ import time
 from types import SimpleNamespace
 
 from conftest import REPO, run_cli
-from wikidemo.inputs import PRODUCERS, MissingInput, first_missing, repo_root, require, resolve
+from wikidemo.inputs import (
+    PRODUCERS,
+    MissingInput,
+    UnusableInput,
+    first_missing,
+    repo_root,
+    require,
+    resolve,
+    weights,
+)
 
 
 def _args(**kw):
@@ -83,6 +92,48 @@ def test_missing_input_names_the_producer(tmp_path):
         assert e.producer == PRODUCERS["artefact"]
     else:
         raise AssertionError("require() did not raise")
+
+
+def test_a_model_directory_holds_exactly_one_weights_file(tmp_path):
+    """Feature 026: the engine loads a directory holding the float weights or one GGUF and
+    refuses one holding both, so the preflight refuses it too — with what is wrong, not with a
+    command that would not mend it, and before anything loads."""
+    both = tmp_path / "both"
+    both.mkdir()
+    (both / "model.safetensors").write_bytes(b"")
+    (both / "all-MiniLM-L6-v2.Q8_0.gguf").write_bytes(b"")
+    assert weights(both) is None, "neither file is the one the engine would load"
+    p = resolve(_args(embedder=str(both), reranker=str(both)))
+    assert first_missing(p, ["embedder"]) is None, "present, so not a missing input"
+    try:
+        require(p, ["embedder"])
+    except UnusableInput as e:
+        assert str(e).startswith("the embedder is unusable: ")
+        assert "model.safetensors" in e.why and "all-MiniLM-L6-v2.Q8_0.gguf" in e.why
+        assert "exactly one" in e.why
+    else:
+        raise AssertionError("require() did not raise")
+    # One of the two is what the engine loads, and the preflight names it.
+    (both / "model.safetensors").unlink()
+    assert weights(both) == both / "all-MiniLM-L6-v2.Q8_0.gguf"
+    assert require(resolve(_args(embedder=str(both))), ["embedder"]) is None
+
+
+def test_cli_exits_1_on_an_unusable_model_directory(tmp_path):
+    both = tmp_path / "both"
+    both.mkdir()
+    (both / "model.safetensors").write_bytes(b"")
+    (both / "model.Q8_0.gguf").write_bytes(b"")
+    # An artefact that is there, so the embedder is the first input with a problem.
+    (tmp_path / "artefact/index").mkdir(parents=True)
+    (tmp_path / "artefact/index/xtriever-pipeline.json").write_text("{}", encoding="utf-8")
+    t = time.perf_counter()
+    code, out, err = run_cli(["about", "--artefact", str(tmp_path / "artefact"), "--embedder", str(both)])
+    assert code == 1
+    assert err.startswith("wikidemo: the embedder is unusable: ")
+    assert "holds exactly one weights file\n" in err
+    assert out == ""
+    assert time.perf_counter() - t < 1.0  # nothing was loaded
 
 
 def test_cli_exits_1_on_a_missing_artefact():

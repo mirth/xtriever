@@ -17,7 +17,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
-from wikidemo.inputs import weights
+from wikidemo.inputs import unusable_weights, weights
 
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE_INDEX = REPO / "swift/Xtriever/Tests/Fixtures/index"
@@ -37,8 +37,11 @@ MANIFEST_008 = REPO / "reference/datasets/wiki-manifest.json"
 
 
 def missing_for_models():
-    """The first prerequisite of the model-backed tests that is absent, or None."""
+    """The first prerequisite of the model-backed tests that is absent or unusable, or None."""
     for model_dir in (EMBEDDER, RERANKER):
+        why = unusable_weights(model_dir)
+        if why is not None:
+            return why
         if weights(model_dir) is None:
             return model_dir / "{model.safetensors,*.gguf}"
     for path in (FIXTURE_INDEX / "xtriever-pipeline.json", FIXTURE_GOLDENS):
@@ -65,7 +68,7 @@ def pytest_collection_modifyitems(config, items):
     missing_chonky = missing_for_chonky()
     for item in items:
         if missing is not None and "models" in item.keywords:
-            item.add_marker(pytest.mark.skip(reason=f"models/fixture not on disk: {missing}"))
+            item.add_marker(pytest.mark.skip(reason=f"models/fixture absent or unusable: {missing}"))
         if missing_chonky is not None and "chonky" in item.keywords:
             item.add_marker(pytest.mark.skip(reason=missing_chonky))
 

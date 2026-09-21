@@ -2,15 +2,16 @@
 
 `wikidemo <subcommand> [flags]`, also `python -m wikidemo …`. Output to stdout; diagnostics
 and progress to stderr. Exit codes: `0` success (an empty result is success), `1` a missing
-input, an engine error, a parity `FAIL` or a refused build, `2` a usage error (argparse).
+input, an unusable one, an engine error, a parity `FAIL` or a refused build, `2` a usage
+error (argparse).
 
 ## Common flags (every subcommand)
 
 | Flag | Environment | Default | Meaning |
 |---|---|---|---|
 | `--artefact DIR` | `XTRIEVER_WIKI_ARTEFACT` | `target/xt-wiki` | the 008-shaped artefact: `DIR/index`, `DIR/ATTRIBUTION.txt` |
-| `--embedder DIR` | `XTRIEVER_MODEL_DIR` | `reference/models/all-MiniLM-L6-v2` | the pinned embedder |
-| `--reranker DIR` | `XTRIEVER_RERANK_MODEL_DIR` | `reference/models/ms-marco-MiniLM-L-6-v2` | the pinned re-ranker |
+| `--embedder DIR` | `XTRIEVER_MODEL_DIR` | `reference/models/all-MiniLM-L6-v2-q8` | the pinned embedder (Feature 026: the eight-bit artefact by default; a float directory works too) |
+| `--reranker DIR` | `XTRIEVER_RERANK_MODEL_DIR` | `reference/models/ms-marco-MiniLM-L-6-v2-q8` | the pinned re-ranker |
 
 Relative defaults resolve against the repository root (found from the demo's own location);
 an absolute path is used as given.
@@ -20,6 +21,14 @@ an absolute path is used as given.
 ```
 wikidemo: missing <what>: <path>
   produce it with: <command>
+```
+
+**Unusable-input message** (stderr, exit 1, before any model loads): a model directory holding
+more than one weights file is refused here rather than at load, because no command produces it
+— the engine loads a directory holding exactly one (Feature 026).
+
+```
+wikidemo: <what> is unusable: <dir> holds <files>; a model directory holds exactly one weights file
 ```
 
 ## `search`
