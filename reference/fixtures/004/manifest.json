@@ -1,10 +1,12 @@
 {
   "files": {
     "embeddings.json": "1731c8b7468b6f0d7c84dcda31d79fa81946800b90317dd65769d82b28a9722d",
-    "mutations.json": "e3184fa9d2af03e697aaf59b7d064d37b2b83b2c7860366d3f2a6c8ab89b8d16",
-    "search.json": "b22a3da5acf2b579115a60023b41ec0b18704bdec8b43eb8eae2c0ebd659de5f"
+    "mutations.json": "24cd6f88b2950fb941bb1aaaa36701161f2748b9e66e2960a5fe5202662ac699",
+    "search.json": "abe17ca802eb955aa67009372cb3451ab5b7f47707f336a0286bd9737a88127e"
   },
-  "generator_sha256": "30864b9e9fb47c033c15df4cd1224b1ff2285d9dc148cb1543da285d41c18ae1",
-  "python_version": "3.12.12",
-  "schema_version": 1
+  "generator_sha256": "7a73a00e7abd7ae0d5373e80ed3e7b52456117e595b57117b662fdccbe83bae2",
+  "python_version": "3.12.0",
+  "schema_version": 1,
+  "scheme": "reference/dense_format3.py",
+  "scheme_sha256": "68bff20798813695767feeb9f1c7964b617fe3b90c1f05917babfbae15740fc0"
 }

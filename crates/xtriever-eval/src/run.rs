@@ -366,8 +366,11 @@ pub fn execute_dense(
 /// the vector index; any field disagreement is a miss.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EmbeddingCacheKey {
-    /// Cache layout version: the dense on-disk format the cache directory holds (2 since
-    /// Feature 024; a key that says 1 names a directory this build cannot open).
+    /// Cache layout version: the dense on-disk format the cache directory holds, plus, since
+    /// Feature 026 (3), the embedder's own floats beside it in `vectors.f32.bin` — the index
+    /// stores eight-bit rows, and the eval measures the embedder and the quantisation against
+    /// what the embedder produced. A key that says 1 or 2 names a directory this build cannot
+    /// open or one without the floats; either is a miss.
     pub format_version: u32,
     /// `DenseConfig::name`.
     pub config: String,
@@ -379,6 +382,9 @@ pub struct EmbeddingCacheKey {
     pub corpus_sha256: String,
     /// Corpus size.
     pub documents: u64,
+    /// The embedder's width: what the float sidecar's rows are, so a reader needs no index
+    /// open and no inference from the file's length (Feature 026, review round 7).
+    pub dim: usize,
 }
 
 impl EmbeddingCacheKey {
@@ -418,7 +424,7 @@ impl EmbeddingCacheKey {
             Ok(k) => k,
             Err(e) => return Some(format!("key file {} is unreadable ({e})", path.display())),
         };
-        let fields: [(&str, String, String); 6] = [
+        let fields: [(&str, String, String); 7] = [
             (
                 "format_version",
                 stored.format_version.to_string(),
@@ -441,6 +447,7 @@ impl EmbeddingCacheKey {
                 stored.documents.to_string(),
                 self.documents.to_string(),
             ),
+            ("dim", stored.dim.to_string(), self.dim.to_string()),
         ];
         fields
             .into_iter()

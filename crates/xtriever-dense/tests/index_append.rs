@@ -68,7 +68,7 @@ fn replace_and_delete_never_touch_committed_bytes() {
     index.commit().unwrap();
     let rows = support::row_file(tmp.path(), 0);
     let before = std::fs::read(&rows).unwrap();
-    let old_seven = index.vector(DocId(7)).unwrap();
+    let old_seven = index.vector(DocId(7)).unwrap().unwrap();
     let old_seven_hit = index.search(&old_seven, None, 1).unwrap()[0];
     assert_eq!(old_seven_hit.id, DocId(7));
 
@@ -95,8 +95,8 @@ fn replace_and_delete_never_touch_committed_bytes() {
         }
     );
     assert_eq!(index.len(), 109);
-    assert_eq!(index.vector(DocId(7)), Some(new_seven.clone()));
-    assert_eq!(index.vector(DocId(3)), None);
+    assert_eq!(index.vector(DocId(7)).unwrap(), Some(new_seven.clone()));
+    assert_eq!(index.vector(DocId(3)).unwrap(), None);
     // The old row for 7 is dead: querying with its vector must not reproduce its old score.
     let hit = index.search(&old_seven, None, 1).unwrap()[0];
     assert!(
@@ -111,8 +111,8 @@ fn replace_and_delete_never_touch_committed_bytes() {
     drop(index);
     let reopened = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(reopened.len(), 109);
-    assert_eq!(reopened.vector(DocId(7)), Some(new_seven));
-    assert_eq!(reopened.vector(DocId(3)), None);
+    assert_eq!(reopened.vector(DocId(7)).unwrap(), Some(new_seven));
+    assert_eq!(reopened.vector(DocId(3)).unwrap(), None);
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn bytes_written_are_proportional_to_the_change() {
     // ten rows plus one manifest, so a same-length rewrite of the row file could not hide —
     // and the directory's net growth is reported beside it.
     const D: usize = 32;
-    let row = 8 + D as u64 * 4;
+    let row = support::row_bytes(D);
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), D, Metric::Cosine, "fp").unwrap();
     for i in 0..1000u32 {

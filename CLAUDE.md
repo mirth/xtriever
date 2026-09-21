@@ -39,6 +39,7 @@ cargo check --workspace --target aarch64-apple-ios
 cargo check --workspace --target aarch64-apple-ios-sim
 cargo check --workspace --target aarch64-linux-android
 cargo check --workspace --target wasm32-unknown-unknown   # best-effort, may fail (tracked)
+python3 reference/gen_026_fixtures.py && python3 reference/gen_026_fixtures.py --check-oracle   # Feature 026: dense goldens and oracle from reference/, exit 1 on any difference
 (cd python && .venv/bin/maturin build) && uv pip install --force-reinstall target/wheels/xtriever-*.whl \
   && python/.venv/bin/pytest python/tests -q                # Feature 011: the Python surface, models present (CI runs only `-m "not models"`)
 ```

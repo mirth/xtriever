@@ -16,7 +16,7 @@ use crate::FORMAT_VERSION;
 use crate::LoadPath;
 use crate::bytes::{self, Bytes};
 use crate::error::{corrupt, dim_mismatch, schema_err};
-use format::{Header, MANIFEST, MANIFEST_TMP, RowBytes, Rows, V1_FILE};
+use format::{Header, MANIFEST, MANIFEST_TMP, RowBytes, Rows, StagedRow, V1_FILE};
 
 /// What the manifest says about the committed state — for tests, records and `about`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +84,10 @@ pub struct FlatIndex {
     /// row ids, and a read-only open touches nothing beyond the manifest.
     table: Option<BTreeMap<u32, u32>>,
     /// `Some(vector)` = add or replace, `None` = delete. Invisible until `commit`.
-    pending: BTreeMap<DocId, Option<Vec<f32>>>,
+    /// Staged changes: `Some` an insert or replacement, already quantised and with its norm
+    /// (once, at `add`, where it is validated — a quarter of the memory of the floats, and
+    /// `commit` and `compact` only copy bytes); `None` a delete.
+    pending: BTreeMap<DocId, Option<StagedRow>>,
     /// `commit` rewrites instead of appending when the dead share it would leave exceeds this
     /// (`None` = only on `compact`).
     compaction_threshold: Option<f32>,
@@ -133,11 +136,18 @@ impl FlatIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Corrupt` if `dir` is not empty or `dim == 0`; `Error::Io` otherwise. A failure
-    /// leaves the directory empty, so a corrected retry succeeds.
+    /// `Error::Corrupt` if `dir` is not empty, `dim == 0` or `dim` is wider than the integer
+    /// kernel can score (132,104); `Error::Io` otherwise. A failure leaves the directory empty,
+    /// so a corrected retry succeeds.
     pub fn create(dir: &Path, dim: usize, metric: Metric, fingerprint: &str) -> Result<Self> {
         if dim == 0 {
             return Err(corrupt("dim must be at least 1"));
+        }
+        if dim > crate::quantise::MAX_DIM {
+            return Err(corrupt(format!(
+                "dim {dim} exceeds {}, the widest row the integer kernel can score",
+                crate::quantise::MAX_DIM
+            )));
         }
         // The row layout must be representable before a byte is written: a refused `dim` must
         // not leave a populated, unusable directory behind.
@@ -152,6 +162,7 @@ impl FlatIndex {
         }
         let header = Header {
             format_version: FORMAT_VERSION,
+            scheme: crate::quantise::SCHEME.to_owned(),
             dim,
             metric: metric.into(),
             fingerprint: fingerprint.to_owned(),
@@ -194,8 +205,9 @@ impl FlatIndex {
     ///
     /// # Errors
     ///
-    /// `Error::Io` if a file cannot be read; `Error::Corrupt` if it is not a version-2 index
-    /// (a version-1 `index.bin` is named as such).
+    /// `Error::Io` if a file cannot be read; `Error::Corrupt` if it is not a version-3 index
+    /// (a version-1 `index.bin` or a version-2 manifest is named as such, with the
+    /// instruction to rebuild — Feature 026, ADR-0015).
     pub fn open(dir: &Path) -> Result<Self> {
         Self::open_with(dir, LoadPath::Buffered, false)
     }
@@ -298,12 +310,26 @@ impl FlatIndex {
         &self.dir
     }
 
-    /// The committed vector stored under `id`, exactly as it was added; `None` if `id` has no
-    /// live row (pending changes are not visible, as with `search`).
-    #[must_use]
-    pub fn vector(&self, id: DocId) -> Option<Vec<f32>> {
-        let r = self.live_row(id)?;
-        Some(self.layout.row_at(self.bytes(), r).collect())
+    /// The committed vector stored under `id`, **as the stored row recovers it**: each
+    /// component within half a quantisation step of what was added, the step being the row's
+    /// scale — `max|component| / 127`, floored at `f32::MIN_POSITIVE` — because a row is
+    /// eight-bit codes and one scale (Feature 026, ADR-0015) and the floats are not kept. For a
+    /// vector whose peak is below `127 × f32::MIN_POSITIVE` the floor is the step, so components
+    /// below half of it come back as exactly zero. `Ok(None)` if `id` has no live row (pending
+    /// changes are not visible, as with `search`).
+    ///
+    /// # Errors
+    ///
+    /// `Error::Corrupt` if the row's scale or norm is one this engine never writes — the same
+    /// check the scan makes, so a damaged row is refused here rather than recovered as NaN.
+    pub fn vector(&self, id: DocId) -> Result<Option<Vec<f32>>> {
+        let Some(r) = self.live_row(id) else {
+            return Ok(None);
+        };
+        let (scale, _) = self.checked_row(r, id.0, self.least_norm())?;
+        Ok(Some(
+            Rows::recover(self.layout.codes_at(self.bytes(), r), scale).collect(),
+        ))
     }
 
     /// Whether this handle was opened read-only (`open_read_only*`): every mutation is refused
@@ -446,7 +472,7 @@ impl FlatIndex {
                         row_buf.extend_from_slice(old.row_bytes_at(bytes, r));
                     }
                     Merged::Pending(id, v) => {
-                        format::encode_row(&mut row_buf, id, row_norm(v), v);
+                        format::encode_row(&mut row_buf, id, v);
                     }
                 }
                 out.write_all(&row_buf)?;
@@ -695,7 +721,8 @@ impl FlatIndex {
         Ok(())
     }
 
-    fn validate_vector(&self, id: DocId, v: &[f32]) -> Result<()> {
+    /// Validate `v` for this index and return it as the row it will be stored as.
+    fn validate_vector(&self, id: DocId, v: &[f32]) -> Result<StagedRow> {
         if v.len() != self.header.dim {
             return Err(dim_mismatch(self.header.dim, v.len()));
         }
@@ -704,20 +731,27 @@ impl FlatIndex {
                 "vector for {id} has a non-finite component at index {i}"
             )));
         }
-        let norm = search::norm_f64(v.iter().copied());
+        // What gets stored is the quantised row, and it is that row's norm that is written and
+        // that cosine divides by (ADR-0015). A zero vector, and a vector whose every component
+        // is below half the scale floor, both quantise to all-zero codes: one check covers both,
+        // and it is the stored row that cosine cannot point with.
+        let staged = StagedRow::new(v);
+        let norm = f64::from(staged.norm);
         if self.metric() == Metric::Cosine && norm == 0.0 {
             return Err(schema_err(format!(
-                "vector for {id} has zero norm; cosine similarity is undefined"
+                "vector for {id} has zero norm at eight-bit precision; cosine similarity is \
+                 undefined"
             )));
         }
         // The norm is persisted as f32; a finite vector such as [f32::MAX, f32::MAX] has a norm
         // that only fits f64, and storing it as +inf would silently score its own cosine as 0.
-        if !(norm as f32).is_finite() {
+        if !staged.norm.is_finite() {
             return Err(schema_err(format!(
-                "vector for {id} has norm {norm:e}, which does not fit a finite f32"
+                "vector for {id} has norm {:e}, which does not fit a finite f32",
+                crate::quantise::norm(&staged.quantised)
             )));
         }
-        Ok(())
+        Ok(staged)
     }
 }
 
@@ -738,8 +772,8 @@ impl VectorIndex for FlatIndex {
         if self.read_only {
             return Err(Error::read_only());
         }
-        self.validate_vector(id, vector)?;
-        self.pending.insert(id, Some(vector.to_vec()));
+        let staged = self.validate_vector(id, vector)?;
+        self.pending.insert(id, Some(staged));
         Ok(())
     }
 
@@ -797,7 +831,7 @@ impl VectorIndex for FlatIndex {
                 removed.push(id.0);
             }
             if let Some(v) = change {
-                format::encode_row(&mut buf, id.0, row_norm(v), v);
+                format::encode_row(&mut buf, id.0, v);
                 if appended.is_empty() && last_id.is_some_and(|l| l >= id.0) {
                     ordered = false;
                 }
@@ -936,26 +970,22 @@ impl VectorIndex for FlatIndex {
         if k == 0 || allowed.is_some_and(DocSet::is_empty) {
             return Ok(Vec::new());
         }
-        let bytes = self.bytes();
-        let layout = self.layout;
-        let no_dead = self.dead.is_empty();
-        let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
-        for r in 0..layout.count {
-            if !no_dead && self.dead.contains(r as u32) {
-                continue;
+        // The metric was decided by `validate_query`; each arm is one loop over the rows with
+        // nothing to decide per row (review finding 5), and the row's codes, scale and norm
+        // arrive decoded once by `scan`.
+        let scored = match &q {
+            search::Query::Dot(codes) => self.scan(allowed, |row_codes, scale, _| {
+                search::dot_score(codes, row_codes, scale)
+            }),
+            search::Query::Cosine { codes, norm } => {
+                self.scan(allowed, |row_codes, scale, row_norm| {
+                    search::cosine_score(codes, *norm, row_codes, scale, row_norm)
+                })
             }
-            let id = layout.id_at(bytes, r);
-            if allowed.is_some_and(|set| !set.contains(DocId(id))) {
-                continue;
-            }
-            let s = search::score(
-                metric,
-                &q,
-                layout.row_at(bytes, r),
-                layout.norm_at(bytes, r),
-            );
-            scored.push((s, id));
-        }
+            search::Query::Euclidean(vector) => self.scan(allowed, |row_codes, scale, _| {
+                search::euclidean_score(vector, Rows::recover(row_codes, scale))
+            }),
+        }?;
         Ok(search::top_k(scored, k))
     }
 
@@ -965,6 +995,73 @@ impl VectorIndex for FlatIndex {
 }
 
 impl FlatIndex {
+    /// Row `r`'s stored scale and norm, checked: a scale that is not a normal positive number,
+    /// or a norm that is not finite (or, under Cosine, not positive), was never written by
+    /// this engine, and rather than score or recover it — a NaN would make the order arbitrary
+    /// — the reader refuses the row file as corrupt (contract "Refusals"). The check lives at
+    /// the readers rather than at open because an open reads nothing beyond the manifest
+    /// (Feature 024); the scan and `vector` are the first readers of a row.
+    ///
+    /// The codes are **not** checked: the format carries no checksum, so a damaged code byte
+    /// is indistinguishable from a written one whatever its value, and a check for the one
+    /// value the engine never writes (`0x80`, −128) would cost a pass over every row's codes
+    /// to catch one damage pattern in 256. The reader takes the byte as −128; the dimension
+    /// bound (`quantise::MAX_DIM`) counts it so the accumulator cannot overflow; the contract
+    /// says so.
+    ///
+    /// The norm is checked only under Cosine, the one metric that reads it: under Dot and
+    /// Euclidean a damaged norm changes no score, and refusing the row there would turn one
+    /// bit flip into an outage for the whole index rather than degrading (Principle VI; review
+    /// round 6, finding 7). The scale is read by every metric and is checked for every one.
+    fn checked_row(&self, r: usize, id: u32, least_norm: Option<f32>) -> Result<(f32, f32)> {
+        let bytes = self.bytes();
+        let scale = self.layout.scale_at(bytes, r);
+        let norm = self.layout.norm_at(bytes, r);
+        let norm_ok = least_norm.is_none_or(|least| norm.is_finite() && norm >= least);
+        if !(scale.is_normal() && scale > 0.0 && norm_ok) {
+            return Err(corrupt(format!(
+                "{} row {r} (id {id}) has scale {scale:e} and norm {norm:e}, which this engine \
+                 never writes",
+                format::row_file(self.header.generation)
+            )));
+        }
+        Ok((scale, norm))
+    }
+
+    /// The least norm a row of this index may carry, for the metric that reads it: a cosine
+    /// row's norm is at least its scale (one code is ±127), so at least the floor. `None` under
+    /// Dot and Euclidean, which never read the norm and so never check it.
+    fn least_norm(&self) -> Option<f32> {
+        (self.metric() == Metric::Cosine).then_some(f32::MIN_POSITIVE)
+    }
+
+    /// Every live, allowed row as `(score_row(codes, scale, norm), id)`, with the row's scale
+    /// and norm decoded and checked once ([`Self::checked_row`]) and handed to the scorer with
+    /// the codes; everything loop-invariant is decided out here.
+    fn scan(
+        &self,
+        allowed: Option<&DocSet>,
+        mut score_row: impl FnMut(&[u8], f32, f32) -> f32,
+    ) -> Result<Vec<(f32, u32)>> {
+        let bytes = self.bytes();
+        let layout = self.layout;
+        let no_dead = self.dead.is_empty();
+        let least_norm = self.least_norm();
+        let mut scored: Vec<(f32, u32)> = Vec::with_capacity(self.header.live as usize);
+        for r in 0..layout.count {
+            if !no_dead && self.dead.contains(r as u32) {
+                continue;
+            }
+            let id = layout.id_at(bytes, r);
+            if allowed.is_some_and(|set| !set.contains(DocId(id))) {
+                continue;
+            }
+            let (scale, norm) = self.checked_row(r, id, least_norm)?;
+            scored.push((score_row(layout.codes_at(bytes, r), scale, norm), id));
+        }
+        Ok(scored)
+    }
+
     /// Live id → row from the current rows and tombstones. Infallible here: it is only built
     /// from a state whose ids were validated at open (duplicates are `Corrupt` there).
     fn build_table(&self) -> BTreeMap<u32, u32> {
@@ -979,7 +1076,7 @@ impl FlatIndex {
 /// A row of the merged (committed ⊕ pending) sequence a rewrite emits.
 enum Merged<'a> {
     Kept(usize),
-    Pending(u32, &'a [f32]),
+    Pending(u32, &'a StagedRow),
 }
 
 /// The ascending merge of the committed live rows with the pending changes.
@@ -995,7 +1092,7 @@ where
 impl<'a, C, P> Iterator for Merge<C, P>
 where
     C: Iterator<Item = (u32, usize)>,
-    P: Iterator<Item = (u32, Option<&'a Vec<f32>>)>,
+    P: Iterator<Item = (u32, Option<&'a StagedRow>)>,
 {
     type Item = Merged<'a>;
 
@@ -1038,12 +1135,6 @@ where
             }
         }
     }
-}
-
-/// The norm stored beside a row: `f64` accumulation, rounded to `f32` once — the same rounding
-/// everywhere a row is written.
-fn row_norm(v: &[f32]) -> f32 {
-    search::norm_f64(v.iter().copied()) as f32
 }
 
 /// At a writable open only: a crashed append leaves a tail beyond the committed rows — cut it

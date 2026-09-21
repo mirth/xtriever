@@ -69,7 +69,7 @@ fn observe(index: &FlatIndex) -> Observed {
                     .unwrap()
             })
             .collect(),
-        vectors: (0..60).map(|i| index.vector(DocId(i))).collect(),
+        vectors: (0..60).map(|i| index.vector(DocId(i)).unwrap()).collect(),
     }
 }
 

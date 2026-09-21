@@ -122,7 +122,8 @@ fn merge_compacts_the_dense_file_and_keeps_every_dense_bit() {
         std::fs::metadata(tmp.path().join("dense/vectors.1.bin"))
             .unwrap()
             .len(),
-        37 * (8 + 4 * h.dim as u64)
+        // Format 3: `id u32 · norm f32 · scale f32 · codes dim×i8` (Feature 026, ADR-0015).
+        37 * (12 + h.dim as u64)
     );
     // The dense stage: every live row's score, bit for bit, on disk …
     assert_eq!(

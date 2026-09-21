@@ -213,7 +213,7 @@ fn a_mapped_handle_maps_after_its_first_append_and_after_compacting_to_empty() {
     mapped.add(DocId(3), &[1.0, 1.0]).unwrap();
     mapped.commit().unwrap();
     assert!(mapped.is_mapped());
-    assert_eq!(mapped.vector(DocId(3)), Some(vec![1.0, 1.0]));
+    assert_eq!(mapped.vector(DocId(3)).unwrap(), Some(vec![1.0, 1.0]));
 }
 
 #[cfg(all(feature = "mmap", unix))]
@@ -243,7 +243,7 @@ fn a_mapping_covers_only_the_committed_rows() {
     );
     assert!(mapped.is_mapped());
     assert_eq!(mapped.len(), 1);
-    assert_eq!(mapped.vector(DocId(1)), Some(vec![1.0, 0.0]));
+    assert_eq!(mapped.vector(DocId(1)).unwrap(), Some(vec![1.0, 0.0]));
     assert_eq!(mapped.search(&[1.0, 0.0], None, 5).unwrap().len(), 1);
     drop(mapped);
     std::fs::set_permissions(&rows, std::fs::Permissions::from_mode(0o600)).unwrap();
@@ -276,7 +276,7 @@ fn a_read_only_open_touches_nothing_and_refuses_mutations() {
     assert!(tmp.path().join("manifest.bin.tmp").exists());
     assert!(tmp.path().join("vectors.9.bin").exists());
     assert_eq!(ro.len(), 1);
-    assert_eq!(ro.vector(DocId(1)), Some(vec![1.0, 0.0]));
+    assert_eq!(ro.vector(DocId(1)).unwrap(), Some(vec![1.0, 0.0]));
     let refused = [
         ro.add(DocId(2), &[0.0, 1.0]).unwrap_err(),
         ro.delete(&[DocId(1)]).unwrap_err(),
@@ -388,21 +388,21 @@ fn an_append_that_succeeds_before_the_manifest_fails_is_rolled_back() {
     );
     assert_eq!(
         index.bytes_written() - written_before,
-        16,
+        support::row_bytes(2),
         "one row of dim 2 was written, no manifest"
     );
     assert_eq!(index.len(), 1);
     assert_eq!(
-        index.vector(DocId(1)),
+        index.vector(DocId(1)).unwrap(),
         Some(vec![1.0, 0.0]),
         "the buffer was cut too"
     );
-    assert_eq!(index.vector(DocId(2)), None);
+    assert_eq!(index.vector(DocId(2)).unwrap(), None);
     std::fs::remove_dir(tmp.path().join("manifest.bin.tmp")).unwrap();
     index.commit().unwrap();
     assert_eq!(index.len(), 1);
-    assert_eq!(index.vector(DocId(2)), Some(vec![0.0, 1.0]));
-    assert_eq!(index.vector(DocId(1)), None);
+    assert_eq!(index.vector(DocId(2)).unwrap(), Some(vec![0.0, 1.0]));
+    assert_eq!(index.vector(DocId(1)).unwrap(), None);
     assert_eq!(FlatIndex::open(tmp.path()).unwrap().len(), 1);
 }
 
@@ -439,7 +439,7 @@ fn a_sparse_id_costs_one_entry_not_a_table() {
     index.add(DocId(u32::MAX), &[1.0, 0.0]).unwrap();
     index.add(DocId(0), &[0.0, 1.0]).unwrap();
     index.commit().unwrap();
-    assert_eq!(index.vector(DocId(u32::MAX)), Some(vec![1.0, 0.0]));
+    assert_eq!(index.vector(DocId(u32::MAX)).unwrap(), Some(vec![1.0, 0.0]));
     assert_eq!(
         index.search(&[1.0, 0.0], None, 1).unwrap()[0].id,
         DocId(u32::MAX)
@@ -449,7 +449,10 @@ fn a_sparse_id_costs_one_entry_not_a_table() {
     assert_eq!(reopened.len(), 2);
     reopened.delete(&[DocId(0)]).unwrap();
     reopened.compact().unwrap();
-    assert_eq!(reopened.vector(DocId(u32::MAX)), Some(vec![1.0, 0.0]));
+    assert_eq!(
+        reopened.vector(DocId(u32::MAX)).unwrap(),
+        Some(vec![1.0, 0.0])
+    );
     assert_eq!(reopened.len(), 1);
 }
 
@@ -479,13 +482,13 @@ fn a_buffered_open_reads_only_the_committed_bytes() {
         committed.len() as u64 + 64 * 1024 * 1024
     );
     assert_eq!(opened.len(), 1);
-    assert_eq!(opened.vector(DocId(1)), Some(vec![1.0, 0.0]));
+    assert_eq!(opened.vector(DocId(1)).unwrap(), Some(vec![1.0, 0.0]));
     drop(opened);
     std::fs::set_permissions(&rows, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
 
 #[test]
-fn vector_returns_committed_rows_exactly_as_added() {
+fn vector_returns_committed_rows_within_the_quantisation_step() {
     let set = set384();
     let tmp = tempfile::tempdir().unwrap();
     let mut index = FlatIndex::create(tmp.path(), set.dim, Metric::Cosine, "test-fp").unwrap();
@@ -493,26 +496,33 @@ fn vector_returns_committed_rows_exactly_as_added() {
         index.add(DocId(row.id), &row.vector).unwrap();
     }
     assert_eq!(
-        index.vector(DocId(set.rows[0].id)),
+        index.vector(DocId(set.rows[0].id)).unwrap(),
         None,
         "pending rows are not visible"
     );
     index.commit().unwrap();
     for row in &set.rows {
-        let got = index.vector(DocId(row.id)).unwrap();
+        // Since Feature 026 a committed row is eight-bit codes and a scale, so `vector` returns
+        // what those recover — never the bytes that were added (ADR-0015, spec FR-003) — within
+        // half a quantisation step, the one tolerance `support::assert_recovered` states.
+        support::assert_recovered(
+            index.vector(DocId(row.id)).unwrap(),
+            &row.vector,
+            &format!("row {}", row.id),
+        );
+    }
+    // An id never added: `Ok(None)`, past the last row of the binary search too.
+    assert_eq!(index.vector(DocId(u32::MAX)).unwrap(), None);
+    // A reopened handle — ordered, tombstone-free, so `vector` is the binary-search path over
+    // the file rather than a table — recovers exactly the same rows (review round 7, finding 4).
+    let reopened = FlatIndex::open(tmp.path()).unwrap();
+    for row in &set.rows {
         assert_eq!(
-            support::bits(&got),
-            support::bits(&row.vector),
-            "row {}",
+            reopened.vector(DocId(row.id)).unwrap(),
+            index.vector(DocId(row.id)).unwrap(),
+            "row {} after a reopen",
             row.id
         );
     }
-    assert_eq!(index.vector(DocId(u32::MAX)), None);
-    let reopened = FlatIndex::open(tmp.path()).unwrap();
-    assert_eq!(
-        reopened
-            .vector(DocId(set.rows[7].id))
-            .map(|v| support::bits(&v)),
-        Some(support::bits(&set.rows[7].vector))
-    );
+    assert_eq!(reopened.vector(DocId(u32::MAX)).unwrap(), None);
 }

@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""Does eight-bit quantisation of the stored dense vectors cost retrieval quality?
+"""What does eight-bit storage of the dense vectors cost, measured on the engine's own rows?
 
-A cheap study before any feature work (the pattern Feature 022 used for chunking). It reads
-the dense stage's own committed vectors for SciFact — `target/xt-dense-cache/scifact/`, dense
-format 2 — embeds the dataset's test queries with the reference recipe
-(`reference/gen_004_fixtures.py`: mean-mask pooling, L2 normalisation, the pinned weights), and
-compares three rankings against the exact float ranking and against the dataset's own
-relevance judgements:
+Feature 026 stores each vector as one signed byte per dimension and a scale (dense format 3,
+ADR-0015). This reads a BEIR dataset's evaluation cache — the float embeddings the embedder
+produced (`vectors.f32.bin`, written by `beir run --config dense-baseline-v1`) and the
+eight-bit rows the engine stored beside them — embeds the dataset's test queries with the
+reference recipe, and reports:
 
-  * **exact**           — what the engine does today: float32 dot products;
-  * **int8**            — vectors quantised to eight-bit integers, scored as integers;
-  * **int8 + rescore**  — the eight-bit ranking's top N rescored with the exact float vectors.
+  * that the stored rows **are** the scheme: the codes and scales recomputed from the floats
+    in Python match the bytes on disk exactly;
+  * the float ranking against the engine's ranking (integer dot products over the stored codes,
+    cosine over the quantised norms, as `crates/xtriever-dense/src/index/search.rs` scores):
+    candidate agreement at depth 100 (SC-001's measure, promised ≥ 99 % in
+    `specs/026-eight-bit-precision/contracts/dense-format-v3.md`), the top-10 and top-1 kept,
+    and nDCG@10 and Recall@100 for both;
+  * bytes per row, for the record.
 
-What matters is not the score error but whether the *ranking* moves, and whether a rescoring
-pass puts back whatever the quantisation disturbed.
+Before the feature, this script simulated the scheme on format-2 float rows and also measured a
+global scale and an exact rescoring pass; those numbers are recorded in ADR-0015 and the spec,
+and that version is in the history at the commit that introduced format 3.
 
     apps/python-wiki-demo/.venv/bin/python reference/int8_vectors_study.py [dataset]
 
-The dataset defaults to `scifact`; any BEIR set whose dense cache exists works.
+The dataset defaults to `scifact`; any BEIR set whose cache was built by this engine works.
 """
 
 from __future__ import annotations
@@ -38,23 +43,50 @@ DATASET = ROOT / f"reference/datasets/beir/{DATASET_NAME}"
 MODEL = ROOT / "reference/models/all-MiniLM-L6-v2"
 MAX_SEQ_LEN = 256
 K = 10
-RESCORE_DEPTHS = (10, 20, 50, 100, 200)
+DEPTH = 100
+F32_MIN_POSITIVE = np.float32(2.0 ** -126)
 
 
-def read_rows(dense_dir: Path) -> tuple[np.ndarray, np.ndarray]:
-    """The committed rows: `id u32 · norm f32 · vector dim×f32` (dense format 2, ADR-0013)."""
+def read_v3_rows(dense_dir: Path) -> tuple[dict, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The committed rows: `id u32 · norm f32 · scale f32 · codes dim×i8` (format 3)."""
     manifest = (dense_dir / "manifest.bin").read_bytes()
-    assert manifest[:8] == b"XTDENSE2", manifest[:8]
+    assert manifest[:8] == b"XTDENSE3", manifest[:8]
     header_len = struct.unpack("<Q", manifest[8:16])[0]
     header = json.loads(manifest[16 : 16 + header_len])
+    assert header["scheme"] == "i8-symmetric-per-vector", header["scheme"]
     dim, rows = header["dim"], header["rows"]
     raw = np.fromfile(dense_dir / f"vectors.{header['generation']}.bin", dtype=np.uint8)
-    row_bytes = 8 + 4 * dim
+    row_bytes = 12 + dim
     assert raw.size == rows * row_bytes, (raw.size, rows * row_bytes)
     table = raw.reshape(rows, row_bytes)
     ids = table[:, :4].copy().view(np.uint32).reshape(rows)
-    vectors = table[:, 8:].copy().view(np.float32).reshape(rows, dim)
-    return ids, vectors
+    norms = table[:, 4:8].copy().view(np.float32).reshape(rows)
+    scales = table[:, 8:12].copy().view(np.float32).reshape(rows)
+    codes = table[:, 12:].copy().view(np.int8)
+    return header, ids, norms, scales, codes
+
+
+def read_floats(dense_dir: Path, rows: int, dim: int) -> np.ndarray:
+    """The embedder's own output, `rows × dim` f32 LE, written beside the index by the eval."""
+    floats = np.fromfile(dense_dir / "vectors.f32.bin", dtype=np.float32)
+    assert floats.size == rows * dim, (floats.size, rows * dim)
+    return floats.reshape(rows, dim)
+
+
+def quantise(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The scheme in the crate's own arithmetic: `f32` scale (`max|x| / 127`, floored at the
+    smallest normal), `f32` quotients rounded half away from zero, and the stored norm
+    `sqrt(Σ code²) × scale`. Returns codes (int8), scales (f32, per row) and norms (f64)."""
+    vectors = vectors.astype(np.float32)
+    peak = np.abs(vectors).max(axis=1, keepdims=True)
+    scale = np.maximum(peak / np.float32(127.0), F32_MIN_POSITIVE).astype(np.float32)
+    scale = np.where(peak > 0, scale, np.float32(1.0)).astype(np.float32)
+    q = (vectors / scale).astype(np.float32).astype(np.float64)
+    # `f32::round` is half away from zero: the `+ 0.5` and the floor happen in f64, where adding
+    # 0.5 to an f32 value is exact; in f32 the add itself could round (0.49999997 + 0.5 → 1.0).
+    codes = (np.floor(np.abs(q) + 0.5) * np.sign(q)).clip(-127, 127).astype(np.int8)
+    norms = np.sqrt((codes.astype(np.int64) ** 2).sum(axis=1)).astype(np.float64) * scale[:, 0].astype(np.float64)
+    return codes, scale[:, 0], norms
 
 
 def embed_queries(texts: list[str]) -> np.ndarray:
@@ -83,16 +115,6 @@ def embed_queries(texts: list[str]) -> np.ndarray:
     return np.concatenate(out).astype(np.float32)
 
 
-def quantise(vectors: np.ndarray, per_vector: bool) -> tuple[np.ndarray, np.ndarray]:
-    """Symmetric eight-bit codes and the scale that turns them back into floats."""
-    if per_vector:
-        scale = np.abs(vectors).max(axis=1, keepdims=True) / 127.0
-    else:
-        scale = np.full((vectors.shape[0], 1), np.abs(vectors).max() / 127.0, dtype=np.float32)
-    codes = np.rint(vectors / scale).clip(-127, 127).astype(np.int8)
-    return codes, scale.astype(np.float32)
-
-
 def ndcg_at_k(ranking: list[str], relevant: dict[str, int], k: int = K) -> float:
     gains = [relevant.get(doc, 0) for doc in ranking[:k]]
     dcg = sum(g / math.log2(i + 2) for i, g in enumerate(gains))
@@ -109,15 +131,26 @@ def recall_at(ranking: list[str], relevant: dict[str, int], k: int) -> float:
 
 
 def main() -> int:
-    if not (CACHE / "manifest.bin").exists():
-        print(f"no dense vectors at {CACHE} — run the SciFact dense baseline first", file=sys.stderr)
+    if not (CACHE / "vectors.f32.bin").exists():
+        print(f"no evaluation cache with floats at {CACHE} — run `beir run --dataset {DATASET_NAME} "
+              f"--config dense-baseline-v1` with this build first", file=sys.stderr)
         return 1
 
-    ids, vectors = read_rows(CACHE)
+    header, ids, norms, scales, codes = read_v3_rows(CACHE / "index")
+    dim, rows = header["dim"], header["rows"]
+    floats = read_floats(CACHE, rows, dim)
     corpus_ids = [json.loads(line)["_id"] for line in (DATASET / "corpus.jsonl").read_text().splitlines()]
-    assert len(corpus_ids) == vectors.shape[0], (len(corpus_ids), vectors.shape[0])
+    assert len(corpus_ids) == rows, (len(corpus_ids), rows)
     # Internal ids are the corpus positions (Feature 004 data model), and the rows are ordered.
     assert (ids == np.arange(ids.size, dtype=np.uint32)).all(), "rows are not in corpus order"
+
+    # 1. The stored rows are the scheme, bit for bit.
+    py_codes, py_scales, py_norms = quantise(floats)
+    assert (py_codes == codes).all(), f"{(py_codes != codes).sum()} codes differ from the scheme"
+    assert (py_scales == scales).all(), f"{(py_scales != scales).sum()} scales differ from the scheme"
+    assert (py_norms.astype(np.float32) == norms).all(), "stored norms differ from the scheme"
+    print(f"{DATASET_NAME}: {rows:,} documents · dim {dim} · stored rows match the scheme exactly "
+          f"({rows * (12 + dim) / 1e6:.1f} MB against {rows * (8 + 4 * dim) / 1e6:.1f} MB as floats)")
 
     qrels: dict[str, dict[str, int]] = defaultdict(dict)
     for line in (DATASET / "qrels/test.tsv").read_text().splitlines()[1:]:
@@ -126,48 +159,32 @@ def main() -> int:
             qrels[query_id][doc_id] = int(score)
     queries = {json.loads(line)["_id"]: json.loads(line)["text"] for line in (DATASET / "queries.jsonl").read_text().splitlines()}
     query_ids = [q for q in queries if q in qrels]
-    print(f"{DATASET_NAME}: {vectors.shape[0]:,} documents · {len(query_ids)} judged queries · dim {vectors.shape[1]}")
-
     Q = embed_queries([queries[q] for q in query_ids])
+    print(f"{len(query_ids)} judged queries embedded with the reference recipe")
 
-    exact_scores = Q @ vectors.T
-    exact_order = np.argsort(-exact_scores, axis=1)
+    # 2. The float ranking: cosine over the embedder's own output.
+    exact = (Q @ floats.T) / (np.linalg.norm(Q, axis=1)[:, None] * np.linalg.norm(floats, axis=1)[None, :])
+    exact_order = np.argsort(-exact, axis=1, kind="stable")
 
-    print(f"\n{'scheme':<26}{'nDCG@10':>10}{'Recall@100':>12}{'top-10 kept':>13}{'bytes/row':>11}")
-    row_bytes_f32 = 8 + 4 * vectors.shape[1]
-    exact_ndcg = np.mean([ndcg_at_k([corpus_ids[i] for i in exact_order[r][:K]], qrels[q]) for r, q in enumerate(query_ids)])
-    exact_recall = np.mean([recall_at([corpus_ids[i] for i in exact_order[r][:100]], qrels[q], 100) for r, q in enumerate(query_ids)])
-    print(f"{'exact float32':<26}{exact_ndcg:>10.4f}{exact_recall:>12.4f}{1.0:>13.3f}{row_bytes_f32:>11}")
+    # 3. The engine's ranking: what search.rs computes from the stored rows.
+    q_codes, q_scales, q_norms = quantise(Q)
+    dots = (q_codes.astype(np.int32) @ codes.astype(np.int32).T).astype(np.float64)
+    engine = dots * q_scales[:, None].astype(np.float64) * scales[None, :].astype(np.float64)
+    engine = (engine / (q_norms[:, None] * norms[None, :].astype(np.float64))).astype(np.float32)
+    engine_order = np.argsort(-engine, axis=1, kind="stable")
 
-    results = {}
-    for label, per_vector in (("int8, one scale per vector", True), ("int8, one global scale", False)):
-        codes, scale = quantise(vectors, per_vector)
-        q_codes, q_scale = quantise(Q, True)
-        approx = (q_codes.astype(np.int32) @ codes.astype(np.int32).T).astype(np.float32) * q_scale * scale.T
-        order = np.argsort(-approx, axis=1)
+    n = len(query_ids)
+    agreement = np.mean([len(set(exact_order[r][:DEPTH]) & set(engine_order[r][:DEPTH])) / DEPTH for r in range(n)])
+    top10 = np.mean([len(set(exact_order[r][:K]) & set(engine_order[r][:K])) / K for r in range(n)])
+    top1 = np.mean([exact_order[r][0] == engine_order[r][0] for r in range(n)])
+    print(f"\ncandidate agreement at depth {DEPTH}: {agreement:.4f}  (SC-001 promises ≥ 0.99)")
+    print(f"top-10 kept: {top10:.4f}   top hit unchanged: {top1:.4f}")
 
+    print(f"\n{'ranking':<22}{'nDCG@10':>10}{'Recall@100':>12}{'bytes/row':>11}")
+    for label, order, per_row in (("float32 (embedder)", exact_order, 8 + 4 * dim), ("eight-bit (engine)", engine_order, 12 + dim)):
         ndcg = np.mean([ndcg_at_k([corpus_ids[i] for i in order[r][:K]], qrels[q]) for r, q in enumerate(query_ids)])
         recall = np.mean([recall_at([corpus_ids[i] for i in order[r][:100]], qrels[q], 100) for r, q in enumerate(query_ids)])
-        kept = np.mean([len(set(order[r][:K]) & set(exact_order[r][:K])) / K for r in range(len(query_ids))])
-        extra = 4 if per_vector else 0  # the per-vector scale beside the codes
-        print(f"{label:<26}{ndcg:>10.4f}{recall:>12.4f}{kept:>13.3f}{8 + vectors.shape[1] + extra:>11}")
-        results[label] = (order, approx)
-
-    print("\nwith an exact rescoring pass over the eight-bit shortlist (per-vector scale):")
-    order, _ = results["int8, one scale per vector"]
-    print(f"{'shortlist':<26}{'nDCG@10':>10}{'top-10 kept':>13}{'Δ nDCG vs exact':>18}")
-    for depth in RESCORE_DEPTHS:
-        rescored_ndcg, kept = [], []
-        for r, q in enumerate(query_ids):
-            shortlist = order[r][:depth]
-            best = shortlist[np.argsort(-exact_scores[r, shortlist])][:K]
-            rescored_ndcg.append(ndcg_at_k([corpus_ids[i] for i in best], qrels[q]))
-            kept.append(len(set(best) & set(exact_order[r][:K])) / K)
-        print(f"{f'top {depth} rescored':<26}{np.mean(rescored_ndcg):>10.4f}{np.mean(kept):>13.3f}{np.mean(rescored_ndcg) - exact_ndcg:>+18.4f}")
-
-    print(f"\nmemory for the shipped Wikipedia artefact (427,947 rows, dim 384):")
-    for label, per_row in (("float32 today", row_bytes_f32), ("int8 + per-vector scale", 8 + 384 + 4), ("int8 + global scale", 8 + 384)):
-        print(f"  {label:<26}{427_947 * per_row / 1e6:>8.1f} MB")
+        print(f"{label:<22}{ndcg:>10.4f}{recall:>12.4f}{per_row:>11}")
     return 0
 
 

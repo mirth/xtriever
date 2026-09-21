@@ -126,10 +126,18 @@ fn op() -> impl Strategy<Value = Op> {
 }
 
 use support::hit_bits as bits;
+use support::{quantise, recovered, recovered_norm};
 
-/// An independent scorer over the reference model: the contract's arithmetic — per-row `f64`
-/// accumulation in index order, the row norm stored as `f32`, one rounding to `f32` — and the
-/// total `(score DESC, id ASC)` order, truncated to `k`. Nothing here comes from the crate.
+/// A reference scorer over the model, in the contract's arithmetic — independent in what it
+/// does with the codes (accumulation, cosine, order), not in how the codes are made.
+///
+/// Since Feature 026 the stage stores eight-bit codes, so the oracle scores what the stage
+/// stores: the dot product of the quantised query and the quantised row accumulated in `i32` —
+/// exactly, nothing rounds — then one multiply by the two scales. Cosine divides by the norms
+/// of the two *quantised* vectors (the row's rounded to `f32`, as it is stored), and Euclidean
+/// works on recovered components, because a distance is not a dot product. The quantisation is
+/// the crate's own, through `support` (`quantise`, `recovered_norm`); the independent check of
+/// the scheme is `reference/dense_format3.py`, which mints the goldens `index_golden` replays.
 fn reference(
     metric: Metric,
     model: &BTreeMap<u32, Vec<f32>>,
@@ -137,35 +145,30 @@ fn reference(
     q: &[f32],
     k: usize,
 ) -> Vec<(u32, u32)> {
-    let q_norm: f64 = q
-        .iter()
-        .map(|x| f64::from(*x) * f64::from(*x))
-        .sum::<f64>()
-        .sqrt();
+    let (q_codes, q_scale) = quantise(q);
+    let q_norm = recovered_norm(&q_codes, q_scale);
     let mut scored: Vec<(f32, u32)> = model
         .iter()
         .filter(|(id, _)| allowed.is_none_or(|a| a.contains(id)))
         .map(|(id, row)| {
-            let dot: f64 = q
+            let (row_codes, row_scale) = quantise(row);
+            let accumulator: i32 = q_codes
                 .iter()
-                .zip(row)
-                .map(|(a, b)| f64::from(*a) * f64::from(*b))
+                .zip(&row_codes)
+                .map(|(a, b)| i32::from(*a) * i32::from(*b))
                 .sum();
+            let dot = f64::from(accumulator) * f64::from(q_scale) * f64::from(row_scale);
             let score = match metric {
                 Metric::Dot => dot,
                 Metric::Cosine => {
-                    let row_norm = row
-                        .iter()
-                        .map(|x| f64::from(*x) * f64::from(*x))
-                        .sum::<f64>()
-                        .sqrt() as f32;
+                    let row_norm = recovered_norm(&row_codes, row_scale) as f32;
                     dot / (q_norm * f64::from(row_norm))
                 }
                 Metric::Euclidean => -q
                     .iter()
-                    .zip(row)
+                    .zip(recovered(row))
                     .map(|(a, b)| {
-                        let d = f64::from(*a) - f64::from(*b);
+                        let d = f64::from(*a) - f64::from(b);
                         d * d
                     })
                     .sum::<f64>()
@@ -252,8 +255,11 @@ proptest! {
         let before = run(&index);
         prop_assert_eq!(&before, &expected, "against the reference scorer");
         for (id, v) in &committed {
-            let got = index.vector(DocId(*id));
-            prop_assert_eq!(got.as_deref(), Some(v.as_slice()));
+            // What a committed row recovers, not what was added: the stage stores codes and a
+            // scale (Feature 026). The oracle quantises the same way, so this is still exact.
+            let got = index.vector(DocId(*id)).unwrap();
+            let want = recovered(v);
+            prop_assert_eq!(got.as_deref(), Some(want.as_slice()));
         }
         index.compact().unwrap();
         prop_assert_eq!(index.stats().dead, 0);

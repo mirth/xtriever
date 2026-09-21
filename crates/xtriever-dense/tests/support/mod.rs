@@ -218,9 +218,84 @@ pub fn hit_bits(hits: &[xtriever_core::Hit]) -> Vec<(u32, u32)> {
     hits.iter().map(|h| (h.id.0, h.score.to_bits())).collect()
 }
 
-/// Bytes per row of dense format version 2: `id u32 · norm f32 · vector dim × f32`.
+// ── Feature 026: the eight-bit scheme, the crate's own, in the shapes the suites use ─────────
+//
+// These are thin wrappers over `xtriever_dense::quantise`, **not** an independent restatement:
+// a copy of the crate's code would share its bugs while claiming to check them (review round
+// 5, finding 6). What is independent is `reference/dense_format3.py`, which mints every golden
+// these suites replay (`search.json`, `mutations.json`, `hybrid.json`, `v3_oracle.json`) and
+// checks them in CI. What the Rust suites add on top is independent in what they do *with* the
+// codes — accumulation, cosine, order, persistence — not in how the codes are made.
+
+use xtriever_dense::quantise::Quantised;
+
+/// The crate's quantiser, as `(codes, scale)`.
+pub fn quantise(vector: &[f32]) -> (Vec<i8>, f32) {
+    let q = xtriever_dense::quantise::quantise(vector);
+    (q.codes, q.scale)
+}
+
+/// `code × scale` per component, the crate's recovery.
+pub fn recover(codes: &[i8], scale: f32) -> Vec<f32> {
+    xtriever_dense::quantise::recover(&Quantised {
+        codes: codes.to_vec(),
+        scale,
+    })
+}
+
+/// What the stage recovers for a stored row.
+pub fn recovered(vector: &[f32]) -> Vec<f32> {
+    xtriever_dense::quantise::recover(&xtriever_dense::quantise::quantise(vector))
+}
+
+/// The norm a stored row carries — of the row as stored, `sqrt(Σ code²) × scale` — which is
+/// what cosine divides by.
+pub fn recovered_norm(codes: &[i8], scale: f32) -> f64 {
+    xtriever_dense::quantise::norm(&Quantised {
+        codes: codes.to_vec(),
+        scale,
+    })
+}
+
+/// Assert that `got` is what dense format 3 recovers for `expected`: every component within
+/// half a quantisation step — the row's scale, `max|component| / 127` floored at
+/// `f32::MIN_POSITIVE`, so a vector below the floor recovers to within half the floor and its
+/// smallest components to exactly zero (Feature 026, ADR-0015). A committed row is eight-bit
+/// codes and a scale, so it never returns the bytes that were added — that is the format, not
+/// a defect.
+#[track_caller]
+pub fn assert_recovered(got: Option<Vec<f32>>, expected: &[f32], label: &str) {
+    let got = got.unwrap_or_else(|| panic!("{label}: no vector"));
+    let (_, step) = quantise(expected);
+    assert_eq!(got.len(), expected.len(), "{label}: width");
+    for (i, (recovered, original)) in got.iter().zip(expected).enumerate() {
+        assert!(
+            (recovered - original).abs() <= step / 2.0 + f32::EPSILON,
+            "{label}: component {i} recovered {recovered}, added {original}, step {step}"
+        );
+    }
+}
+
+/// Rewrite `manifest.bin`'s JSON header in place (magic · hdr_len · JSON · tombstones), for
+/// the refusal suites.
+pub fn rewrite_manifest_header(dir: &Path, edit: impl Fn(&str) -> String) {
+    let path = dir.join("manifest.bin");
+    let bytes = std::fs::read(&path).unwrap();
+    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
+    let header = std::str::from_utf8(&bytes[16..16 + hdr_len]).unwrap();
+    let edited = edit(header);
+    let mut out = Vec::new();
+    out.extend_from_slice(&bytes[..8]);
+    out.extend_from_slice(&(edited.len() as u64).to_le_bytes());
+    out.extend_from_slice(edited.as_bytes());
+    out.extend_from_slice(&bytes[16 + hdr_len..]);
+    std::fs::write(&path, out).unwrap();
+}
+
+/// Bytes per row of dense format version 3: `id u32 · norm f32 · scale f32 · codes dim × i8`
+/// (Feature 026, ADR-0015) — 396 at dimension 384, against 1,544 in version 2.
 pub const fn row_bytes(dim: usize) -> u64 {
-    8 + dim as u64 * 4
+    12 + dim as u64
 }
 
 /// The row file of generation `g` under `dir`.

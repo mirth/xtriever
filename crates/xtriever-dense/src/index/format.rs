@@ -1,18 +1,25 @@
-//! Dense format version 2 (Feature 024, ADR-0013; data-model "Dense directory"):
+//! Dense format version 3 (Feature 026, ADR-0015, over the version-2 directory of Feature 024,
+//! ADR-0013; contract `specs/026-eight-bit-precision/contracts/dense-format-v3.md`):
 //!
 //! ```text
 //! manifest.bin
-//!   magic          8 bytes  b"XTDENSE2"
+//!   magic          8 bytes  b"XTDENSE3"
 //!   hdr_len        8 bytes  u64 LE
-//!   header         JSON     {"format_version":2,"dim":..,"metric":"..","fingerprint":"..",
-//!                            "generation":g,"rows":n,"live":m,"ordered":b,"tombstones_len":t}
+//!   header         JSON     {"format_version":3,"scheme":"i8-symmetric-per-vector","dim":..,
+//!                            "metric":"..","fingerprint":"..","generation":g,"rows":n,
+//!                            "live":m,"ordered":b,"tombstones_len":t}
 //!   tombstones     t bytes  a `roaring` bitmap of dead row indices (portable serialisation)
 //!
 //! vectors.<g>.bin          n rows in commit order, each
 //!   id             4 bytes  u32 LE
-//!   norm           4 bytes  f32 LE   (Euclidean norm of the row; used by Cosine, written always)
-//!   vector         dim × 4  f32 LE
+//!   norm           4 bytes  f32 LE   (norm of the row as stored — of the codes × scale, not of
+//!                                     the floats that were added; used by Cosine, written always)
+//!   scale          4 bytes  f32 LE   (a normal, positive number: code × scale ≈ component)
+//!   codes          dim × 1  i8       (two's complement, each in −127..=127)
 //! ```
+//!
+//! The header names the quantisation scheme so that a future scheme is a header change rather
+//! than a guess; a manifest naming another scheme is refused by name.
 //!
 //! `ordered` records whether the row file's ids are strictly ascending (a fresh or compacted
 //! generation, appended to only with higher ids): with no tombstones, such a file needs no id
@@ -25,8 +32,10 @@
 //! the manifest switches to it. Decoding is `from_le_bytes` over `chunks_exact(4)` — no
 //! transmute, no alignment requirement — so the same code reads a heap buffer and a memory map.
 //!
-//! Version 1 (`index.bin`, columnar: ids, norms, vectors) is not read; it is refused at open
-//! naming both versions.
+//! Version 1 (`index.bin`, columnar: ids, norms, vectors) and version 2 (`manifest.bin` with
+//! magic `XTDENSE2` and float rows) are not read; each is refused at open naming both versions
+//! and saying to rebuild. A row's scale and norm are checked where the row is read — the scan —
+//! because an open reads nothing beyond the manifest (Feature 024).
 
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
@@ -34,8 +43,9 @@ use xtriever_core::{Metric, Result};
 
 use crate::FORMAT_VERSION;
 use crate::error::corrupt;
+use crate::quantise;
 
-const MAGIC: &[u8; 8] = b"XTDENSE2";
+const MAGIC: &[u8; 8] = b"XTDENSE3";
 /// Every dense format's magic is `XTDENSE` followed by one version digit; a manifest whose
 /// magic carries another digit is a *versioned* refusal naming both versions, not bad magic.
 const MAGIC_PREFIX: &[u8; 7] = b"XTDENSE";
@@ -61,6 +71,10 @@ pub(crate) fn row_file_generation(name: &str) -> Option<u64> {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Header {
     pub format_version: u32,
+    /// The quantisation scheme the rows are written with ([`quantise::SCHEME`]). Absent in a
+    /// header this engine never wrote; read as empty and refused by name.
+    #[serde(default)]
+    pub scheme: String,
     pub dim: usize,
     pub metric: MetricName,
     pub fingerprint: String,
@@ -113,8 +127,11 @@ pub(crate) struct Rows {
 
 impl Rows {
     /// The layout of `count` rows of `dim`, or `None` if the byte arithmetic overflows.
+    ///
+    /// A row is `id u32 · norm f32 · scale f32 · codes dim×i8` — 396 bytes at dimension 384,
+    /// against 1,544 in format 2 (Feature 026, ADR-0015).
     pub fn checked(count: usize, dim: usize) -> Option<Self> {
-        let row_bytes = dim.checked_mul(4)?.checked_add(8)?;
+        let row_bytes = dim.checked_add(12)?;
         count.checked_mul(row_bytes)?;
         Some(Self {
             count,
@@ -146,11 +163,29 @@ impl Rows {
         f32::from_le_bytes(four(bytes.slice(r * self.row_bytes + 4, 4)))
     }
 
-    pub fn row_at<'a>(&self, bytes: RowBytes<'a>, r: usize) -> impl Iterator<Item = f32> + 'a {
-        bytes
-            .slice(r * self.row_bytes + 8, self.dim * 4)
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+    /// The scale that recovers row `r`'s components. A normal, strictly positive number when
+    /// this engine wrote it; the scan checks, since an open never reads a row.
+    pub fn scale_at(&self, bytes: RowBytes<'_>, r: usize) -> f32 {
+        f32::from_le_bytes(four(bytes.slice(r * self.row_bytes + 8, 4)))
+    }
+
+    /// Row `r`'s codes, as they are on disk: one byte per dimension, two's complement.
+    ///
+    /// Returned as bytes rather than as signed bytes because reinterpreting a slice needs
+    /// `unsafe`, which this crate confines to SIMD kernels and memory mapping (Principle VII).
+    /// Callers convert per element, which compiles to nothing.
+    pub fn codes_at<'a>(&self, bytes: RowBytes<'a>, r: usize) -> &'a [u8] {
+        bytes.slice(r * self.row_bytes + 12, self.dim)
+    }
+
+    /// `codes` recovered as floats under `scale` — `code × scale`, which is approximate
+    /// (ADR-0015): what `vector(id)` answers and what the Euclidean path compares against; the
+    /// dot-product paths never materialise a row. The scale is the caller's, decoded and
+    /// checked once.
+    pub fn recover(codes: &[u8], scale: f32) -> impl Iterator<Item = f32> + '_ {
+        codes
+            .iter()
+            .map(move |c| quantise::recover_code(*c as i8, scale))
     }
 
     /// The bytes of row `r`, as they are on disk.
@@ -189,13 +224,31 @@ fn four(bytes: &[u8]) -> [u8; 4] {
     [bytes[0], bytes[1], bytes[2], bytes[3]]
 }
 
-/// Append one row to `out`.
-pub(crate) fn encode_row(out: &mut Vec<u8>, id: u32, norm: f32, vector: &[f32]) {
-    out.extend_from_slice(&id.to_le_bytes());
-    out.extend_from_slice(&norm.to_le_bytes());
-    for x in vector {
-        out.extend_from_slice(&x.to_le_bytes());
+/// A row as it waits in the pending set: quantised once, at `add`, with the norm it will be
+/// stored with computed there too — `commit` and `compact` only copy bytes (review round 7,
+/// finding 2).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct StagedRow {
+    pub quantised: quantise::Quantised,
+    /// The norm of the row as stored (`quantise::norm`), rounded to `f32` once — the same
+    /// rounding everywhere a row is written.
+    pub norm: f32,
+}
+
+impl StagedRow {
+    pub fn new(vector: &[f32]) -> Self {
+        let quantised = quantise::quantise(vector);
+        let norm = quantise::norm(&quantised) as f32;
+        Self { quantised, norm }
     }
+}
+
+/// Append one row to `out` from its staged form (Feature 026, ADR-0015).
+pub(crate) fn encode_row(out: &mut Vec<u8>, id: u32, row: &StagedRow) {
+    out.extend_from_slice(&id.to_le_bytes());
+    out.extend_from_slice(&row.norm.to_le_bytes());
+    out.extend_from_slice(&row.quantised.scale.to_le_bytes());
+    out.extend(row.quantised.codes.iter().map(|c| *c as u8));
 }
 
 /// Encode a manifest: the header (with `tombstones_len` set here) and the tombstone set.
@@ -246,6 +299,9 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, Rows, RoaringBitm
         if *digit == b'1' {
             return Err(version_1_error());
         }
+        if *digit == b'2' {
+            return Err(version_2_error());
+        }
         return Err(corrupt(format!(
             "dense index is format version {}, this build reads {FORMAT_VERSION}",
             char::from(*digit)
@@ -279,14 +335,33 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, Rows, RoaringBitm
     };
     let header: Header =
         serde_json::from_slice(json).map_err(|e| corrupt(format!("{MANIFEST} header: {e}")))?;
-    if header.format_version != FORMAT_VERSION {
+    match header.format_version {
+        FORMAT_VERSION => {}
+        1 => return Err(version_1_error()),
+        2 => return Err(version_2_error()),
+        other => {
+            return Err(corrupt(format!(
+                "dense index is format version {other}, this build reads {FORMAT_VERSION}"
+            )));
+        }
+    }
+    if header.scheme != quantise::SCHEME {
         return Err(corrupt(format!(
-            "dense index is format version {}, this build reads {FORMAT_VERSION}",
-            header.format_version
+            "dense index quantisation scheme is {:?}, this build reads {:?} — rebuild the index \
+             (Feature 026, ADR-0015)",
+            header.scheme,
+            quantise::SCHEME
         )));
     }
     if header.dim == 0 {
         return Err(corrupt(format!("{MANIFEST} dim is 0")));
+    }
+    if header.dim > quantise::MAX_DIM {
+        return Err(corrupt(format!(
+            "{MANIFEST} dim {} exceeds {}, the widest row the integer kernel can score",
+            header.dim,
+            quantise::MAX_DIM
+        )));
     }
     if header.rows > u64::from(u32::MAX) {
         return Err(corrupt(format!(
@@ -354,8 +429,16 @@ pub(crate) fn decode_manifest(bytes: &[u8]) -> Result<(Header, Rows, RoaringBitm
 /// The refusal of a version-1 directory (`index.bin`, Feature 004–023).
 pub(crate) fn version_1_error() -> xtriever_core::Error {
     corrupt(format!(
-        "dense index is format version 1 ({V1_FILE}); this build reads {FORMAT_VERSION} \
-         ({MANIFEST}) — rebuild the index (Feature 024, ADR-0013)"
+        "dense index is format version 1 ({V1_FILE}, float columns); this build reads \
+         {FORMAT_VERSION} ({MANIFEST}, eight-bit rows) — rebuild the index (Feature 026, ADR-0015)"
+    ))
+}
+
+/// The refusal of a version-2 directory (`manifest.bin` with float rows, Feature 024–025).
+pub(crate) fn version_2_error() -> xtriever_core::Error {
+    corrupt(format!(
+        "dense index is format version 2 (float rows); this build reads {FORMAT_VERSION} \
+         (eight-bit rows) — rebuild the index (Feature 026, ADR-0015)"
     ))
 }
 
@@ -367,6 +450,7 @@ mod tests {
     fn header(rows: u64, live: u64) -> Header {
         Header {
             format_version: FORMAT_VERSION,
+            scheme: quantise::SCHEME.to_owned(),
             dim: 2,
             metric: MetricName::Dot,
             fingerprint: "fp".into(),
@@ -392,20 +476,23 @@ mod tests {
         assert_eq!(h.tombstones_len as usize, dead.serialized_size());
         assert_eq!(d, dead);
         let json = serde_json::to_string(&h).unwrap();
-        assert!(json.starts_with("{\"format_version\":2,\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"generation\":3,\"rows\":3,\"live\":2,\"ordered\":true,\"tombstones_len\":"), "{json}");
+        assert!(json.starts_with("{\"format_version\":3,\"scheme\":\"i8-symmetric-per-vector\",\"dim\":2,\"metric\":\"dot\",\"fingerprint\":\"fp\",\"generation\":3,\"rows\":3,\"live\":2,\"ordered\":true,\"tombstones_len\":"), "{json}");
     }
 
     #[test]
     fn rows_read_back_what_encode_row_wrote() {
         let mut out = Vec::new();
-        encode_row(&mut out, 3, 1.0, &[1.0, 0.0]);
-        encode_row(&mut out, 9, 2.0, &[0.0, 2.0]);
+        encode_row(&mut out, 3, &StagedRow::new(&[1.0, 0.0]));
+        encode_row(&mut out, 9, &StagedRow::new(&[0.0, 2.0]));
         let rows = Rows::for_count(2, 2).unwrap();
         assert_eq!(rows.len_bytes(), out.len());
         let whole = RowBytes::whole(&out);
         assert_eq!(rows.id_at(whole, 1), 9);
         assert_eq!(rows.norm_at(whole, 1), 2.0);
-        assert_eq!(rows.row_at(whole, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        assert_eq!(
+            Rows::recover(rows.codes_at(whole, 1), rows.scale_at(whole, 1)).collect::<Vec<_>>(),
+            vec![0.0, 2.0]
+        );
         // The same rows split at the row boundary between a base and a tail.
         let split = RowBytes {
             base: &out[..rows.row_bytes],
@@ -413,7 +500,10 @@ mod tests {
         };
         assert_eq!(rows.id_at(split, 0), 3);
         assert_eq!(rows.id_at(split, 1), 9);
-        assert_eq!(rows.row_at(split, 1).collect::<Vec<_>>(), vec![0.0, 2.0]);
+        assert_eq!(
+            Rows::recover(rows.codes_at(split, 1), rows.scale_at(split, 1)).collect::<Vec<_>>(),
+            vec![0.0, 2.0]
+        );
         assert_eq!(rows.row_bytes_at(split, 1), &out[rows.row_bytes..]);
         assert_eq!(row_file(7), "vectors.7.bin");
         assert_eq!(row_file_generation("vectors.7.bin"), Some(7));
@@ -456,13 +546,13 @@ mod tests {
             Err(xtriever_core::Error::Corrupt(_))
         ));
         // a future versioned magic names both versions
-        let mut v3 = b"XTDENSE3".to_vec();
-        v3.extend_from_slice(&0u64.to_le_bytes());
-        let msg = match decode_manifest(&v3).unwrap_err() {
+        let mut v4 = b"XTDENSE4".to_vec();
+        v4.extend_from_slice(&0u64.to_le_bytes());
+        let msg = match decode_manifest(&v4).unwrap_err() {
             xtriever_core::Error::Corrupt(m) => m,
             other => panic!("{other:?}"),
         };
-        assert!(msg.contains("version 3") && msg.contains('2'), "{msg}");
+        assert!(msg.contains("version 4") && msg.contains('3'), "{msg}");
         // version 1 magic
         let mut v1 = b"XTDENSE1".to_vec();
         v1.extend_from_slice(&0u64.to_le_bytes());
@@ -470,6 +560,57 @@ mod tests {
             xtriever_core::Error::Corrupt(m) => m,
             other => panic!("{other:?}"),
         };
-        assert!(msg.contains("version 1") && msg.contains('2'), "{msg}");
+        assert!(
+            msg.contains("version 1") && msg.contains('3') && msg.contains("rebuild"),
+            "{msg}"
+        );
+        // version 2 magic, and a version-2 header behind the current magic: both say to rebuild
+        let mut v2 = b"XTDENSE2".to_vec();
+        v2.extend_from_slice(&0u64.to_le_bytes());
+        let msg = match decode_manifest(&v2).unwrap_err() {
+            xtriever_core::Error::Corrupt(m) => m,
+            other => panic!("{other:?}"),
+        };
+        assert!(
+            msg.contains("version 2") && msg.contains('3') && msg.contains("rebuild"),
+            "{msg}"
+        );
+        let stale = Header {
+            format_version: 2,
+            ..header(0, 0)
+        };
+        let msg = match decode_manifest(&encode_manifest(&stale, &dead).unwrap()).unwrap_err() {
+            xtriever_core::Error::Corrupt(m) => m,
+            other => panic!("{other:?}"),
+        };
+        assert!(
+            msg.contains("version 2") && msg.contains("rebuild"),
+            "{msg}"
+        );
+        // another scheme, and no scheme at all
+        for scheme in ["i4-something", ""] {
+            let other = Header {
+                scheme: scheme.to_owned(),
+                ..header(0, 0)
+            };
+            let msg = match decode_manifest(&encode_manifest(&other, &dead).unwrap()).unwrap_err() {
+                xtriever_core::Error::Corrupt(m) => m,
+                other => panic!("{other:?}"),
+            };
+            assert!(
+                msg.contains("scheme") && msg.contains(quantise::SCHEME),
+                "{msg}"
+            );
+        }
+        // a dimension the integer kernel could overflow on
+        let wide = Header {
+            dim: quantise::MAX_DIM + 1,
+            ..header(0, 0)
+        };
+        let msg = match decode_manifest(&encode_manifest(&wide, &dead).unwrap()).unwrap_err() {
+            xtriever_core::Error::Corrupt(m) => m,
+            other => panic!("{other:?}"),
+        };
+        assert!(msg.contains("dim") && msg.contains("132104"), "{msg}");
     }
 }

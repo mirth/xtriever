@@ -98,47 +98,34 @@ fn dim_or_metric_disagreement_with_the_embedder_is_corrupt() {
     assert!(matches!(err, Error::Corrupt(_)), "{err:?}");
 }
 
-/// Rewrite `manifest.bin`'s JSON header in place (magic · hdr_len · JSON · tombstones).
-fn rewrite_manifest_header(dir: &std::path::Path, edit: impl Fn(&str) -> String) {
-    let path = dir.join("manifest.bin");
-    let bytes = std::fs::read(&path).unwrap();
-    let hdr_len = u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
-    let header = std::str::from_utf8(&bytes[16..16 + hdr_len]).unwrap();
-    let edited = edit(header);
-    let mut out = Vec::new();
-    out.extend_from_slice(&bytes[..8]);
-    out.extend_from_slice(&(edited.len() as u64).to_le_bytes());
-    out.extend_from_slice(edited.as_bytes());
-    out.extend_from_slice(&bytes[16 + hdr_len..]);
-    std::fs::write(&path, out).unwrap();
-}
+use support::rewrite_manifest_header;
 
 #[test]
 fn a_future_format_version_is_rejected_naming_both_versions() {
     let tmp = tempfile::tempdir().unwrap();
     drop(small(tmp.path()));
-    // A genuine future format carries its own versioned magic (XTDENSE1, XTDENSE2, …) as well
-    // as its header version: both spellings must name both versions.
+    // A genuine future format carries its own versioned magic (XTDENSE1, XTDENSE2, XTDENSE3, …)
+    // as well as its header version: both spellings must name both versions.
     let path = tmp.path().join("manifest.bin");
     let mut bytes = std::fs::read(&path).unwrap();
-    bytes[..8].copy_from_slice(b"XTDENSE3");
+    bytes[..8].copy_from_slice(b"XTDENSE4");
     std::fs::write(&path, &bytes).unwrap();
     match FlatIndex::open(tmp.path()).unwrap_err() {
         Error::Corrupt(msg) => {
-            assert!(msg.contains("version 3"), "{msg}");
+            assert!(msg.contains("version 4"), "{msg}");
             assert!(msg.contains(&FORMAT_VERSION.to_string()), "{msg}");
         }
         other => panic!("expected Corrupt, got {other:?}"),
     }
     drop(small(&tmp.path().join("again")));
     rewrite_manifest_header(&tmp.path().join("again"), |h| {
-        assert!(h.contains("\"format_version\":2"), "{h}");
-        h.replace("\"format_version\":2", "\"format_version\":3")
+        assert!(h.contains("\"format_version\":3"), "{h}");
+        h.replace("\"format_version\":3", "\"format_version\":4")
     });
     let err = FlatIndex::open(&tmp.path().join("again")).unwrap_err();
     match err {
         Error::Corrupt(msg) => {
-            assert!(msg.contains('3'), "{msg}");
+            assert!(msg.contains('4'), "{msg}");
             assert!(msg.contains(&FORMAT_VERSION.to_string()), "{msg}");
         }
         other => panic!("expected Corrupt, got {other:?}"),
@@ -519,7 +506,7 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     );
     let fresh = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(fresh.len(), 2);
-    assert_eq!(fresh.vector(DocId(2)), Some(vec![0.0, 1.0]));
+    assert_eq!(fresh.vector(DocId(2)).unwrap(), Some(vec![0.0, 1.0]));
 
     // The check applies to no-ops too: a stale handle never reports success over another
     // writer's state.
@@ -546,7 +533,10 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     c.add(DocId(5), &[1.0, 1.0]).unwrap();
     assert!(matches!(c.commit().unwrap_err(), Error::Corrupt(_)));
     assert_eq!(
-        FlatIndex::open(tmp.path()).unwrap().vector(DocId(2)),
+        FlatIndex::open(tmp.path())
+            .unwrap()
+            .vector(DocId(2))
+            .unwrap(),
         None,
         "the delete stands"
     );
@@ -562,7 +552,10 @@ fn a_stale_writable_handle_refuses_to_commit_over_another_writer() {
     assert!(matches!(e.commit().unwrap_err(), Error::Corrupt(_)));
     let fresh = FlatIndex::open(tmp.path()).unwrap();
     assert_eq!(
-        (fresh.vector(DocId(6)), fresh.vector(DocId(7)).is_some()),
+        (
+            fresh.vector(DocId(6)).unwrap(),
+            fresh.vector(DocId(7)).unwrap().is_some()
+        ),
         (None, true)
     );
 }
