@@ -109,6 +109,7 @@ fn eight_bit_fingerprint_names_the_artefact_and_differs_only_in_it() {
         PINNED_Q8.revision,
         PINNED_Q8.files[2].sha256,
         ";dtype=q8_0;",
+        ";compute=f16;",
     ] {
         assert!(
             FINGERPRINT_Q8.contains(needle),

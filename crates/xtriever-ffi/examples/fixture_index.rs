@@ -23,14 +23,14 @@ fn repo_root() -> PathBuf {
 
 fn embedder_dir() -> PathBuf {
     std::env::var_os("XTRIEVER_MODEL_DIR").map_or_else(
-        || repo_root().join("reference/models/all-MiniLM-L6-v2"),
+        || repo_root().join("reference/models/all-MiniLM-L6-v2-q8"),
         PathBuf::from,
     )
 }
 
 fn reranker_dir() -> PathBuf {
     std::env::var_os("XTRIEVER_RERANK_MODEL_DIR").map_or_else(
-        || repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2"),
+        || repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2-q8"),
         PathBuf::from,
     )
 }

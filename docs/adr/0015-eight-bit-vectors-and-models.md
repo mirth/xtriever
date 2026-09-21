@@ -79,6 +79,15 @@ rather than relevance scores. Nothing is quantised in this repository.
 The tokenizer continues to come from the pinned float model directory, because neither quantised
 repository ships one. The artefact supplies weights only.
 
+**The matrices are multiplied in f16** (owner's decision, 2026-09-21). candle's eight-bit CPU
+kernel is 3.7× slower than the float path for the 256-token sequences this engine feeds it, and
+quality is the same under eight-bit, f16 and f32 arithmetic to three decimals on SciFact, because
+the weight rounding, not the arithmetic, is what the artefact changes. Each eight-bit tensor is
+expanded to `f16` once at load — half the float model's RAM, float speed — and the fingerprints
+say so (`compute=f16`); the mode is fixed in code, never read from the environment. A kernel of
+our own for eight-bit arithmetic at float speed is out of scope (a commodity component, Principle
+I).
+
 **The re-ranker's pooler is borrowed too** (owner's decision, 2026-09-21). The published
 cross-encoder scores `classifier(tanh(pooler(CLS)))`; the pinned eight-bit file carries the
 classifier bit for bit but not the 384×384 pooler that feeds it (103 tensors against the float

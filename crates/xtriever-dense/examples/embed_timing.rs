@@ -20,18 +20,31 @@ use xtriever_dense::{LoadPath, MiniLmEmbedder};
 
 fn main() {
     let dir: PathBuf = std::env::args().nth(1).expect("model dir").into();
-    let n: usize = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(20);
+    let n: usize = std::env::args()
+        .nth(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20);
     let texts: Vec<String> = (0..n)
         .map(|i| format!("passage number {i}: the quick brown fox jumps over the lazy dog, again and again, {}", "lorem ipsum ".repeat(i % 7 + 3)))
         .collect();
     let started = Instant::now();
     let embedder = MiniLmEmbedder::load(&dir, LoadPath::Buffered).expect("load");
-    println!("loaded {:?} in {:.2} s (threads {})", embedder.precision(), started.elapsed().as_secs_f64(), MiniLmEmbedder::thread_count());
-    embedder.embed(&[texts[0].as_str()], TextKind::Passage).unwrap();
+    println!(
+        "loaded {:?} in {:.2} s (threads {})",
+        embedder.precision(),
+        started.elapsed().as_secs_f64(),
+        MiniLmEmbedder::thread_count()
+    );
+    embedder
+        .embed(&[texts[0].as_str()], TextKind::Passage)
+        .unwrap();
     let started = Instant::now();
     for text in &texts {
         embedder.embed(&[text.as_str()], TextKind::Passage).unwrap();
     }
     let per = started.elapsed().as_secs_f64() * 1000.0 / n as f64;
-    println!("{n} embeddings: {per:.1} ms each ({:.2} per second)", 1000.0 / per);
+    println!(
+        "{n} embeddings: {per:.1} ms each ({:.2} per second)",
+        1000.0 / per
+    );
 }

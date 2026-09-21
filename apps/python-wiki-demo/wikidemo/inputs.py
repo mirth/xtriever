@@ -20,8 +20,8 @@ ENV = {
 
 DEFAULTS = {
     "artefact": "target/xt-wiki",
-    "embedder": "reference/models/all-MiniLM-L6-v2",
-    "reranker": "reference/models/ms-marco-MiniLM-L-6-v2",
+    "embedder": "reference/models/all-MiniLM-L6-v2-q8",
+    "reranker": "reference/models/ms-marco-MiniLM-L-6-v2-q8",
     "chonky": "reference/models/chonky_distilbert_base_uncased_1",
     "snapshot": "reference/datasets/wiki/simple.jsonl",
     "manifest": "reference/datasets/wiki-manifest.json",
@@ -34,14 +34,14 @@ PRODUCERS = {
         "cargo run --release -p xtriever-cli -- wiki build --out target/xt-wiki   "
         "(the full corpus, hours) or: wikidemo build --limit N --out DIR   (a slice, minutes)"
     ),
-    "embedder": "scripts/fetch-model.sh",
-    "reranker": "scripts/fetch-model.sh --manifest reference/models/manifest-rerank.json",
+    "embedder": "scripts/fetch-model.sh --manifest reference/models/manifest-q8.json",
+    "reranker": "scripts/fetch-model.sh --manifest reference/models/manifest-rerank-q8.json",
     "chonky": "scripts/fetch-model.sh --manifest reference/models/manifest-chonky.json",
     "snapshot": "scripts/fetch-wiki.sh",
     "manifest": "git checkout -- reference/datasets/wiki-manifest.json   (it is in the tree)",
     "expected": (
         "cargo run --release -p xtriever-cli -- wiki expected --index target/xt-wiki/index "
-        "--embedder-dir reference/models/all-MiniLM-L6-v2 --reranker-dir reference/models/ms-marco-MiniLM-L-6-v2 "
+        "--embedder-dir reference/models/all-MiniLM-L6-v2-q8 --reranker-dir reference/models/ms-marco-MiniLM-L-6-v2-q8 "
         "--queries reference/fixtures/008/queries.json --out target/xt-wiki/expected.json"
     ),
     "queries": "git checkout -- reference/fixtures/008/queries.json   (it is in the tree)",
@@ -120,11 +120,21 @@ def resolve(args) -> Paths:
     )
 
 
+def _weights(model_dir: Path) -> Path:
+    """The weights file a pinned model directory holds: the float `model.safetensors`, or the
+    eight-bit GGUF (Feature 026; the engine tells them apart). Absent either, the float name, so
+    the missing-file message names something a reader recognises."""
+    if not (model_dir / "model.safetensors").exists():
+        for candidate in sorted(model_dir.glob("*.gguf")) if model_dir.is_dir() else []:
+            return candidate
+    return model_dir / "model.safetensors"
+
+
 def _sentinel(paths: Paths, name: str) -> Path:
     return {
         "artefact": paths.index_dir / "xtriever-pipeline.json",
-        "embedder": paths.embedder / "model.safetensors",
-        "reranker": paths.reranker / "model.safetensors",
+        "embedder": _weights(paths.embedder),
+        "reranker": _weights(paths.reranker),
         "chonky": paths.chonky / "model.safetensors",
         "snapshot": paths.snapshot,
         "manifest": paths.manifest,

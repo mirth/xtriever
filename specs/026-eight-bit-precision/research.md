@@ -71,6 +71,18 @@ artefacts use. What it does not have is a quantised BERT — its twenty-two quan
 all decoder-style language models — but both of our crates already write their own forward pass,
 so what changes is which multiply they call, not the shape of the computation.
 
+**Amended 2026-09-21, the arithmetic.** candle's eight-bit CPU kernel is built for one token
+at a time; fed the 256-token sequences this stage embeds it ran at 442 ms per embedding against
+125 ms for the float artefact (clean, release, 10 threads). Expanding the eight-bit tensors to
+`f16` at load and multiplying with the float kernel ran at 120 ms — float speed at half the
+float model's RAM — and to `f32` at 123 ms with no RAM saving. SciFact nDCG@10 under the three
+arithmetics: 0.64646, 0.64642, 0.64631, Recall@100 0.92167 in all three; the weight rounding,
+not the arithmetic, is what the artefact changes. **The owner chose f16.** The mode is fixed in
+code (candle's `QMatMul::from_arc` would read it from two environment variables, which must
+never be able to change a vector) and the fingerprints name it (`compute=f16`). Eight-bit
+arithmetic at float speed would need a matrix kernel of our own for the sequence-length case —
+a commodity component the constitution asks an ADR for — and is deliberately not done here.
+
 **What the artefacts contain** (inspected 2026-09-20): architecture `bert`, six blocks, embedding
 length 384, context length 512; 37 eight-bit matrices in the embedder and 38 in the re-ranker,
 with layer norms, biases and token-type embeddings left in float. The re-ranker carries

@@ -3,21 +3,55 @@
 //!
 //! candle 0.9.2 ships a float `BertModel` and twenty-two quantised *decoder* models, but no
 //! quantised BERT, so this is the float model's forward pass
-//! (`candle_transformers::models::bert`, read line by line on 2026-09-21) written over
-//! `candle_transformers::quantized_nn` layers: every weight matrix is a `QMatMul` over the
-//! file's eight-bit blocks, and the norms, biases, token-type and position tables are
-//! dequantised once at load (they are float in the file anyway). Tensor names are the GGUF
-//! convention for `bert` (`token_embd`, `blk.N.attn_q`, `blk.N.ffn_up`, …).
+//! (`candle_transformers::models::bert`, read line by line on 2026-09-21) written over the
+//! file's tensors. Tensor names are the GGUF convention for `bert` (`token_embd`,
+//! `blk.N.attn_q`, `blk.N.ffn_up`, …); the norms, biases, token-type and position tables are
+//! dequantised once at load (they are float in the file anyway).
+//!
+//! **The arithmetic is f16 over the eight-bit-rounded weights** (owner's decision, 2026-09-21;
+//! the fingerprint names it, `compute=f16`, from the same literal as the pins in `model.rs`). Every weight matrix is expanded from its eight-bit blocks to `f16` once at
+//! load — the values stay exactly what the artefact fixed, the storage halves the float
+//! model's — and each multiply converts the activations to `f16`, runs the float kernel, and
+//! converts back. Measured on SciFact before the choice: candle's eight-bit CPU kernel (built
+//! for one token at a time, fed 256) took 442 ms per embedding against 120 ms for this path and
+//! 125 ms for the float artefact, with nDCG@10 0.64646 / 0.64642 / 0.64631 for the eight-bit,
+//! f16 and f32 arithmetic — the weight rounding, not the arithmetic, is what the artefact
+//! changes. The mode is fixed here in code: candle's `QMatMul::from_arc` reads it from two
+//! environment variables, and an environment variable must not be able to change a vector,
+//! so the matmul is constructed explicitly and `from_arc` is never called.
 //!
 //! The arithmetic is the reference's: embeddings summed then normalised; per block, scaled
 //! dot-product attention with the extended mask (`(1 − mask) × f32::MIN`), a residual and a
 //! norm, then the erf GELU feed-forward, a residual and a norm. Nothing is batched across
 //! texts, as in the float path.
 
+use candle_core::quantized::QMatMul;
 use candle_core::{D, DType, Device, Module, Result, Tensor};
 use candle_nn::LayerNorm;
-use candle_transformers::quantized_nn::{Embedding, Linear, layer_norm, linear};
+use candle_transformers::quantized_nn::{Embedding, layer_norm};
 use candle_transformers::quantized_var_builder::VarBuilder;
+
+/// A linear layer whose matrix is the artefact's eight-bit tensor expanded to `f16` at load,
+/// constructed explicitly so candle's environment switches cannot change the mode.
+struct Linear {
+    weight: QMatMul,
+    bias: Tensor,
+}
+
+impl Linear {
+    fn new(vb: &VarBuilder, in_dim: usize, out_dim: usize) -> Result<Self> {
+        let weight = vb.get((out_dim, in_dim), "weight")?;
+        let weight = QMatMul::TensorF16(weight.dequantize_f16(vb.device())?);
+        let bias = vb.get(out_dim, "bias")?.dequantize(vb.device())?;
+        Ok(Self { weight, bias })
+    }
+}
+
+impl Module for Linear {
+    fn forward(&self, xs: &Tensor) -> Result<Tensor> {
+        self.weight.forward(xs)?.broadcast_add(&self.bias)
+    }
+}
 
 /// The shape the encoder is built for: what the header declared and the pin asserted.
 #[derive(Debug, Clone, Copy)]
@@ -65,17 +99,17 @@ impl QuantisedBert {
             .map(|i| {
                 let b = vb.pp(format!("blk.{i}"));
                 Ok(Block {
-                    query: linear(shape.hidden, shape.hidden, b.pp("attn_q"))?,
-                    key: linear(shape.hidden, shape.hidden, b.pp("attn_k"))?,
-                    value: linear(shape.hidden, shape.hidden, b.pp("attn_v"))?,
-                    output: linear(shape.hidden, shape.hidden, b.pp("attn_output"))?,
+                    query: Linear::new(&b.pp("attn_q"), shape.hidden, shape.hidden)?,
+                    key: Linear::new(&b.pp("attn_k"), shape.hidden, shape.hidden)?,
+                    value: Linear::new(&b.pp("attn_v"), shape.hidden, shape.hidden)?,
+                    output: Linear::new(&b.pp("attn_output"), shape.hidden, shape.hidden)?,
                     attention_norm: layer_norm(
                         shape.hidden,
                         shape.layer_norm_eps,
                         b.pp("attn_output_norm"),
                     )?,
-                    up: linear(shape.hidden, shape.feed_forward, b.pp("ffn_up"))?,
-                    down: linear(shape.feed_forward, shape.hidden, b.pp("ffn_down"))?,
+                    up: Linear::new(&b.pp("ffn_up"), shape.hidden, shape.feed_forward)?,
+                    down: Linear::new(&b.pp("ffn_down"), shape.feed_forward, shape.hidden)?,
                     output_norm: layer_norm(
                         shape.hidden,
                         shape.layer_norm_eps,

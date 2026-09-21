@@ -186,8 +186,14 @@ public enum HarnessResources {
 
     public static var modelsAreBundled: Bool {
         guard let e = embedderDirectory, let r = rerankerDirectory else { return false }
-        return FileManager.default.fileExists(atPath: e.appendingPathComponent("model.safetensors").path)
-            && FileManager.default.fileExists(atPath: r.appendingPathComponent("model.safetensors").path)
+        return holdsWeights(e) && holdsWeights(r)
+    }
+
+    /// Whether a model directory holds a pinned artefact's weights: the float
+    /// `model.safetensors`, or the eight-bit GGUF (Feature 026). The engine tells them apart.
+    static func holdsWeights(_ directory: URL) -> Bool {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return false }
+        return names.contains("model.safetensors") || names.contains { $0.hasSuffix(".gguf") }
     }
 
     public static var fixtureIsBundled: Bool {

@@ -142,6 +142,15 @@ macro_rules! q8_revision {
         "ddf2e25d5b8530422e7b14aa39f33a657ff9aec0"
     };
 }
+/// The arithmetic the eight-bit matrices are multiplied in (`quantised_bert`): expanded to
+/// `f16` at load, multiplied by the float kernel — the owner's choice over candle's eight-bit
+/// CPU kernel, which is 3.7× slower for the sequences this stage feeds. A different arithmetic
+/// would be different numbers, so the fingerprint names it.
+macro_rules! compute {
+    () => {
+        "f16"
+    };
+}
 macro_rules! q8_weights_sha256 {
     () => {
         "e5ec722e8c82dc4ffaf965175ca472f5da3f97b695590b5b0780bdbfa29bcaf3"
@@ -172,15 +181,19 @@ pub const PINNED_Q8: PinnedArtefact = PinnedArtefact {
 };
 
 /// The embedder fingerprint for the eight-bit artefact: the same inputs as [`FINGERPRINT`] with
-/// the artefact and `dtype=q8_0` in place of the float file, so an index records which weights
-/// produced it and a float index refuses to open with this embedder (spec FR-006, FR-007).
+/// the artefact and `dtype=q8_0` in place of the float file, plus `compute=f16`, the arithmetic
+/// the matrices are multiplied in (`compute!()`) — a different arithmetic would be
+/// a different vector — so an index records which weights produced it and a float index refuses
+/// to open with this embedder (spec FR-006, FR-007).
 pub const FINGERPRINT_Q8: &str = concat!(
     q8_repository!(),
     "@",
     q8_revision!(),
     ";weights=sha256:",
     q8_weights_sha256!(),
-    ";dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=q8_0;prefix=none;engine=candle-0.9.2"
+    ";dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=q8_0;compute=",
+    compute!(),
+    ";prefix=none;engine=candle-0.9.2"
 );
 
 /// The embedder fingerprint (spec FR-004, research D6): every input whose change would change

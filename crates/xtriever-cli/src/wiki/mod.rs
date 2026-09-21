@@ -45,7 +45,7 @@ pub struct BuildArgs {
     #[arg(long, default_value = "reference/datasets/wiki")]
     pub snapshot_dir: PathBuf,
     /// The pinned embedder directory.
-    #[arg(long, default_value = "reference/models/all-MiniLM-L6-v2")]
+    #[arg(long, default_value = "reference/models/all-MiniLM-L6-v2-q8")]
     pub embedder_dir: PathBuf,
     /// Output directory (created; written as `<out>.partial` until complete).
     #[arg(long)]
@@ -68,7 +68,7 @@ pub struct VerifyArgs {
     #[arg(long)]
     pub index: PathBuf,
     /// The pinned embedder directory.
-    #[arg(long, default_value = "reference/models/all-MiniLM-L6-v2")]
+    #[arg(long, default_value = "reference/models/all-MiniLM-L6-v2-q8")]
     pub embedder_dir: PathBuf,
     /// Where the snapshot lives (for the URL check).
     #[arg(long, default_value = "reference/datasets/wiki")]
@@ -82,10 +82,10 @@ pub struct ExpectedArgs {
     #[arg(long)]
     pub index: PathBuf,
     /// The pinned embedder directory.
-    #[arg(long, default_value = "reference/models/all-MiniLM-L6-v2")]
+    #[arg(long, default_value = "reference/models/all-MiniLM-L6-v2-q8")]
     pub embedder_dir: PathBuf,
     /// The pinned re-ranker directory.
-    #[arg(long, default_value = "reference/models/ms-marco-MiniLM-L-6-v2")]
+    #[arg(long, default_value = "reference/models/ms-marco-MiniLM-L-6-v2-q8")]
     pub reranker_dir: PathBuf,
     /// The measurement queries.
     #[arg(long, default_value = "reference/fixtures/008/queries.json")]

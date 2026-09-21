@@ -54,7 +54,9 @@ Any of these failing is a named error, never a warning and never a fallback.
 
 Each fingerprint gains the artefact it was loaded from, so that two installations using different
 precisions are distinguishable by the strings their indexes record; the re-ranker's also names
-the borrowed pooler's file, since it too produced the score. An index whose recorded
+the borrowed pooler's file, since it too produced the score. Both name the arithmetic the
+eight-bit matrices are multiplied in (`compute=f16`): the mode is fixed in code, not read from
+the environment, and a different mode would be different numbers. An index whose recorded
 embedder fingerprint differs from the loaded embedder's is refused at open, as it is today.
 
 ## What this contract does not promise

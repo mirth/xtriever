@@ -116,6 +116,8 @@ models, every delta inside 0.005 of its committed baseline.
 
 - [X] T023a [US2] The re-ranker's pooler (found missing from the pinned artefact during T022; owner's decision 2026-09-21): `scripts/extract_tensors.py` cuts the two pooler tensors byte for byte out of the pinned float weights into `pooler.safetensors`; `manifest-rerank-q8.json` pins it under `borrows.tensors`; `scripts/fetch-model.sh` stages it and every `borrows` file; the loader verifies and uses it; `MODEL_ID_Q8` names it; ADR-0015, the contract, the data model and research D6 record why
 
+- [X] T023b [US2] The arithmetic (owner's decision 2026-09-21, after measuring): candle's eight-bit CPU kernel at 442 ms per embedding against 125 float; f16 expansion at load at 120 ms with the same SciFact quality to three decimals; the encoders construct their matmuls explicitly in f16 so candle's environment switches cannot change a vector, and `FINGERPRINT_Q8` / `MODEL_ID_Q8` name `compute=f16`; research D5, ADR-0015 and the contract record the measurement and the choice; `crates/xtriever-dense/examples/embed_timing.rs` is the record's tool
+
 **Checkpoint**: both models are eight-bit and the quality gate has passed on all three datasets.
 
 ---
@@ -128,9 +130,9 @@ models, every delta inside 0.005 of its committed baseline.
 goldens and a peak resident size below 600 MB.
 
 - [ ] T025 [US3] Rebuild the Wikipedia corpus with `cargo run --release -p xtriever-cli -- wiki build --out target/xt-wiki` (hours) and its goldens with `wiki expected`, replacing the format-2 artefact
-- [ ] T026 [P] [US3] Rebuild the 40-document fixture index and its goldens through `scripts/build-ios-package.sh --with-fixtures`, which every platform's parity test depends on
+- [ ] T026 [P] [US3] Rebuild the 40-document fixture index and its goldens through `scripts/build-ios-package.sh --with-fixtures`, which every platform's parity test depends on; then point the FFI and pipeline test supports' default model directories (`crates/xtriever-ffi/tests/support/mod.rs`, `crates/xtriever-pipeline/tests/support/mod.rs`, `model_roundtrip.rs`) at the eight-bit directories the goldens were minted with — every tool's default already is (T027a), the test supports wait for the re-mint
 - [ ] T027 [P] [US3] Rebuild the demo corpus slices with `apps/python-wiki-demo/.venv/bin/wikidemo build --limit 2000 --out target/xt-wiki-slice-py` and the Rust slice, and regenerate the Android demo's measurement goldens
-- [ ] T027a [US3] Teach the packagers the eight-bit artefacts (FR-005, FR-010; Copilot on PR A): `scripts/build-ios-package.sh --with-models` and `scripts/build-android-package.sh` stage the two pinned GGUF files from `reference/models/manifest-q8.json` and `manifest-rerank-q8.json` beside the `config.json` and `tokenizer.json` they borrow from the float directories (`tokenizer_from`), and the iOS and Android loaders open them; until then a packaged app ships float weights whatever the index was built with
+- [X] T027a [US3] Teach the packagers the eight-bit artefacts (FR-005, FR-010; Copilot on PR A): `scripts/build-ios-package.sh --with-models` and `scripts/build-android-package.sh` stage the two pinned GGUF files from `reference/models/manifest-q8.json` and `manifest-rerank-q8.json` beside the `config.json` and `tokenizer.json` they borrow from the float directories (`tokenizer_from`), and the iOS and Android loaders open them; until then a packaged app ships float weights whatever the index was built with
 - [ ] T028 [US3] Record the measurement in `specs/026-eight-bit-precision/runs/`: `wikidemo measure` over the rebuilt corpus — parity against the new goldens, and the peak resident size against the 600 MB ceiling and the previous record (SC-005, FR-011)
 - [ ] T029 [P] [US3] Re-run each demonstration's own checks against the rebuilt artefacts: `apps/python-wiki-demo/tests`, `android/xtriever` and `apps/android-wiki-demo` on the emulator, and `apps/ios-wiki-demo` on the simulator
 

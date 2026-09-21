@@ -111,14 +111,21 @@ mkdir -p "$resources"
 printf 'Staged by scripts/build-ios-package.sh; gitignored.\n' > "$resources/README.txt"
 
 if [ "$with_models" = true ]; then
-    "$repo_root/scripts/fetch-model.sh" >/dev/null
-    "$repo_root/scripts/fetch-model.sh" --manifest "$repo_root/reference/models/manifest-rerank.json" >/dev/null
-    rm -rf "$resources/models"; mkdir -p "$resources/models/embedder" "$resources/models/reranker"
-    for f in config.json tokenizer.json model.safetensors; do
-        cp "$repo_root/reference/models/all-MiniLM-L6-v2/$f" "$resources/models/embedder/"
-        cp "$repo_root/reference/models/ms-marco-MiniLM-L-6-v2/$f" "$resources/models/reranker/"
-    done
-    printf '    models bundled (%s)\n' "$(du -sh "$resources/models" | cut -f1)"
+    # Feature 026: the eight-bit artefacts by default (25 MB each against 90), each directory
+    # staged whole — the GGUF beside the float model's config and tokenizer, and for the
+    # re-ranker the borrowed pooler — as the manifests pin them. XTRIEVER_MODEL_MANIFEST and
+    # XTRIEVER_RERANK_MODEL_MANIFEST name other manifests (e.g. the float ones); the engine
+    # tells the artefacts apart by their weights file, so nothing else changes.
+    embedder_manifest="${XTRIEVER_MODEL_MANIFEST:-$repo_root/reference/models/manifest-q8.json}"
+    reranker_manifest="${XTRIEVER_RERANK_MODEL_MANIFEST:-$repo_root/reference/models/manifest-rerank-q8.json}"
+    "$repo_root/scripts/fetch-model.sh" --manifest "$embedder_manifest" >/dev/null
+    "$repo_root/scripts/fetch-model.sh" --manifest "$reranker_manifest" >/dev/null
+    embedder_dir="$repo_root/reference/models/$(jq -er '.local_dir' "$embedder_manifest")"
+    reranker_dir="$repo_root/reference/models/$(jq -er '.local_dir' "$reranker_manifest")"
+    rm -rf "$resources/models"; mkdir -p "$resources/models"
+    cp -R "$embedder_dir" "$resources/models/embedder"
+    cp -R "$reranker_dir" "$resources/models/reranker"
+    printf '    models bundled (%s): %s, %s\n' "$(du -sh "$resources/models" | cut -f1)" "$(basename "$embedder_dir")" "$(basename "$reranker_dir")"
 else
     printf '    models NOT bundled — pass --with-models for the Swift tests and device runs\n'
 fi

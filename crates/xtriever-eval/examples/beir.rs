@@ -154,14 +154,14 @@ fn model_dir(a: &Args) -> PathBuf {
     a.flags
         .get("model-dir")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repo_root().join("reference/models/all-MiniLM-L6-v2"))
+        .unwrap_or_else(|| repo_root().join("reference/models/all-MiniLM-L6-v2-q8"))
 }
 
 fn rerank_model_dir(a: &Args) -> PathBuf {
     a.flags
         .get("rerank-model-dir")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2"))
+        .unwrap_or_else(|| repo_root().join("reference/models/ms-marco-MiniLM-L-6-v2-q8"))
 }
 
 fn rerank_load_path(a: &Args) -> anyhow::Result<xtriever_rerank::LoadPath> {
