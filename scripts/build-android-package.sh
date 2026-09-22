@@ -11,8 +11,8 @@
 #
 #   --with-fixtures  build the 40-document parity fixture index + goldens and stage them for the
 #                    module's instrumented test (the oracle: swift/Xtriever/Tests/Fixtures)
-#   --with-models    stage both pinned models into the demo's assets (~174 MB)
-#   --with-corpus    stage the 2,000-article Wikipedia slice into the demo's assets (~24 MB)
+#   --with-models    stage both pinned models into the demo's assets (~52 MB: the eight-bit artefacts, Feature 026)
+#   --with-corpus    stage the 2,000-article Wikipedia slice into the demo's assets (~15 MB in dense format 3)
 #
 # Two hard requirements, both measured before this script existed (research D2, D4):
 #   * the native build needs half precision enabled — the inference engine's f16 matrix kernel

@@ -30,6 +30,25 @@
 //!   pool=mean-mask;norm=l2;max_tokens=256;dtype=f32;prefix=none;engine=candle-0.9.2` — every
 //!   input whose change would change the vectors, including the inference engine version. An
 //!   index carries it and `FlatIndex::open_for` refuses a different embedder.
+//!
+//! # Feature 026
+//!
+//! - **Two artefacts, one model.** [`MiniLmEmbedder::load`] takes a directory holding either
+//!   the float `model.safetensors` ([`model::PINNED`]) or the owner-pinned eight-bit GGUF
+//!   ([`model::PINNED_Q8`], `all-MiniLM-L6-v2.Q8_0.gguf`, 25 MB against 91) beside the float
+//!   model's `config.json` and `tokenizer.json`; a directory holding both, or neither, is
+//!   refused naming both. The GGUF's header is asserted against the pin (architecture, shape,
+//!   tensor count, layer-norm epsilon) after its bytes are verified, and its weight matrices are
+//!   expanded to `f32` once at load and multiplied by the float kernel (ADR-0015) — the mode is fixed in
+//!   code, never read from the environment. [`MiniLmEmbedder::precision`] says which artefact
+//!   loaded.
+//! - **The eight-bit fingerprint** ([`model::FINGERPRINT_Q8`]) names the artefact's repository,
+//!   revision and hash and ends `dtype=q8_0;compute=f32;…` — so an index built with it is
+//!   refused by a float embedder and vice versa, by exactly what differs.
+//! - **Format 3 rows.** Every vector is stored as eight-bit codes with a per-vector scale
+//!   whatever embedder produced it; the artefact's precision and the row format are independent
+//!   choices that this feature made together, and the three-dataset gate in
+//!   `specs/026-eight-bit-precision/runs/` measured both at once.
 //! - **Determinism promise**: same fingerprint, same CPU architecture ⇒ bit-identical vectors,
 //!   regardless of batch composition, order, size or thread count (`RAYON_NUM_THREADS`, read by
 //!   candle, never set here). Across architectures the SIMD reduction paths differ, so agreement

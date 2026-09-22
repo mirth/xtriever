@@ -145,12 +145,13 @@ macro_rules! q8_revision {
     };
 }
 /// The arithmetic the eight-bit matrices are multiplied in (`quantised_bert`): expanded to
-/// `f16` at load, multiplied by the float kernel — the owner's choice over candle's eight-bit
-/// CPU kernel, which is 3.7× slower for the sequences this stage feeds. A different arithmetic
-/// would be different numbers, so the fingerprint names it.
+/// `f32` at load, multiplied by the float kernel — the owner's choice over candle's eight-bit
+/// CPU kernel, which is 3.7× slower for the sequences this stage feeds, and over `f16`, which
+/// did not hold parity across platforms (ADR-0015). A different arithmetic would be different
+/// numbers, so the fingerprint names it.
 macro_rules! compute {
     () => {
-        "f16"
+        "f32"
     };
 }
 macro_rules! q8_weights_sha256 {
@@ -194,7 +195,7 @@ pub const PINNED_Q8: PinnedArtefact = PinnedArtefact {
 };
 
 /// The identity string for the eight-bit artefact: [`MODEL_ID`]'s inputs with the artefact and
-/// `dtype=q8_0` in place of the float file, `compute=f16` for the arithmetic the encoder's
+/// `dtype=q8_0` in place of the float file, `compute=f32` for the arithmetic the encoder's
 /// matrices are multiplied in (`compute!()`), and the borrowed pooler named by its
 /// own file's hash, since it too produced the score (spec FR-006).
 pub const MODEL_ID_Q8: &str = concat!(

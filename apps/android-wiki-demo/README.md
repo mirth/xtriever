@@ -38,7 +38,8 @@ scripts/build-android-package.sh --with-models --with-corpus --with-fixtures
 "$ANDROID_SDK_ROOT/platform-tools/adb" shell am start -n dev.xtriever.demo/.MainActivity
 ```
 
-The package carries 174 MB of model weights and a 24 MB corpus, so it installs over a cable,
+The package carries 52 MB of model weights and a 15 MB corpus (the eight-bit artefacts and
+format-3 rows of Feature 026; 174 MB and 24 MB before), so it installs over a cable,
 not from a store. On first launch the app copies both out of the package into its own storage —
 the engine memory-maps them, and an asset inside a package is not a file the system can map —
 showing progress while it does. A launch interrupted mid-copy re-extracts on the next start

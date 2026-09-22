@@ -11,7 +11,7 @@ The demo app (`apps/ios-wiki-demo/`, Feature 009) consumes it by path; the devic
 |---|---|---|
 | `Frameworks/XtrieverFFI.xcframework` | `scripts/build-ios-package.sh` | ~280 MB of static libraries; a binary in git history is effectively permanent |
 | `Sources/Xtriever/Generated/xtriever_ffi.swift` | uniffi-bindgen, from the Rust | a second source of truth that can drift from the crate |
-| `Sources/Xtriever/XtrieverData/` | the script's `--with-*` flags | models (175 MB) and indexes pinned elsewhere by size and hash |
+| `Sources/Xtriever/XtrieverData/` | the script's `--with-*` flags | models (52 MB: the eight-bit artefacts, Feature 026) and indexes pinned elsewhere by size and hash |
 | `Tests/Fixtures/index/` | `--with-fixtures` | derived from `reference/fixtures/005/hybrid.json` and the models |
 
 `Tests/Fixtures/expected.json` **is** committed: the parity goldens the FFI minted on the host
