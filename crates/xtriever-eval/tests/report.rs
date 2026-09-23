@@ -6,8 +6,10 @@ mod support;
 use std::collections::BTreeMap;
 
 use xtriever_eval::dataset::{Counts, Dataset, Manifest};
-use xtriever_eval::report::{EvalReport, LEXICAL_COMMIT, Rounded, StageInfo, delta, score, smoke};
-use xtriever_eval::run::Run;
+use xtriever_eval::report::{
+    EvalReport, LEXICAL_COMMIT, Rounded, SparseStage, StageInfo, delta, score, smoke,
+};
+use xtriever_eval::run::{Run, SparseSettings};
 
 fn mini() -> (tempfile::TempDir, Manifest, Dataset) {
     let dir = tempfile::tempdir().unwrap();
@@ -246,6 +248,46 @@ fn stage_is_the_last_key_and_round_trips() {
     assert_eq!(keys[keys.len() - 2], "per_query");
     let back: EvalReport = serde_json::from_str(&json).unwrap();
     assert_eq!(back, r);
+}
+
+/// Feature 027: a sparse report records its settings and encoder under `stage.sparse`, in this
+/// shape, and reads back equal; a report without it has no such key.
+#[test]
+fn a_sparse_stage_round_trips_in_its_recorded_shape() {
+    let mut r = report_with("scifact", 0.72, 0.955);
+    r.config = "hybrid-sparse-v1".into();
+    r.stage = Some(StageInfo {
+        kind: "hybrid".into(),
+        embedder_fingerprint: "fp".into(),
+        load_path: "buffered".into(),
+        thread_count: 4,
+        baseline: "guarded".into(),
+        reranker_model_id: None,
+        rerank_depth: None,
+        rerank_mode: None,
+        sparse: Some(SparseStage {
+            settings: SparseSettings::DEFAULT,
+            encoder: "encoder@rev".into(),
+        }),
+    });
+    let json = serde_json::to_value(&r).unwrap();
+    assert_eq!(
+        json["stage"]["sparse"],
+        serde_json::json!({
+            "settings": { "scale": 10, "boost": 1.0 },
+            "encoder": "encoder@rev"
+        })
+    );
+    let back: EvalReport = serde_json::from_value(json).unwrap();
+    assert_eq!(back, r);
+
+    let mut plain = r.clone();
+    plain.config = "hybrid-baseline-v2".into();
+    if let Some(stage) = plain.stage.as_mut() {
+        stage.sparse = None;
+    }
+    let text = serde_json::to_string(&plain).unwrap();
+    assert!(!text.contains("sparse"), "{text}");
 }
 
 #[test]

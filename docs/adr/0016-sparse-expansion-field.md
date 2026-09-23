@@ -96,9 +96,17 @@ expansions and validates them.
   recorded, not budgeted (Principle IV; research D12).
 - **An index's expansion is fixed at creation.** The scale, boost and encoder are recorded, and
   changing any of them means rebuilding. A different encoder has a different identity.
-- **`search_lexical` is unchanged.** It sends the caller's query as built, so a caller who wants
-  the expansion adds the `_sparse` terms. `explain`'s BM25 score is the whole lexical score,
-  expansion included.
+- **`search_lexical` adds no expansion, and keeps the reserved field reserved.** A caller who
+  wants the expansion adds the `_sparse` terms. On a sparse index, every `Match(None, …)` in the
+  caller's query ("all the text fields") is read as the caller's own text fields, spelled out.
+  That rewrite happens wherever the `Match(None, …)` sits in the query, so analysed text never
+  reaches `_sparse`, a field the caller did not declare. Those fields score exactly as
+  `Match(None, …)` does on an index without the option; everything else in the query is sent
+  as built. `explain`'s BM25 score is the whole lexical score, any `_sparse` clauses included.
+- **The expansion degrades like an ML stage.** If the stored query side cannot tokenise a
+  query, `search` searches the text fields alone and reports it in
+  `StageReport::sparse_skipped`; strict mode returns the error (Principle VI). A search that
+  returns nothing (`k == 0`, or a filter matching no document) never builds the lexical query.
 
 ## Alternatives considered
 

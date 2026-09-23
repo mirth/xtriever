@@ -229,23 +229,41 @@ fn sparse_expansions(
     // Resume only from the last synced point the progress record names: the partial file is
     // cut back to it and exactly that many documents are read, so nothing a crash left after
     // it — torn bytes, or blocks that read back as zeros — is taken for a document.
+    // The record is checked against the file before anything is written: it must name no more
+    // documents than the corpus holds and no more bytes than the file has. Truncation then
+    // only ever removes a tail — `set_len` would extend a short file with zeros — and a record
+    // that fails either check is stale, so the encode starts over rather than trust it.
     let progress = if matches && partial.exists() {
-        SparseProgress::read(&dir)?
+        match SparseProgress::read(&dir)? {
+            Some(progress) => {
+                let length = std::fs::metadata(&partial)?.len();
+                if progress.documents > passages.len() as u64 || progress.bytes > length {
+                    eprintln!(
+                        "sparse cache at {}: {} records {} documents in {} bytes, but the corpus \
+                         has {} and the file {} bytes; re-encoding",
+                        dir.display(),
+                        SparseProgress::FILE,
+                        progress.documents,
+                        progress.bytes,
+                        passages.len(),
+                        length
+                    );
+                    None
+                } else {
+                    Some(progress)
+                }
+            }
+            None => None,
+        }
     } else {
         None
     };
     let mut expansions = match progress {
         Some(progress) => {
+            let documents = usize::try_from(progress.documents)?;
             let file = std::fs::OpenOptions::new().write(true).open(&partial)?;
             file.set_len(progress.bytes)?;
             file.sync_all()?;
-            let documents = usize::try_from(progress.documents)?;
-            anyhow::ensure!(
-                documents <= passages.len(),
-                "{} records {documents} documents, more than the corpus's {}",
-                dir.join(SparseProgress::FILE).display(),
-                passages.len()
-            );
             eprintln!(
                 "resuming the sparse encode at document {documents} of {} ({})",
                 passages.len(),

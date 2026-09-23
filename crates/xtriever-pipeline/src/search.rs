@@ -1,6 +1,7 @@
 //! Search: filter once, lexical, dense, fuse, re-rank — with degradation, budgets and
 //! explanation (data-model "Search algorithm"; 005 research D5–D8; 006 research D8).
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -75,13 +76,17 @@ impl HybridIndex {
         k: usize,
         options: &SearchOptions<'_>,
     ) -> Result<Response> {
-        let (lexical, sparse_skipped) = lexical_query(
-            &self.config.schema,
-            self.sparse_query.as_ref(),
+        let (schema, sparse) = (&self.config.schema, self.sparse_query.as_ref());
+        self.search_with(
+            || {
+                lexical_query(schema, sparse, query, options.strict)
+                    .map(|(q, skipped)| (Cow::Owned(q), skipped))
+            },
             query,
-            options.strict,
-        )?;
-        self.search_with(&lexical, query, filter, k, options, sparse_skipped)
+            filter,
+            k,
+            options,
+        )
     }
 
     /// Search with a caller-built lexical query; the dense stage embeds `dense_text`. On a
@@ -102,27 +107,28 @@ impl HybridIndex {
         k: usize,
         options: &SearchOptions<'_>,
     ) -> Result<Response> {
-        match &self.sparse_query {
-            Some(_) => self.search_with(
-                &own_fields(&self.config.schema, query),
-                dense_text,
-                filter,
-                k,
-                options,
+        let lexical = || {
+            Ok((
+                match &self.sparse_query {
+                    Some(_) => Cow::Owned(own_fields(&self.config.schema, query)),
+                    None => Cow::Borrowed(query),
+                },
                 None,
-            ),
-            None => self.search_with(query, dense_text, filter, k, options, None),
-        }
+            ))
+        };
+        self.search_with(lexical, dense_text, filter, k, options)
     }
 
-    fn search_with(
+    /// `lexical` builds the lexical query — and says whether a sparse expansion was skipped —
+    /// only once both short-circuits have passed, so a search that returns nothing never
+    /// touches the query side (Feature 027 review).
+    fn search_with<'q>(
         &self,
-        query: &LexicalQuery,
+        lexical: impl FnOnce() -> Result<(Cow<'q, LexicalQuery>, Option<DegradeReason>)>,
         dense_text: &str,
         filter: Option<&Filter>,
         k: usize,
         opts: &SearchOptions<'_>,
-        sparse_skipped: Option<DegradeReason>,
     ) -> Result<Response> {
         let time_limit_ignored = opts.budget.max_time.is_some() && opts.elapsed.is_none();
         // Neither stage runs on the two short-circuits: `dense_candidates` is `None` because
@@ -135,7 +141,7 @@ impl HybridIndex {
                 degraded: None,
                 rerank: None,
                 time_limit_ignored,
-                sparse_skipped: sparse_skipped.clone(),
+                sparse_skipped: None,
             },
         };
         if k == 0 {
@@ -155,7 +161,10 @@ impl HybridIndex {
         let lexical_filter = allowed
             .as_ref()
             .map(|set| Filter::Ids(set.iter().collect()));
-        let lexical = self.lexical.search(query, lexical_filter.as_ref(), depth)?;
+        let (query, sparse_skipped) = lexical()?;
+        let lexical = self
+            .lexical
+            .search(&query, lexical_filter.as_ref(), depth)?;
 
         // 4–6. Dense, guarded by the budget at check points A and B.
         let dense: std::result::Result<Vec<Hit>, Skip> = self.dense_candidates(
@@ -741,5 +750,56 @@ mod tests {
                 must_not: vec![fields("fish")],
             }
         );
+    }
+
+    /// Review (Copilot): a search that returns nothing — `k == 0`, or a filter that resolves to
+    /// no documents — never builds the lexical query, so a query side that cannot tokenise the
+    /// text cannot fail it, even in strict mode; any other search does build it.
+    #[test]
+    fn the_lexical_query_is_built_only_after_the_short_circuits() {
+        use xtriever_core::{Embedder, Error, Filter, Metric, TextKind, Vector};
+
+        use crate::{HybridConfig, HybridIndex, SearchOptions};
+
+        struct Stub;
+        impl Embedder for Stub {
+            fn dim(&self) -> usize {
+                2
+            }
+            fn metric(&self) -> Metric {
+                Metric::Cosine
+            }
+            fn fingerprint(&self) -> &str {
+                "stub"
+            }
+            fn max_input_tokens(&self) -> Option<usize> {
+                None
+            }
+            fn embed(&self, texts: &[&str], _: TextKind) -> xtriever_core::Result<Vec<Vector>> {
+                Ok(texts.iter().map(|_| vec![1.0, 0.0]).collect())
+            }
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let config = HybridConfig::new(schema(), vec![FieldName::from("title")]);
+        let index = HybridIndex::create(tmp.path(), config, Box::new(Stub)).unwrap();
+        let strict = SearchOptions {
+            strict: true,
+            ..SearchOptions::default()
+        };
+        let failing = || -> xtriever_core::Result<(std::borrow::Cow<'static, LexicalQuery>, _)> {
+            Err(Error::Model {
+                model: "query side".into(),
+                message: "cannot tokenise".into(),
+            })
+        };
+        let r = index.search_with(failing, "q", None, 0, &strict).unwrap();
+        assert!(r.hits.is_empty() && r.stages.sparse_skipped.is_none());
+        let nothing = Filter::Ids(vec![]);
+        let r = index
+            .search_with(failing, "q", Some(&nothing), 10, &strict)
+            .unwrap();
+        assert!(r.hits.is_empty() && r.stages.sparse_skipped.is_none());
+        assert!(index.search_with(failing, "q", None, 10, &strict).is_err());
     }
 }

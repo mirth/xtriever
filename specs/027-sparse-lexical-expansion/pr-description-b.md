@@ -41,5 +41,13 @@ expectation was changed afterwards, and it is listed here for review):
   helper is gone); the degraded query was built separately (one builder). Deferred to PR C:
   the FFI does not yet surface `sparse_skipped` — it needs an FFI record change, which
   regenerates the bindings (T034).
+- Copilot: the resume path truncated `weights.partial` before checking the progress record
+  against it, and `set_len` would have zero-filled a short file (the record is now checked
+  first — documents within the corpus, bytes within the file — and a stale one means a fresh
+  encode); the sparse report stage had no positive round-trip test (added, pinning its JSON
+  shape); the sparse query was built before the `k == 0` and empty-filter short-circuits (it
+  is built after them — a search that returns nothing never touches the query side); the cache
+  key's doc still named layout version 1; ADR-0016 still said `search_lexical` sends the query
+  unchanged (it describes the `Match(None, …)` rule and the degrade).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

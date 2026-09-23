@@ -797,7 +797,8 @@ pub struct CachedExpansion {
 /// Stored as `key.json` beside `weights.bin`; any field disagreement is a miss.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SparseCacheKey {
-    /// Cache layout version (1).
+    /// Cache layout version: [`Self::FORMAT_VERSION`] (2 — each record carries its truncation
+    /// flag); any other is a miss.
     pub format_version: u32,
     /// Dataset name.
     pub dataset: String,
