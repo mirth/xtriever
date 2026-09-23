@@ -24,7 +24,8 @@ SEARCH_NAMES = [
     "XtrieverError",
 ]
 BUILDER_NAMES = ["Document", "FieldDef", "FieldKind", "FieldValue", "IndexConfig"]
-EXPECTED_ALL = sorted(SEARCH_NAMES + BUILDER_NAMES + ["__version__"])
+SPARSE_NAMES = ["SparseInfo", "SparseOptionConfig"]  # Feature 027
+EXPECTED_ALL = sorted(SEARCH_NAMES + BUILDER_NAMES + SPARSE_NAMES + ["__version__"])
 
 ERROR_KINDS = [
     "Schema",

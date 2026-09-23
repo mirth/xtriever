@@ -106,7 +106,11 @@ passes; every existing pipeline test passes unchanged (FR-002).
 
 ---
 
-## Phase 5: User Story 3 — The option's quality is measured and recorded (P1) — PR B
+## Phase 5: User Story 3 — The option's quality is measured and recorded (P1) — PR B, measurement in PR C
+
+PR B merged with the harness (T023–T025) and without the measurement; by the owner's decision
+the results (T026–T028) land in PR C, and T029's gate was run on the merged code on `main`
+(2026-09-23: all steps pass but the tracked wasm32 failure).
 
 **Goal**: the harness measures the option on three datasets through fusion and re-ranking, with
 its size and throughput, and confirms the option-off baselines.
@@ -122,9 +126,9 @@ and the re-run baselines, checked against SC-001–SC-003 and SC-005.
 
 - [X] T024 [US3] In `crates/xtriever-eval/src/run.rs`: the two configurations, `SparseCacheKey`, and the cache's read and write (`<cache>/<dataset>/{key.json, weights.bin}`: per document in corpus order a `u32` count then `(u32 id, f32 weight)` pairs)
 - [X] T025 [US3] In `crates/xtriever-eval/examples/beir.rs`: `--sparse-encoder-dir` and `--sparse-cache-dir`; for a sparse configuration, load or encode the weights (encoding prints and records documents per second and the thread count), create the index with the option, build it with `add_encoded`, and record the lexical index's bytes and the throughput in the report's `stage` block
-- [ ] T026 [US3] Cross-check on SciFact: `hybrid-sparse-rerank-v1` against the spike's `rerank_runs.rs` over the same Rust-encoded weights exported to its format — equal lists, since both use the pipeline's fusion and interpolation (a mismatch is a harness bug, fixed before any number is read)
-- [ ] T027 [US3] Run quickstart §3: `hybrid-sparse-v1` and `hybrid-sparse-rerank-v1` on SciFact, NFCorpus and FiQA (FiQA's first encode is overnight), writing `specs/027-sparse-lexical-expansion/runs/{hybrid-sparse-v1,hybrid-sparse-rerank-v1}.<dataset>.json`; re-run `hybrid-baseline-v2` and `hybrid-rerank-v3` to confirm them unchanged (SC-003). **⛔ If FiQA gains less than 0.010 nDCG@10 (SC-001), or any dataset falls more than 0.005 on either metric (SC-002), stop and report — never adjust the setting or the bound**
-- [ ] T028 [US3] Record each dataset's lexical index bytes with and without the option (SC-005: at most 4×) and the encoding throughput in `specs/027-sparse-lexical-expansion/runs/sizes.json`
+- [X] T026 [US3] Cross-check on SciFact: `hybrid-sparse-rerank-v1` against the spike's `rerank_runs.rs` over the same Rust-encoded weights exported to its format — equal lists, since both use the pipeline's fusion and interpolation (a mismatch is a harness bug, fixed before any number is read)
+- [X] T027 [US3] Run quickstart §3: `hybrid-sparse-v1` and `hybrid-sparse-rerank-v1` on SciFact, NFCorpus and FiQA (FiQA's first encode is overnight), writing `specs/027-sparse-lexical-expansion/runs/{hybrid-sparse-v1,hybrid-sparse-rerank-v1}.<dataset>.json`; re-run `hybrid-baseline-v2` and `hybrid-rerank-v3` to confirm them unchanged (SC-003). **⛔ If FiQA gains less than 0.010 nDCG@10 (SC-001), or any dataset falls more than 0.005 on either metric (SC-002), stop and report — never adjust the setting or the bound**
+- [X] T028 [US3] Record each dataset's lexical index bytes with and without the option (SC-005: at most 4×) and the encoding throughput in `specs/027-sparse-lexical-expansion/runs/sizes.json`
 - [ ] T029 [US3] PR B gate: the full local gate, the pipeline's model-backed tests, the three-dataset table; write `specs/027-sparse-lexical-expansion/pr-description-b.md` with the nDCG@10 and Recall@100 deltas per dataset and the sizes. **⛔ Checkpoint B — the owner reviews ADR-0016 (Principle V's gate clears on its acceptance), commits, pushes and merges PR B**
 
 **Checkpoint**: the option works end to end in the engine and its cost and benefit are on record.
@@ -141,9 +145,9 @@ searches with the engine's own results and reports the option in its information
 
 ### Tests for User Story 4 (written first, committed failing) ⚠️
 
-- [ ] T030 [P] [US4] Write `crates/xtriever-ffi/tests/sparse.rs` (`#[ignore = "needs the sparse encoder and both models"]`): `IndexHandle::create` with `IndexConfig.sparse` builds a sparse index; `info()` reports `sparse` (scale, boost, encoder) and format version 3; `IndexHandle::open` with no new argument searches it with the same hits and scores as the pipeline's own `search`; an index without the option reports format version 2 and no `sparse`
-- [ ] T031 [P] [US4] Write `python/tests/test_sparse.py` (marked `models`): create with the option, add, commit, search, `info().sparse`; results equal a second open's
-- [ ] T032 [P] [US4] Write `crates/xtriever-ffi/tests/packagers.rs` (model-free): neither `scripts/build-ios-package.sh` nor `scripts/build-android-package.sh` names `manifest-sparse-doc-v3.json` or the encoder's directory (FR-012, FR-013)
+- [X] T030 [P] [US4] Write `crates/xtriever-ffi/tests/sparse.rs` (`#[ignore = "needs the sparse encoder and both models"]`): `IndexHandle::create` with `IndexConfig.sparse` builds a sparse index; `info()` reports `sparse` (scale, boost, encoder) and format version 3; `IndexHandle::open` with no new argument searches it with the same hits and scores as the pipeline's own `search`; an index without the option reports format version 2 and no `sparse`
+- [X] T031 [P] [US4] Write `python/tests/test_sparse.py` (marked `models`): create with the option, add, commit, search, `info().sparse`; results equal a second open's
+- [X] T032 [P] [US4] Write `crates/xtriever-ffi/tests/packagers.rs` (model-free): neither `scripts/build-ios-package.sh` nor `scripts/build-android-package.sh` names `manifest-sparse-doc-v3.json` or the encoder's directory (FR-012, FR-013)
 - [ ] T033 [US4] Add the FFI records as stubs, run T030–T032 to show them failing, **⛔ red checkpoint — the owner commits the failing tests**
 
 ### Implementation for User Story 4

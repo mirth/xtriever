@@ -35,6 +35,12 @@ travel inside the index (plan research D6).
   and the command-line build, plus the platform bindings — FFI, Python, Swift and Kotlin open
   and search a sparse index, and the Python package can build one. No new demonstration. Two
   pull requests: the engine and its measurement first, the surfaces second.
+- Q: The measurement (2026-09-23) passes SC-001–SC-003 and SC-005 on the full pipeline, but
+  without the re-ranker the option lowers nDCG@10 by 0.0070 on SciFact and 0.0056 on NFCorpus
+  (FiQA +0.0308). Accept, require the re-ranker, or stop? → A: **Accept and document**: the
+  option ships as specified; its documentation, the report and the pull request say to pair it
+  with the re-ranker and to use it for FiQA-shaped corpora (no titles, vocabulary mismatch
+  between questions and answers).
 
 ### Plan amendments (2026-09-23, research D6 and D11)
 

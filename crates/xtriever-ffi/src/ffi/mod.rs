@@ -19,7 +19,7 @@ pub use error::XtrieverError;
 pub use types::{
     ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
     HitExplain, IndexConfig, IndexInfo, LoadPath, RerankMode, RerankReport, SearchOptions,
-    SearchResponse, StageReport,
+    SearchResponse, SparseInfo, SparseOptionConfig, StageReport,
 };
 
 /// An open hybrid index with its models; calls on one handle are serialised by a lock (no

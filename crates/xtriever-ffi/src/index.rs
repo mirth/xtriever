@@ -362,6 +362,8 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
         dense_compact_dead_share: config.dense_compact_dead_share,
         embedder_load_ms: ms(inner.embedder_load),
         reranker_load_ms: inner.reranker_load.map(ms),
+        // RED-CHECKPOINT STUB (Feature 027 T033): the record is not reported yet.
+        sparse: None,
     }
 }
 

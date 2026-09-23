@@ -26,6 +26,8 @@ from ._ffi.xtriever_ffi import (
     RerankReport,
     SearchOptions,
     SearchResponse,
+    SparseInfo,
+    SparseOptionConfig,
     StageReport,
     XtrieverError,
 )
@@ -50,6 +52,8 @@ __all__ = [
     "RerankReport",
     "SearchOptions",
     "SearchResponse",
+    "SparseInfo",
+    "SparseOptionConfig",
     "StageReport",
     "XtrieverError",
     "__version__",

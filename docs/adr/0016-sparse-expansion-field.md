@@ -1,6 +1,6 @@
 # ADR-0016: Sparse lexical expansion — a reserved field, a stored query side, descriptor format version 3
 
-- **Status**: Proposed — awaiting the repository owner's review at PR B's checkpoint
+- **Status**: Accepted — 2026-09-23 (the repository owner accepted it after PR B merged: the reserved field, the stored query side and descriptor format version 3 for sparse indexes only)
 - **Date**: 2026-09-23
 - **Deciders**: mirth (repository owner)
 - **Spec**: [027-sparse-lexical-expansion](../../specs/027-sparse-lexical-expansion/spec.md) FR-002–FR-009
