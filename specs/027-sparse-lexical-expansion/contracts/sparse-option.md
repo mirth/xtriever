@@ -55,27 +55,51 @@ stored tokenizer or table whose hash differs; `Error::Schema` for an expansion o
 ## `xtriever-pipeline` (PR B)
 
 ```rust
-pub struct SparseOption { pub encoder_dir: PathBuf, pub scale: u32, pub boost: f32 }
+pub struct SparseOption { pub scale: u32, pub boost: f32 }        // Default: 10, 1.0
 impl HybridConfig { pub sparse: Option<SparseOption> /* new field, default None */ }
+pub const SPARSE_FIELD: &str = "_sparse";
+pub const SPARSE_FORMAT_VERSION: u32 = 3;                        // FORMAT_VERSION stays 2
 
 impl HybridIndex {
+    /// Create a sparse index: `config.sparse` set, the loaded encoder given and attached.
+    pub fn create_sparse(dir: &Path, config: HybridConfig, embedder: Box<dyn Embedder>,
+                         encoder: SparseEncoder) -> Result<Self>;
     /// Attach the encoder so `add` can expand documents; `None` detaches it.
     pub fn set_sparse_encoder(&mut self, encoder: Option<SparseEncoder>);
     /// The recorded option, if this index has one.
     pub fn sparse(&self) -> Option<&SparseRecord>;
+    /// The descriptor's format version: 3 for a sparse index, 2 otherwise.
+    pub fn format_version(&self) -> u32;
+    /// Documents this handle's `add` truncated to the encoder's window.
+    pub fn sparse_truncated(&self) -> u64;
     /// Caller-supplied vectors and expansions, for a sparse index built from caches.
     pub fn add_encoded(&mut self, docs: &[(SourceDocument, Vec<f32>, Expansion)]) -> Result<()>;
 }
+
+impl SparseEncoder {   // xtriever-dense, added in PR B
+    /// Copy the pinned tokenizer.json and idf.json (as query-table.json) into `dest`, each
+    /// checked against its pin; returns their SHA-256s.
+    pub fn write_query_side(&self, dest: &Path) -> Result<(String, String)>;
+}
 ```
+
+**Why the encoder is not in `HybridConfig`** (a change from the plan's first draft, which had
+`SparseOption { encoder_dir, .. }`): `open` rebuilds the configuration from the descriptor, and
+an encoder directory is neither part of the index nor present on a device. The option holds
+what the index records; the encoder is an object the build host passes to `create_sparse` or
+`set_sparse_encoder`. The FFI keeps `encoder_dir` in its own `IndexConfig` (PR C), loads the
+encoder from it and calls `create_sparse`.
 
 Behaviour on a sparse index:
 
 | call | behaviour |
 |---|---|
-| `create` | refuses a user schema field named `_sparse`, a scale outside `1..=1000`, a non-finite or non-positive boost, or an encoder that fails verification; copies the query side; writes descriptor version 3 |
+| `create` | validates the option as `create_sparse` does, then refuses it, naming `create_sparse` (it has no encoder) |
+| `create_sparse` | refuses a missing option, a user schema field named `_sparse`, a scale outside `1..=1000`, a non-finite or non-positive boost; copies the query side (`write_query_side`); writes descriptor version 3; attaches the encoder |
 | `open*` | verifies `<dir>/sparse/*` against the recorded hashes; version 3 without a record, or 2 with one, is `Corrupt` |
-| `add` | refuses with `Error::Model` naming the missing encoder unless one is attached |
+| `add` | refuses with `Error::Model` naming the missing encoder unless one is attached; refuses a document that supplies `_sparse` itself |
 | `add_embedded` | refuses: no expansion to write (use `add` or `add_encoded`) |
+| `add_encoded` | refuses an expansion `field_text` refuses; on an index without the option, refuses altogether |
 | `search` | the query of research D7 |
 | `search_lexical` | unchanged |
 

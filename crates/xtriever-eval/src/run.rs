@@ -475,6 +475,20 @@ pub struct HybridConfig {
     pub rrf_k: u32,
     /// Retrieval depth of the fused list; ≥ 100.
     pub k: usize,
+    /// Sparse lexical expansion (Feature 027); `None` for every recipe before it, and omitted
+    /// from a serialised report then, so earlier reports read and compare unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse: Option<SparseSettings>,
+}
+
+/// The harness's mirror of the pipeline's `SparseOption` (this crate names only core types):
+/// how a sparse index writes and scores its expansions (Feature 027, data-model `SparseOption`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SparseSettings {
+    /// A weight becomes `round(weight × scale)` occurrences of its term.
+    pub scale: u32,
+    /// The `_sparse` field's boost.
+    pub boost: f32,
 }
 
 impl HybridConfig {
@@ -510,6 +524,7 @@ impl HybridConfig {
             candidate_depth: 100,
             rrf_k: 60,
             k: 100,
+            sparse: None,
         }
     }
 
@@ -696,4 +711,80 @@ impl RerankConfig {
             ..Self::hybrid_rerank_v2()
         }
     }
+
+    /// `hybrid-sparse-rerank-v1` (Feature 027). RED-CHECKPOINT STUB.
+    pub fn hybrid_sparse_rerank_v1() -> Self {
+        Self {
+            name: "hybrid-sparse-rerank-v1".into(),
+            ..Self::hybrid_rerank_v3()
+        }
+    }
+}
+
+impl HybridConfig {
+    /// `hybrid-sparse-v1` (Feature 027). RED-CHECKPOINT STUB.
+    pub fn hybrid_sparse_v1() -> Self {
+        Self {
+            name: "hybrid-sparse-v1".into(),
+            ..Self::hybrid_baseline_v2()
+        }
+    }
+}
+
+// ── Feature 027: the sparse-weights cache ──────────────────────────────────────────────────
+
+/// What a cached set of document expansions was encoded from (contract `surfaces-and-eval.md`).
+/// Stored as `key.json` beside `weights.bin`; any field disagreement is a miss.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SparseCacheKey {
+    /// Cache layout version (1).
+    pub format_version: u32,
+    /// Dataset name.
+    pub dataset: String,
+    /// The encoder's identity (`xtriever_dense::model::SPARSE_IDENTITY`).
+    pub encoder: String,
+    /// The manifest's `corpus.jsonl` SHA-256 the loader verified.
+    pub corpus_sha256: String,
+    /// Corpus size.
+    pub documents: u64,
+}
+
+impl SparseCacheKey {
+    /// File name inside the cache directory.
+    pub const FILE: &'static str = "key.json";
+
+    /// Write `key.json` into `dir` (created if absent). RED-CHECKPOINT STUB.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Io`, `Error::Json`.
+    pub fn write(&self, _dir: &Path) -> Result<()> {
+        Err(Error::Run("SparseCacheKey::write: not implemented".into()))
+    }
+
+    /// Why the cache at `dir` does not answer to this key, or `None` when it matches.
+    /// RED-CHECKPOINT STUB.
+    pub fn mismatch(&self, _dir: &Path) -> Option<String> {
+        None
+    }
+}
+
+/// Every document's expansion, in corpus order, as `weights.bin`: per document a little-endian
+/// `u32` entry count, then that many `(u32 token id, f32 weight)` pairs. RED-CHECKPOINT STUB.
+///
+/// # Errors
+///
+/// `Error::Io`.
+pub fn write_sparse_weights(_path: &Path, _expansions: &[Vec<(u32, f32)>]) -> Result<()> {
+    Err(Error::Run("write_sparse_weights: not implemented".into()))
+}
+
+/// Read `weights.bin` back, requiring exactly `documents` expansions and nothing after them.
+/// RED-CHECKPOINT STUB.
+///
+/// # Errors
+///
+/// `Error::Io`; `Error::Run` for a file that is short, long, or holds another count.
+pub fn read_sparse_weights(_path: &Path, _documents: usize) -> Result<Vec<Vec<(u32, f32)>>> {
+    Err(Error::Run("read_sparse_weights: not implemented".into()))
 }

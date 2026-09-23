@@ -98,11 +98,17 @@ pub use index::HybridIndex;
 pub use rerank::{RerankMode, order_interpolated, order_reranked};
 pub use types::{
     Degradation, DegradeReason, HitExplain, HybridConfig, HybridHit, OpenOptions, RERANK_COMBINED,
-    RERANK_RANK, RerankReport, Response, SearchOptions, SourceDocument, StageReport,
+    RERANK_RANK, RerankReport, Response, SPARSE_FIELD, SearchOptions, SourceDocument, SparseOption,
+    SparseRecord, StageReport,
 };
 
 /// On-disk format version of the pipeline descriptor and id map this build reads and writes.
 pub const FORMAT_VERSION: u32 = 2;
+
+/// The descriptor's format version for a sparse index (Feature 027, ADR-0016): an index with the
+/// option writes 3 so an engine that cannot search its expansions refuses it by name; every
+/// other index stays [`FORMAT_VERSION`].
+pub const SPARSE_FORMAT_VERSION: u32 = 3;
 
 /// The counting allocator of the unit-test binary (Feature 010, research D7): the id-map
 /// accounting tests read what the process actually holds. Integration tests link the library

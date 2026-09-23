@@ -255,6 +255,18 @@ impl SparseEncoder {
         Ok(encoding.get_ids().to_vec())
     }
 
+    /// Copy the query side — the pinned `tokenizer.json`, and `idf.json` as `query-table.json` —
+    /// into `dest` (created if absent), each re-read from the encoder's directory and checked
+    /// against its pin before it is written. Returns the two files' SHA-256, as a sparse index
+    /// records them (research D6). RED-CHECKPOINT STUB.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Model` for a file that fails its pin; `Error::Io` for the writes.
+    pub fn write_query_side(&self, _dest: &Path) -> Result<(String, String)> {
+        Err(sparse_err("write_query_side: not implemented"))
+    }
+
     /// The identity recorded in a sparse index (data-model `SparseRecord.encoder`).
     #[must_use]
     pub fn identity(&self) -> &str {

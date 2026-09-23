@@ -137,6 +137,7 @@ impl HybridIndex {
             rerank_depth: config.rerank_depth,
             rerank_mode: config.rerank_mode,
             dense_compact_dead_share: config.dense_compact_dead_share,
+            sparse: None,
             live_docs: 0,
             generation: 0,
         };
@@ -271,6 +272,7 @@ impl HybridIndex {
             rerank_depth: descriptor.rerank_depth,
             rerank_mode: descriptor.rerank_mode,
             dense_compact_dead_share: descriptor.dense_compact_dead_share,
+            sparse: None,
         };
         // A persisted mode that could not have been created is corruption, not a schema error
         // (review round 1 #4): every search would apply an α outside [0, 1].
@@ -291,6 +293,59 @@ impl HybridIndex {
             embedder,
             reranker: None,
         })
+    }
+
+    /// Create a sparse index (Feature 027): as [`create`](Self::create), plus the reserved
+    /// `_sparse` field, the encoder's query side copied into `<dir>/sparse/`, and descriptor
+    /// format version 3. `config.sparse` must be set; the encoder is attached to the handle.
+    ///
+    /// RED-CHECKPOINT STUB.
+    ///
+    /// # Errors
+    ///
+    /// As [`create`](Self::create).
+    pub fn create_sparse(
+        _dir: &Path,
+        _config: HybridConfig,
+        _embedder: Box<dyn Embedder>,
+        _encoder: xtriever_dense::sparse::SparseEncoder,
+    ) -> Result<Self> {
+        Err(schema_err("create_sparse: not implemented"))
+    }
+
+    /// Attach (or detach) the sparse document encoder; nothing is written. RED-CHECKPOINT STUB.
+    pub fn set_sparse_encoder(&mut self, _encoder: Option<xtriever_dense::sparse::SparseEncoder>) {}
+
+    /// The sparse record, if this index has the option. RED-CHECKPOINT STUB.
+    #[must_use]
+    pub fn sparse(&self) -> Option<&crate::SparseRecord> {
+        None
+    }
+
+    /// The descriptor's format version: 3 for a sparse index, 2 otherwise. RED-CHECKPOINT STUB.
+    #[must_use]
+    pub fn format_version(&self) -> u32 {
+        FORMAT_VERSION
+    }
+
+    /// Documents this handle's `add` truncated to the sparse encoder's window. RED-CHECKPOINT
+    /// STUB.
+    #[must_use]
+    pub fn sparse_truncated(&self) -> u64 {
+        0
+    }
+
+    /// As [`add`](Self::add) with caller-supplied vectors and expansions, for a sparse index
+    /// built from caches. RED-CHECKPOINT STUB.
+    ///
+    /// # Errors
+    ///
+    /// As [`add_embedded`](Self::add_embedded).
+    pub fn add_encoded(
+        &mut self,
+        _docs: &[(SourceDocument, Vec<f32>, xtriever_dense::sparse::Expansion)],
+    ) -> Result<()> {
+        Err(schema_err("add_encoded: not implemented"))
     }
 
     /// The stored passage text of a committed internal id — the text the dense stage embedded

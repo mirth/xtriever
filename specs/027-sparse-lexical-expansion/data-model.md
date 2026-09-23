@@ -3,11 +3,11 @@
 ## SparseOption (creation-time, per index)
 
 Part of `HybridConfig` as `sparse: Option<SparseOption>`; `None` is the default and changes
-nothing (FR-002).
+nothing (FR-002). The encoder is not part of it: `create_sparse` takes the loaded encoder
+(verified at load, FR-003), and an opened index needs none (contract `sparse-option.md`).
 
 | field | type | default | rule |
 |---|---|---|---|
-| `encoder_dir` | path | — | the pinned encoder's directory; verified at create (FR-003) |
 | `scale` | u32 | 10 | `1..=1000` (`sparse::MAX_SCALE`); a weight becomes `round(weight × scale)` occurrences (FR-004) |
 | `boost` | f32 | 1.0 | finite, > 0; the `_sparse` field's boost (FR-005) |
 
@@ -65,8 +65,8 @@ embedder's and re-ranker's pins are. Files: `config.json`, `tokenizer.json`, `mo
 ## State and lifecycle
 
 ```text
-create(dir, config{sparse: Some(opt)}, embedder)
-   → verify encoder files → copy tokenizer.json + idf.json into <dir>/sparse/
+create_sparse(dir, config{sparse: Some(opt)}, embedder, encoder)
+   → copy tokenizer.json + idf.json into <dir>/sparse/ (checked against the pins)
    → schema + `_sparse` → descriptor v3 with SparseRecord
 open(dir, embedder)                    → verify <dir>/sparse/* → SparseQuery ready (no encoder)
 set_sparse_encoder(Some(encoder))      → add() may encode; without it add() refuses

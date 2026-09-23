@@ -31,6 +31,11 @@ pub(crate) struct Descriptor {
     /// read as `None` — an `Option` field needs no attribute for that (compact only on
     /// `merge`); the format version is unchanged.
     pub dense_compact_dead_share: Option<f32>,
+    /// Feature 027: the sparse record, present exactly when the format version is
+    /// [`SPARSE_FORMAT_VERSION`](crate::SPARSE_FORMAT_VERSION). Omitted, not `null`, when
+    /// absent, so an index without the option writes the same bytes as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse: Option<crate::SparseRecord>,
     pub live_docs: u64,
     pub generation: u64,
 }
@@ -83,7 +88,7 @@ impl Descriptor {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -98,6 +103,7 @@ mod tests {
             rerank_depth: 20,
             rerank_mode: RerankMode::default(),
             dense_compact_dead_share: None,
+            sparse: None,
             live_docs: 0,
             generation: 0,
         }
@@ -122,6 +128,70 @@ mod tests {
             assert!(
                 matches!(Descriptor::read(dir.path()), Err(Error::Corrupt(m)) if m.contains(old) && m.contains('2') && m.contains("rebuild"))
             );
+        }
+    }
+
+    fn record() -> crate::SparseRecord {
+        crate::SparseRecord {
+            scale: 10,
+            boost: 1.0,
+            field: crate::SPARSE_FIELD.to_owned(),
+            encoder: "encoder@rev".to_owned(),
+            tokenizer_sha256: "a".repeat(64),
+            table_sha256: "b".repeat(64),
+        }
+    }
+
+    /// Feature 027 (ADR-0016): a sparse index is format version 3 and carries its record.
+    #[test]
+    fn a_sparse_descriptor_round_trips_at_version_3() {
+        let dir = tempfile::tempdir().unwrap();
+        let sparse = Descriptor {
+            format_version: crate::SPARSE_FORMAT_VERSION,
+            sparse: Some(record()),
+            ..sample()
+        };
+        sparse.write(dir.path()).unwrap();
+        assert_eq!(Descriptor::read(dir.path()).unwrap(), sparse);
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(text.starts_with("{\n  \"format_version\": 3"), "{text}");
+        assert!(text.contains("\"sparse\": {"), "{text}");
+    }
+
+    /// Without the option nothing changes on disk: no `sparse` key, version 2 (FR-002).
+    #[test]
+    fn a_descriptor_without_the_option_writes_no_sparse_key() {
+        let dir = tempfile::tempdir().unwrap();
+        sample().write(dir.path()).unwrap();
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(!text.contains("sparse"), "{text}");
+    }
+
+    /// The version and the record agree or the descriptor is corrupt: version 3 without a
+    /// record, or 2 with one, is refused by name (research D8).
+    #[test]
+    fn version_and_sparse_record_must_agree() {
+        let dir = tempfile::tempdir().unwrap();
+        for (version, sparse) in [
+            (crate::SPARSE_FORMAT_VERSION, None),
+            (FORMAT_VERSION, Some(record())),
+        ] {
+            Descriptor {
+                format_version: version,
+                sparse,
+                ..sample()
+            }
+            .write(dir.path())
+            .unwrap();
+            match Descriptor::read(dir.path()) {
+                Err(Error::Corrupt(m)) => {
+                    assert!(
+                        m.contains(&version.to_string()) && m.contains("sparse"),
+                        "{m}"
+                    );
+                }
+                other => panic!("version {version}: expected Corrupt, got {other:?}"),
+            }
         }
     }
 

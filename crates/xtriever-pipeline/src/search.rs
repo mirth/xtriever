@@ -70,7 +70,7 @@ impl HybridIndex {
         options: &SearchOptions<'_>,
     ) -> Result<Response> {
         self.search_with(
-            &LexicalQuery::Match(None, query.to_owned()),
+            &text_query(&self.config.schema, None, query)?,
             query,
             filter,
             k,
@@ -430,6 +430,16 @@ impl HybridIndex {
     }
 }
 
+/// The lexical query `search` sends for free text (Feature 027 research D7). Without a sparse
+/// side it is `Match(None, text)`, exactly as before. RED-CHECKPOINT STUB.
+pub(crate) fn text_query(
+    _schema: &xtriever_core::Schema,
+    _sparse: Option<&xtriever_dense::sparse::SparseQuery>,
+    text: &str,
+) -> Result<LexicalQuery> {
+    Ok(LexicalQuery::Match(None, text.to_owned()))
+}
+
 /// The time check at a check point: only when both a limit and a time source exist.
 fn check_budget(opts: &SearchOptions<'_>) -> std::result::Result<(), Skip> {
     if let (Some(limit), Some(elapsed)) = (opts.budget.max_time, opts.elapsed) {
@@ -442,4 +452,116 @@ fn check_budget(opts: &SearchOptions<'_>) -> std::result::Result<(), Skip> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use sha2::{Digest, Sha256};
+    use xtriever_core::{AnalyzerId, FieldDef, FieldKind, FieldName, LexicalQuery, Schema};
+    use xtriever_dense::sparse::SparseQuery;
+
+    use super::text_query;
+
+    fn field(name: &str, kind: FieldKind, indexed: bool) -> FieldDef {
+        FieldDef {
+            name: FieldName::from(name),
+            kind,
+            indexed,
+            stored: false,
+            boost: 1.0,
+        }
+    }
+
+    /// Two indexed text fields, a keyword and an unindexed text field, in that order.
+    fn schema() -> Schema {
+        let text = || FieldKind::Text(AnalyzerId("standard".into()));
+        Schema {
+            fields: vec![
+                field("title", text(), true),
+                field("tag", FieldKind::Keyword, true),
+                field("body", text(), true),
+                field("note", text(), false),
+            ],
+        }
+    }
+
+    /// A word-level tokenizer with BERT's special tokens; `the` has no positive table entry.
+    const TOKENIZER: &str = r#"{"version": "1.0", "truncation": null, "padding": null,
+      "added_tokens": [
+        {"id": 0, "content": "[PAD]", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+        {"id": 1, "content": "[UNK]", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+        {"id": 2, "content": "[CLS]", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+        {"id": 3, "content": "[SEP]", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true},
+        {"id": 4, "content": "[MASK]", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true}],
+      "normalizer": {"type": "Lowercase"}, "pre_tokenizer": {"type": "Whitespace"},
+      "post_processor": null, "decoder": null,
+      "model": {"type": "WordLevel", "unk_token": "[UNK]",
+        "vocab": {"[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3, "[MASK]": 4, "the": 5, "cat": 6, "dog": 7}}}"#;
+    const TABLE: &str = r#"{"[PAD]": 1, "[UNK]": 1, "[CLS]": 1, "[SEP]": 1, "[MASK]": 1,
+      "the": 0.0, "cat": 2.0, "dog": 1.0}"#;
+
+    fn sha256(bytes: &[u8]) -> String {
+        Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    fn side(dir: &std::path::Path) -> SparseQuery {
+        std::fs::write(dir.join("tokenizer.json"), TOKENIZER).unwrap();
+        std::fs::write(dir.join("query-table.json"), TABLE).unwrap();
+        SparseQuery::open(
+            &dir.join("tokenizer.json"),
+            &dir.join("query-table.json"),
+            &sha256(TOKENIZER.as_bytes()),
+            &sha256(TABLE.as_bytes()),
+        )
+        .unwrap()
+    }
+
+    /// Without the option the query is exactly what it was before Feature 027 (FR-002).
+    #[test]
+    fn without_the_option_the_query_is_match_over_every_field() {
+        assert_eq!(
+            text_query(&schema(), None, "dog cat").unwrap(),
+            LexicalQuery::Match(None, "dog cat".to_owned())
+        );
+    }
+
+    /// Research D7: the user's indexed text fields spelled out in schema order — so the query
+    /// text never reaches `_sparse` through its analyzer — then one `Term` per kept token,
+    /// ascending.
+    #[test]
+    fn with_the_option_the_query_adds_one_term_per_kept_token() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sparse = side(tmp.path());
+        let matches = |text: &str| {
+            vec![
+                LexicalQuery::Match(Some(FieldName::from("title")), text.to_owned()),
+                LexicalQuery::Match(Some(FieldName::from("body")), text.to_owned()),
+            ]
+        };
+        let term = |id: u32| LexicalQuery::Term(FieldName::from("_sparse"), format!("s{id}"));
+
+        let mut should = matches("dog the cat dog");
+        should.extend([term(6), term(7)]);
+        assert_eq!(
+            text_query(&schema(), Some(&sparse), "dog the cat dog").unwrap(),
+            LexicalQuery::Bool {
+                must: vec![],
+                should,
+                must_not: vec![],
+            }
+        );
+        // No kept token: the fields alone, still spelled out.
+        assert_eq!(
+            text_query(&schema(), Some(&sparse), "the").unwrap(),
+            LexicalQuery::Bool {
+                must: vec![],
+                should: matches("the"),
+                must_not: vec![],
+            }
+        );
+    }
 }

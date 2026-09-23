@@ -297,3 +297,33 @@ fn encoding_is_deterministic() {
         xtriever_dense::MiniLmEmbedder::thread_count()
     );
 }
+
+/// Feature 027 PR B: the query side a sparse index carries is the pinned files, byte for byte,
+/// under the hashes the pins give, and it answers queries as the encoder's own directory does.
+#[test]
+#[ignore = "needs the sparse encoder"]
+fn the_query_side_is_copied_byte_for_byte() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dest = tmp.path().join("sparse");
+    let (tokenizer_sha, table_sha) = encoder().write_query_side(&dest).unwrap();
+    assert_eq!(tokenizer_sha, PINNED_SPARSE.files[1].sha256);
+    assert_eq!(table_sha, PINNED_SPARSE.files[3].sha256);
+    for (copy, pinned) in [("tokenizer.json", 1), ("query-table.json", 3)] {
+        assert_eq!(
+            std::fs::read(dest.join(copy)).unwrap(),
+            std::fs::read(encoder_dir().join(PINNED_SPARSE.files[pinned].name)).unwrap(),
+            "{copy}"
+        );
+    }
+    let side = SparseQuery::open(
+        &dest.join("tokenizer.json"),
+        &dest.join("query-table.json"),
+        &tokenizer_sha,
+        &table_sha,
+    )
+    .unwrap();
+    let queries: Queries = load("queries.json");
+    for q in &queries.queries {
+        assert_eq!(side.terms(&q.text).unwrap(), q.terms, "{}", q.id);
+    }
+}
