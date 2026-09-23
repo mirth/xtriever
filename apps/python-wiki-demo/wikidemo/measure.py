@@ -273,19 +273,24 @@ def summarise(runs: list[QueryRun], depths=DEPTHS) -> dict:
 
 
 def footprint_record(resident_bytes: int, footprint_bytes: int | None) -> dict:
-    """The footprint block: `peakBytes` is the ceiling's own measure, `phys_footprint`, where
-    the platform reports it, and `ru_maxrss` otherwise — `peakMethod` says which, as the device
-    records say `ledger` or `sampled`. `residentPeakBytes` is always `ru_maxrss`, kept beside it
-    because every earlier record carries that figure; it counts clean pages of the
-    memory-mapped index and so exceeds the footprint by however much of the index was paged in
-    (Feature 026: 424.5 MB footprint against 618.8 MB resident on the full corpus)."""
-    peak, method = (footprint_bytes, "phys_footprint") if footprint_bytes else (resident_bytes, "ru_maxrss")
+    """The footprint block, two measures and a verdict on each (contracts/records.md).
+
+    `peakBytes` is the resident peak, `ru_maxrss`, as in every record before Feature 026 and in
+    each query's `peakBytesAfter`; `underCeiling` judges it, because that is how Feature 026's
+    SC-005 is worded. `footprintPeakBytes` is the lifetime peak `phys_footprint` where the
+    platform reports it — the measure ADR-0010 defines the ceiling on, which excludes the clean
+    pages of the memory-mapped index that resident size counts — and `footprintUnderCeiling`
+    judges that. Neither verdict replaces the other: which one a criterion uses is its wording,
+    and changing that wording is the owner's decision, not the recorder's.
+    """
     return {
-        "peakBytes": peak,
-        "peakMethod": method,
-        "residentPeakBytes": resident_bytes,
+        "peakBytes": resident_bytes,
+        "peakMethod": "ru_maxrss",
         "ceilingBytes": CEILING_BYTES,
-        "underCeiling": peak <= CEILING_BYTES,
+        "underCeiling": resident_bytes <= CEILING_BYTES,
+        "footprintPeakBytes": footprint_bytes,
+        "footprintMethod": "phys_footprint" if footprint_bytes is not None else None,
+        "footprintUnderCeiling": footprint_bytes <= CEILING_BYTES if footprint_bytes is not None else None,
     }
 
 
@@ -353,8 +358,18 @@ def print_summary(record: dict) -> None:
     print("per-depth max ms:    " + " · ".join(f"depth {d} {v}" for d, v in record["perDepthMaxMs"].items()))
     print(f"latency: fused {lat['medianFusedMs']} ms · re-ranked (depth {DEFAULT_DEPTH}) {lat['medianRerankedMs']} ms · total {lat['medianTotalMs']} ms · re-ranked (depth {ENGINE_DEFAULT_DEPTH}) {lat['medianRerankedAtEngineDefaultMs']} ms (medians)")
     fp = record["footprint"]
-    resident = "" if fp["peakMethod"] == "ru_maxrss" else f"; resident {megabytes(fp['residentPeakBytes'])}, which counts clean pages of the mapped index"
-    print(f"footprint: peak {megabytes(fp['peakBytes'])} ({fp['peakMethod']}{resident}); the phone's ceiling is {megabytes(fp['ceilingBytes'])}, for comparison only")
+    ceiling = megabytes(fp["ceilingBytes"])
+
+    def side(under: bool) -> str:
+        return "under" if under else "over"
+
+    line = f"footprint: peak resident {megabytes(fp['peakBytes'])} ({fp['peakMethod']}), {side(fp['underCeiling'])} the {ceiling} ceiling"
+    if fp["footprintPeakBytes"] is not None:
+        line += (
+            f"; peak {fp['footprintMethod']} {megabytes(fp['footprintPeakBytes'])}, {side(fp['footprintUnderCeiling'])} it"
+            " (the measure the ceiling is defined on; resident size also counts clean pages of the mapped index)"
+        )
+    print(line + "; the ceiling is a phone rule, for comparison only")
     p = record["parity"]
     print(
         f"parity: {p['verdict']} ({p['queriesCompared']} queries; lexical bit-identical {p['lexicalBitIdentical']}, "

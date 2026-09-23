@@ -101,11 +101,10 @@ def test_peak_footprint_is_the_kernel_peak_on_macos_and_absent_elsewhere():
     if sys.platform != "darwin":
         assert fp is None
         return
-    # A Python process with pytest loaded owns well over 10 MB, and its footprint excludes clean
-    # file-backed pages that its resident size counts — so it is positive and not above it by
-    # much (the two are sampled at different instants).
+    # A Python process with pytest loaded owns well over 10 MB. No bound against the resident
+    # size: phys_footprint also counts compressed and swapped memory, which resident size does
+    # not, so under memory pressure it can exceed it (review PR C).
     assert fp is not None and fp > 10 * 1024 * 1024
-    assert fp <= peak_resident_bytes() * 1.5
 
 
 def test_megabytes_is_decimal():

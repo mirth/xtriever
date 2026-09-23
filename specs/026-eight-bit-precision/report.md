@@ -15,8 +15,8 @@ Two decisions shaped the result, both the owner's and both taken on measurements
 The eight-bit weights are **expanded to `f32` at load and multiplied by the float kernel**:
 candle's eight-bit kernel was 3.7× slower, and the first choice, `f16`, held on the host but
 broke cross-platform parity. And the memory the device ceiling is about is **`phys_footprint`**,
-which the host record did not measure until this feature; on it the full corpus peaks at 425–440
-MB against the 600 MB ceiling.
+which the host record did not measure until this feature; on it the full corpus peaks at 425–441
+MB against the 600 MB ceiling. On resident size, the measure SC-005 is worded on, it is over.
 
 Under `f32` the models occupy the same memory at run time as the float models did. The feature
 saves disk, bundle and download size, and the vectors' share of the page cache; it does not
@@ -30,7 +30,7 @@ save the models' working memory, and this report does not claim it does.
 | SC-002 dense file under 200 MB | **PASS** — 660,750,511 → 169,467,012 bytes | `target/xt-wiki/wiki-build.json` |
 | SC-003 both model artefacts under 60 MB | **PASS** — 181,738,974 → 50,302,642 bytes (the two GGUF files and the borrowed pooler) | the four manifests |
 | SC-004 nDCG@10 and Recall@100 within 0.005 of baseline | **PASS** — largest fall 0.00333 | the table below |
-| SC-005 peak below the 600 MB ceiling | **PASS on the ceiling's measure, FAIL on the criterion's wording** — see below | `runs/measure-…T011736Z….json` |
+| SC-005 peak resident size below the 600 MB ceiling | **FAIL as worded** — resident 617–639 MB; the ceiling's own measure, `phys_footprint`, is under at 425–441 MB — see below | `runs/measure-…T014434Z….json` |
 | SC-006 a pre-feature index or artefact is refused by name | **PASS** — format 1 and 2 refused naming both versions; a directory holding both weights files, or neither, refused naming both | PR A and PR B tests |
 
 **SC-005 needs the owner's reading.** The criterion says "the peak resident size … falls below
@@ -40,13 +40,16 @@ which excludes clean file-backed pages. On the host with `f32`:
 
 | measure | peak | vs 600,000,000 bytes |
 |---|---|---|
-| `phys_footprint`, the ceiling's measure | 424,526,904 – 439,682,152 bytes | under by 160–175 MB |
-| resident size (`ru_maxrss`), the criterion's words | 617,136,128 – 638,156,800 bytes | over by 17–38 MB |
+| `phys_footprint`, the ceiling's measure | 424,526,904 – 440,927,312 bytes | under by 159–175 MB |
+| resident size (`ru_maxrss`), the criterion's words | 617,136,128 – 639,434,752 bytes | over by 17–39 MB |
 
 Resident size counts the memory-mapped index as it is paged in: it rises steadily through the
-80 searches of a run while the footprint does not, and it moved by 20 MB between three idle
-runs. The criterion's wording predates the distinction; it should say `phys_footprint`, and
-that amendment is the owner's.
+80 searches of a run while the footprint does not, and it moved by 22 MB between four idle
+runs. The criterion's wording predates the distinction. **As worded, SC-005 fails**, and the
+record says so: its `underCeiling` judges resident size and reads `false`, and its
+`footprintUnderCeiling` judges `phys_footprint` and reads `true`. Rewording SC-005 onto the
+ceiling's measure is the owner's decision; this feature does not make it by changing which
+number the verdict reads.
 
 ## The quality gate (T024, `compute=f32`)
 
@@ -99,15 +102,16 @@ minutes) and its host goldens, the host measurement.
 
 | platform | record | result |
 |---|---|---|
-| host, full corpus | `runs/measure-…T011736Z….json` | 800 of 800 hits bit-identical |
+| host, full corpus | `runs/measure-…T014434Z….json` | 800 of 800 hits bit-identical |
 | Android emulator, library fixture | instrumented tests | 6 of 6 |
 | Android emulator, 2,000-article slice | `runs/android-sdk_gphone64_arm64-….json` | 800 of 800, re-rank within 6.7e-6 |
 | iOS device and simulator | — | not run: no device (owner) |
 
-**The host record measures the ceiling's own counter** (the demo's `measure`, Feature 019's
-record contract amended): `peakBytes` is the lifetime peak `phys_footprint` where the platform
-reports it, `peakMethod` says so, and `residentPeakBytes` keeps the resident size every earlier
-record carried. Every figure prints in decimal megabytes, the ceiling's unit.
+**The host record carries the ceiling's own counter beside resident size** (the demo's
+`measure`, Feature 019's record contract amended): `peakBytes` and `underCeiling` keep their
+meaning, the resident peak and its verdict; `footprintPeakBytes`, `footprintMethod` and
+`footprintUnderCeiling` add the lifetime peak `phys_footprint` and a verdict on it. Every figure
+prints in decimal megabytes, the ceiling's unit.
 
 ## Size, memory and time
 
@@ -116,9 +120,9 @@ record carried. Every figure prints in decimal megabytes, the ceiling's unit.
 | Wikipedia artefact | 1,076,413,167 B | 585,130,234 B |
 | dense vectors | 660,750,511 B | 169,467,012 B |
 | model weights on disk | 181,738,974 B | 50,302,642 B |
-| host peak `phys_footprint` | not recorded | 424.5 – 439.7 MB |
-| host peak resident size | 1,062,453,248 B | 617.1 – 638.2 MB |
-| host median latency, fused / depth 10 / depth 20 | 250 / 958 / 1,685 ms | 123 / 841 / 1,514 ms |
+| host peak `phys_footprint` | not recorded | 424.5 – 440.9 MB |
+| host peak resident size | 1,062,453,248 B | 617.1 – 639.4 MB |
+| host median latency, fused / depth 10 / depth 20 | 250 / 958 / 1,685 ms | 123–142 / 841–989 / 1,514–1,750 ms |
 | Wikipedia build | 11.1 h (4 threads) | 12.4 h |
 
 The fused search roughly halves, consistent with the scan reading a quarter of the bytes. The build is no faster:
@@ -133,8 +137,11 @@ it embeds one text at a time on about four cores, which neither format nor preci
   recorded `ru_maxrss`, which counts clean mapped index pages the ceiling excludes, and printed
   mebibytes as "MB" beside a ceiling in millions of bytes. That mislabelling fed an estimate that
   `f32` would stay under the ceiling on resident size; it did not, and the owner chose `f32` on
-  that estimate before the real measure showed the ceiling is met on `phys_footprint`. Both are
-  fixed in the demo; the mebibyte figures quoted elsewhere in this feature were corrected.
+  that estimate. The demo now records `phys_footprint` beside resident size, each with its own
+  verdict, in decimal megabytes; the mebibyte figures quoted elsewhere in this feature were
+  corrected. A first version of the fix made the verdict read `phys_footprint` instead of
+  resident size, which would have turned SC-005 from FAIL to PASS without amending it; review
+  caught it, and the verdict judges the criterion as worded.
 - **F-003 — Eight-bit artefacts save disk, not run-time model memory, under `f32`.** The expanded
   matrices are the float models' size. The vectors' saving is page cache: with the index mapped,
   vectors are clean pages.

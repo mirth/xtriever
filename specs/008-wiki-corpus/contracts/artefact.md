@@ -56,7 +56,7 @@ expected.json               # host goldens for the device parity check
 - Prints the staged size of `XtrieverData` and fails (exit 1) if it exceeds **2,000,000,000
   bytes** — the bundle budget; the number is revisited in the report against the measured
   artefact and, if changed, changed in the script and here together. Measured: 1,076,413,167
-  bytes for the format-2 artefact (Feature 008), 585,133,155 bytes for the same 427,947 passages
+  bytes for the format-2 artefact (Feature 008), 585,130,234 bytes for the same 427,947 passages
   in format 3 (Feature 026) — the vectors fell from 660,750,511 to 169,467,012 bytes and the
   other three files did not change.
 - `DeviceMeasurementTests` reads `TEST_RUNNER_XTRIEVER_CORPUS` (`scifact` default, `wikipedia`)

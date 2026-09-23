@@ -120,7 +120,9 @@ def peak_footprint_bytes() -> int | None:
         if libproc.proc_pid_rusage(os.getpid(), 4, ctypes.byref(info)) != 0:
             return None
         return int(info.fields[28])
-    except OSError:
+    except (OSError, AttributeError):
+        # No library at that path (OSError) or no such symbol in it (AttributeError): the
+        # record falls back to the resident size alone rather than losing the run.
         return None
 
 

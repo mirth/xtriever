@@ -44,7 +44,7 @@ for simulator work. Without either the app runs against the 40-document 007 fixt
 Since Feature 024 the dense vectors live in `index/dense/manifest.bin` with one row file per
 generation (`vectors.<generation>.bin`) instead of `index/dense/index.bin`, and since Feature
 026 every row is eight-bit (dense format 3): the Wikipedia artefact is 585 MB where it was
-1,076 MB, and the two models 52 MB where they were 175 MB. An index staged from an artefact
+1,076 MB, and the two models' files 51.5 MB where they were 182.9 MB. An index staged from an artefact
 built before either feature is refused at open naming both versions, with the rebuild
 instruction; rebuild it (`xtriever wiki build …`) rather than re-staging. About shows the
 compaction share the index recorded, unset on every shipped artefact — those are built with

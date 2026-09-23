@@ -16,6 +16,8 @@ use std::path::Path;
 
 use crate::error::model_err;
 use crate::gguf_header::{BertPin, GgufHeader};
+// The arithmetic's one literal, defined beside the matmul it selects (`quantised_bert`).
+use crate::quantised_bert::compute;
 
 /// One pinned model file: name, exact size and SHA-256 (spec FR-003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,16 +144,6 @@ macro_rules! q8_repository {
 macro_rules! q8_revision {
     () => {
         "ddf2e25d5b8530422e7b14aa39f33a657ff9aec0"
-    };
-}
-/// The arithmetic the eight-bit matrices are multiplied in (`quantised_bert`): expanded to
-/// `f32` at load, multiplied by the float kernel — the owner's choice over candle's eight-bit
-/// CPU kernel, which is 3.7× slower for the sequences this stage feeds, and over `f16`, which
-/// did not hold parity across platforms (ADR-0015). A different arithmetic would be different
-/// numbers, so the fingerprint names it.
-macro_rules! compute {
-    () => {
-        "f32"
     };
 }
 macro_rules! q8_weights_sha256 {
