@@ -234,6 +234,7 @@ fn stage_is_the_last_key_and_round_trips() {
         reranker_model_id: None,
         rerank_depth: None,
         rerank_mode: None,
+        sparse: None,
     });
     let json = serde_json::to_string_pretty(&r).unwrap();
     let keys: Vec<&str> = json

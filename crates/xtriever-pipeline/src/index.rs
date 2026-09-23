@@ -9,6 +9,10 @@ use xtriever_core::{
     TextKind, Value, VectorIndex,
 };
 use xtriever_dense::FlatIndex;
+use xtriever_dense::model::SPARSE_MODEL_NAME;
+use xtriever_dense::sparse::{
+    Expansion, QUERY_TABLE, QUERY_TOKENIZER, SparseEncoder, SparseQuery, field_text, validate_scale,
+};
 use xtriever_lexical::TantivyIndex;
 
 use crate::types::OpenOptions;
@@ -19,15 +23,20 @@ fn read_only() -> Error {
     Error::read_only()
 }
 
-use crate::FORMAT_VERSION;
 use crate::descriptor::Descriptor;
 use crate::error::{corrupt, schema_err};
 use crate::ids::IdMap;
 use crate::passages::PassageStore;
-use crate::{HybridConfig, SourceDocument};
+use crate::types::lexical_schema;
+use crate::{
+    FORMAT_VERSION, HybridConfig, SPARSE_FIELD, SPARSE_FORMAT_VERSION, SourceDocument,
+    SparseOption, SparseRecord,
+};
 
 pub(crate) const LEXICAL_DIR: &str = "lexical";
 pub(crate) const DENSE_DIR: &str = "dense";
+/// A sparse index's query side (Feature 027 research D6).
+pub(crate) const SPARSE_DIR: &str = "sparse";
 /// Present from just before the first stage commit until the descriptor is written: an
 /// interrupted commit leaves it behind, and `open` refuses the directory (research D3, review
 /// round 1 #1 — a same-cardinality partial commit is invisible to the count check alone).
@@ -53,6 +62,12 @@ pub struct HybridIndex {
     pub(crate) embedder: Box<dyn Embedder>,
     /// Attached per handle, never persisted: any re-ranker can serve any index.
     pub(crate) reranker: Option<Box<dyn Reranker>>,
+    /// A sparse index's query side, built from its own `sparse/` files (Feature 027).
+    pub(crate) sparse_query: Option<SparseQuery>,
+    /// The document encoder, attached for building; never needed to search.
+    pub(crate) sparse_encoder: Option<SparseEncoder>,
+    /// Documents this handle's `add` expanded from a truncated window.
+    pub(crate) sparse_truncated: u64,
 }
 
 impl std::fmt::Debug for HybridIndex {
@@ -65,6 +80,8 @@ impl std::fmt::Debug for HybridIndex {
             .field("rerank_mode", &self.config.rerank_mode)
             .field("fingerprint", &self.embedder.fingerprint())
             .field("reranker", &self.reranker.as_ref().map(|r| r.model_id()))
+            .field("sparse", &self.descriptor.sparse)
+            .field("sparse_encoder", &self.sparse_encoder.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -99,8 +116,75 @@ impl HybridConfig {
         self.rerank_mode.validate()?;
         // The dense stage owns the rule; one definition (Feature 024 review).
         xtriever_dense::validate_compaction_threshold(self.dense_compact_dead_share)?;
+        if let Some(option) = &self.sparse {
+            validate_sparse(option)?;
+            if self.schema.field(&FieldName::from(SPARSE_FIELD)).is_some() {
+                return Err(schema_err(format!(
+                    "field `{SPARSE_FIELD}` is reserved for the sparse expansion of a sparse index"
+                )));
+            }
+        }
         Ok(())
     }
+}
+
+/// The passage a document is embedded — and, on a sparse index, expanded — from: the
+/// `dense_fields` that hold text, non-empty, in that order, joined by one space. Public so a
+/// caller that encodes offline (`add_embedded`, `add_encoded`) encodes exactly this text.
+#[must_use]
+pub fn dense_passage(dense_fields: &[FieldName], fields: &BTreeMap<FieldName, Value>) -> String {
+    let mut out = String::new();
+    for name in dense_fields {
+        if let Some(Value::Text(t)) = fields.get(name)
+            && !t.is_empty()
+        {
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            out.push_str(t);
+        }
+    }
+    out
+}
+
+/// Copy the encoder's query side into `side` and open it from there, as `open` will: the
+/// record the descriptor keeps and the query side this handle searches with.
+fn copy_query_side(
+    encoder: &SparseEncoder,
+    option: SparseOption,
+    side: &Path,
+) -> Result<(SparseRecord, SparseQuery)> {
+    let (tokenizer_sha256, table_sha256) = encoder.write_query_side(side)?;
+    let query = SparseQuery::open(
+        &side.join(QUERY_TOKENIZER),
+        &side.join(QUERY_TABLE),
+        &tokenizer_sha256,
+        &table_sha256,
+    )?;
+    let record = SparseRecord {
+        scale: option.scale,
+        boost: option.boost,
+        field: SPARSE_FIELD.to_owned(),
+        encoder: encoder.identity().to_owned(),
+        tokenizer_sha256,
+        table_sha256,
+    };
+    Ok((record, query))
+}
+
+/// The sparse option's own rule, shared by `create` (a schema error) and `open` (corruption):
+/// the message, or `Ok`.
+/// The scale is the dense crate's rule (`field_text` applies it); the boost is the lexical
+/// field's, so its rule lives here. `Error::Schema`; `open` reports it as corruption.
+fn validate_sparse(option: &SparseOption) -> Result<()> {
+    validate_scale(option.scale)?;
+    if !(option.boost.is_finite() && option.boost > 0.0) {
+        return Err(schema_err(format!(
+            "sparse boost {} must be finite and above zero",
+            option.boost
+        )));
+    }
+    Ok(())
 }
 
 impl HybridIndex {
@@ -112,11 +196,71 @@ impl HybridIndex {
     /// `Error::Io`, and the stages' own creation errors.
     pub fn create(dir: &Path, config: HybridConfig, embedder: Box<dyn Embedder>) -> Result<Self> {
         config.validate()?;
+        if config.sparse.is_some() {
+            return Err(schema_err(
+                "a sparse index is created by HybridIndex::create_sparse, which takes the encoder",
+            ));
+        }
+        Self::create_with(dir, config, embedder, None)
+    }
+
+    /// Create a sparse index (Feature 027): as [`create`](Self::create), plus the reserved
+    /// `_sparse` field, the encoder's query side copied into `<dir>/sparse/`, and descriptor
+    /// format version 3 ([`SPARSE_FORMAT_VERSION`](crate::SPARSE_FORMAT_VERSION), ADR-0016).
+    /// `config.sparse` must be set; the encoder is attached to the returned handle, so `add`
+    /// can expand documents at once.
+    ///
+    /// # Errors
+    ///
+    /// As [`create`](Self::create); `Error::Schema` for a missing or invalid option or a user
+    /// field named `_sparse`; `Error::Model` if the encoder's query-side files fail their pins.
+    pub fn create_sparse(
+        dir: &Path,
+        config: HybridConfig,
+        embedder: Box<dyn Embedder>,
+        encoder: SparseEncoder,
+    ) -> Result<Self> {
+        config.validate()?;
+        if config.sparse.is_none() {
+            return Err(schema_err(
+                "create_sparse needs config.sparse; an index without the option is created by create",
+            ));
+        }
+        Self::create_with(dir, config, embedder, Some(encoder))
+    }
+
+    fn create_with(
+        dir: &Path,
+        config: HybridConfig,
+        embedder: Box<dyn Embedder>,
+        encoder: Option<SparseEncoder>,
+    ) -> Result<Self> {
         std::fs::create_dir_all(dir)?;
         if std::fs::read_dir(dir)?.next().is_some() {
             return Err(corrupt(format!("{} is not empty", dir.display())));
         }
-        let lexical = TantivyIndex::create(&dir.join(LEXICAL_DIR), config.schema.clone())?;
+        // The sparse query side first, while the directory is otherwise empty: it is the one
+        // step that reads files outside the index (the encoder's), so if it fails the directory
+        // is emptied again and a retry can create into it.
+        let (sparse, sparse_query) = match (&encoder, config.sparse) {
+            (Some(encoder), Some(option)) => {
+                let side = dir.join(SPARSE_DIR);
+                match copy_query_side(encoder, option, &side) {
+                    Ok((record, query)) => (Some(record), Some(query)),
+                    Err(e) => {
+                        // Best effort: the copy's error is the one worth reporting.
+                        let _ = std::fs::remove_dir_all(&side);
+                        return Err(e);
+                    }
+                }
+            }
+            _ => (None, None),
+        };
+        let boost = config.sparse.map(|o| o.boost);
+        let lexical = TantivyIndex::create(
+            &dir.join(LEXICAL_DIR),
+            lexical_schema(&config.schema, boost),
+        )?;
         let mut dense = FlatIndex::create(
             &dir.join(DENSE_DIR),
             embedder.dim(),
@@ -128,7 +272,11 @@ impl HybridIndex {
         let ids = Arc::new(IdMap::default());
         ids.write(dir)?;
         let descriptor = Descriptor {
-            format_version: FORMAT_VERSION,
+            format_version: if sparse.is_some() {
+                SPARSE_FORMAT_VERSION
+            } else {
+                FORMAT_VERSION
+            },
             schema: config.schema.clone(),
             embedder_fingerprint: embedder.fingerprint().to_owned(),
             dense_fields: config.dense_fields.clone(),
@@ -137,7 +285,7 @@ impl HybridIndex {
             rerank_depth: config.rerank_depth,
             rerank_mode: config.rerank_mode,
             dense_compact_dead_share: config.dense_compact_dead_share,
-            sparse: None,
+            sparse,
             live_docs: 0,
             generation: 0,
         };
@@ -154,6 +302,9 @@ impl HybridIndex {
             passages,
             embedder,
             reranker: None,
+            sparse_query,
+            sparse_encoder: encoder,
+            sparse_truncated: 0,
         })
     }
 
@@ -217,7 +368,38 @@ impl HybridIndex {
         } else {
             TantivyIndex::open(&dir.join(LEXICAL_DIR))?
         };
+        // A sparse record that could not have been created is corruption (Feature 027); the
+        // lexical schema it implies is then checked with the rest of the identity.
+        if let Some(record) = &descriptor.sparse {
+            if record.field != SPARSE_FIELD {
+                return Err(corrupt(format!(
+                    "descriptor: sparse field is `{}`, expected `{SPARSE_FIELD}`",
+                    record.field
+                )));
+            }
+            validate_sparse(&SparseOption {
+                scale: record.scale,
+                boost: record.boost,
+            })
+            .map_err(|e| match e {
+                Error::Schema(m) => corrupt(format!("descriptor: {m}")),
+                other => other,
+            })?;
+        }
         descriptor.check_identity(lexical.schema(), embedder.fingerprint())?;
+        // The query side is the index's own, verified against the recorded hashes.
+        let sparse_query = match &descriptor.sparse {
+            Some(record) => {
+                let side = dir.join(SPARSE_DIR);
+                Some(SparseQuery::open(
+                    &side.join(QUERY_TOKENIZER),
+                    &side.join(QUERY_TABLE),
+                    &record.tokenizer_sha256,
+                    &record.table_sha256,
+                )?)
+            }
+            None => None,
+        };
         let ids = Arc::new(IdMap::read(dir)?);
         // The store's slot count must equal the id map's length (the fifth count, ADR-0008).
         let passages = PassageStore::open(dir, ids.len())?;
@@ -272,7 +454,10 @@ impl HybridIndex {
             rerank_depth: descriptor.rerank_depth,
             rerank_mode: descriptor.rerank_mode,
             dense_compact_dead_share: descriptor.dense_compact_dead_share,
-            sparse: None,
+            sparse: descriptor.sparse.as_ref().map(|r| SparseOption {
+                scale: r.scale,
+                boost: r.boost,
+            }),
         };
         // A persisted mode that could not have been created is corruption, not a schema error
         // (review round 1 #4): every search would apply an α outside [0, 1].
@@ -292,62 +477,60 @@ impl HybridIndex {
             passages,
             embedder,
             reranker: None,
+            sparse_query,
+            sparse_encoder: None,
+            sparse_truncated: 0,
         })
     }
 
-    /// Create a sparse index (Feature 027): as [`create`](Self::create), plus the reserved
-    /// `_sparse` field, the encoder's query side copied into `<dir>/sparse/`, and descriptor
-    /// format version 3. `config.sparse` must be set; the encoder is attached to the handle.
-    ///
-    /// RED-CHECKPOINT STUB.
+    /// Attach (or detach) the sparse document encoder; nothing is written. Needed only to add
+    /// to a sparse index — searching never uses it. The encoder must be the one the index
+    /// records, as the embedder must match the index's fingerprint: an index never holds
+    /// expansions from two encoders.
     ///
     /// # Errors
     ///
-    /// As [`create`](Self::create).
-    pub fn create_sparse(
-        _dir: &Path,
-        _config: HybridConfig,
-        _embedder: Box<dyn Embedder>,
-        _encoder: xtriever_dense::sparse::SparseEncoder,
-    ) -> Result<Self> {
-        Err(schema_err("create_sparse: not implemented"))
+    /// `Error::FingerprintMismatch` naming both identities for another encoder;
+    /// `Error::Schema` for an encoder offered to an index without the option.
+    pub fn set_sparse_encoder(&mut self, encoder: Option<SparseEncoder>) -> Result<()> {
+        if let Some(encoder) = &encoder {
+            match &self.descriptor.sparse {
+                None => {
+                    return Err(schema_err(
+                        "this index has no sparse option; a sparse encoder has nothing to expand",
+                    ));
+                }
+                Some(record) if record.encoder != encoder.identity() => {
+                    return Err(Error::FingerprintMismatch {
+                        index: record.encoder.clone(),
+                        current: encoder.identity().to_owned(),
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+        self.sparse_encoder = encoder;
+        Ok(())
     }
 
-    /// Attach (or detach) the sparse document encoder; nothing is written. RED-CHECKPOINT STUB.
-    pub fn set_sparse_encoder(&mut self, _encoder: Option<xtriever_dense::sparse::SparseEncoder>) {}
-
-    /// The sparse record, if this index has the option. RED-CHECKPOINT STUB.
+    /// The sparse record, if this index has the option (Feature 027).
     #[must_use]
-    pub fn sparse(&self) -> Option<&crate::SparseRecord> {
-        None
+    pub fn sparse(&self) -> Option<&SparseRecord> {
+        self.descriptor.sparse.as_ref()
     }
 
-    /// The descriptor's format version: 3 for a sparse index, 2 otherwise. RED-CHECKPOINT STUB.
+    /// The descriptor's format version: [`SPARSE_FORMAT_VERSION`] for a sparse index,
+    /// [`FORMAT_VERSION`] otherwise.
     #[must_use]
     pub fn format_version(&self) -> u32 {
-        FORMAT_VERSION
+        self.descriptor.format_version
     }
 
-    /// Documents this handle's `add` truncated to the sparse encoder's window. RED-CHECKPOINT
-    /// STUB.
+    /// Documents this handle expanded from a window truncated to the encoder's 512 tokens.
     #[must_use]
     pub fn sparse_truncated(&self) -> u64 {
-        0
+        self.sparse_truncated
     }
-
-    /// As [`add`](Self::add) with caller-supplied vectors and expansions, for a sparse index
-    /// built from caches. RED-CHECKPOINT STUB.
-    ///
-    /// # Errors
-    ///
-    /// As [`add_embedded`](Self::add_embedded).
-    pub fn add_encoded(
-        &mut self,
-        _docs: &[(SourceDocument, Vec<f32>, xtriever_dense::sparse::Expansion)],
-    ) -> Result<()> {
-        Err(schema_err("add_encoded: not implemented"))
-    }
-
     /// The stored passage text of a committed internal id — the text the dense stage embedded
     /// (Feature 008: the build's verify pass walks every passage).
     ///
@@ -405,54 +588,119 @@ impl HybridIndex {
         self.committed_ids.internal(external_id).is_some()
     }
 
-    /// The dense passage: the configured text fields, non-empty, joined by one space.
+    /// The dense passage of a document under this index's configuration ([`dense_passage`]).
     fn passage(&self, fields: &BTreeMap<FieldName, Value>) -> String {
-        let mut out = String::new();
-        for name in &self.config.dense_fields {
-            if let Some(Value::Text(t)) = fields.get(name)
-                && !t.is_empty()
-            {
-                if !out.is_empty() {
-                    out.push(' ');
-                }
-                out.push_str(t);
-            }
-        }
-        out
+        dense_passage(&self.config.dense_fields, fields)
     }
 
-    fn stage_one(&mut self, doc: &SourceDocument, passage: String, vector: &[f32]) -> Result<()> {
+    /// A document every add path accepts: a non-empty id, and — on a sparse index — no value
+    /// for the reserved field, which only the expansion writes.
+    fn check_document(&self, doc: &SourceDocument) -> Result<()> {
+        if doc.external_id.is_empty() {
+            return Err(schema_err("external id must not be empty"));
+        }
+        if self.descriptor.sparse.is_some()
+            && doc.fields.contains_key(&FieldName::from(SPARSE_FIELD))
+        {
+            return Err(schema_err(format!(
+                "document `{}` supplies `{SPARSE_FIELD}`, which only the sparse expansion writes",
+                doc.external_id
+            )));
+        }
+        Ok(())
+    }
+
+    /// The expansion of a passage for this index: `None` without the option, the attached
+    /// encoder's otherwise — and a sparse index with no encoder attached cannot be added to.
+    fn expand(&self, passage: &str) -> Result<Option<Expansion>> {
+        match (&self.descriptor.sparse, &self.sparse_encoder) {
+            (None, _) => Ok(None),
+            (Some(_), Some(encoder)) => Ok(Some(encoder.encode(passage)?)),
+            (Some(_), None) => Err(Error::Model {
+                model: SPARSE_MODEL_NAME.to_owned(),
+                message: "this index is sparse and no sparse encoder is attached; attach one \
+                          with set_sparse_encoder before adding"
+                    .to_owned(),
+            }),
+        }
+    }
+
+    /// Stage one document: its passage, its vector and — on a sparse index — its expansion,
+    /// written as the `_sparse` text at this index's scale (`field_text` refuses an expansion
+    /// the encoder could not have produced). Every add path ends here; a truncated expansion
+    /// is counted only once its document is staged.
+    fn stage_one(
+        &mut self,
+        doc: &SourceDocument,
+        passage: String,
+        vector: &[f32],
+        expansion: Option<&Expansion>,
+    ) -> Result<()> {
         if vector.len() != self.embedder.dim() {
             return Err(Error::DimensionMismatch {
                 expected: self.embedder.dim(),
                 actual: vector.len(),
             });
         }
+        let sparse_text = match (&self.descriptor.sparse, expansion) {
+            (Some(record), Some(expansion)) => Some(field_text(expansion, record.scale)?),
+            (None, None) => None,
+            // The callers pair them by construction; say so rather than index half a document.
+            (Some(_), None) | (None, Some(_)) => {
+                return Err(schema_err(
+                    "an expansion is required on a sparse index and refused on any other",
+                ));
+            }
+        };
         let id =
             Arc::make_mut(&mut self.pending_ids).assign(&doc.external_id, doc.chunk.clone())?;
+        let fields = match sparse_text {
+            Some(text) => {
+                let mut fields = doc.fields.clone();
+                fields.insert(FieldName::from(SPARSE_FIELD), Value::Text(text));
+                fields
+            }
+            None => doc.fields.clone(),
+        };
         self.lexical.add(&[Document {
             id,
-            fields: doc.fields.clone(),
+            fields,
             chunk: doc.chunk.clone(),
         }])?;
         self.dense.add(id, vector)?;
         self.passages.stage(id.0, Some(passage));
         self.dirty = true;
+        if expansion.is_some_and(|e| e.truncated) {
+            self.sparse_truncated += 1;
+        }
         Ok(())
     }
 
-    /// Add or replace documents under their external ids; visible after `commit`.
+    /// A document whose vector (and expansion) the caller supplies: checked, then staged.
+    fn add_prepared(
+        &mut self,
+        doc: &SourceDocument,
+        vector: &[f32],
+        expansion: Option<&Expansion>,
+    ) -> Result<()> {
+        self.check_document(doc)?;
+        let passage = self.passage(&doc.fields);
+        self.stage_one(doc, passage, vector, expansion)
+    }
+
+    /// Add or replace documents under their external ids; visible after `commit`. On a sparse
+    /// index each passage is also expanded by the attached encoder (Feature 027).
     ///
     /// # Errors
     ///
-    /// `Error::Schema` (empty id, fields the schema rejects), `Error::Model` (embedder),
+    /// `Error::Schema` (empty id, fields the schema rejects, a document supplying `_sparse`),
+    /// `Error::Model` (embedder; the sparse encoder, or its absence on a sparse index),
     /// `Error::DimensionMismatch`, stage errors.
     pub fn add(&mut self, docs: &[SourceDocument]) -> Result<()> {
         for doc in docs {
-            if doc.external_id.is_empty() {
-                return Err(schema_err("external id must not be empty"));
-            }
+            self.check_document(doc)?;
             let passage = self.passage(&doc.fields);
+            let expansion = self.expand(&passage)?;
             let mut vectors = self
                 .embedder
                 .embed(&[passage.as_str()], TextKind::Passage)?;
@@ -460,7 +708,7 @@ impl HybridIndex {
                 model: "embedder".into(),
                 message: "returned no vector for the passage".into(),
             })?;
-            self.stage_one(doc, passage, &vector)?;
+            self.stage_one(doc, passage, &vector, expansion.as_ref())?;
         }
         Ok(())
     }
@@ -469,14 +717,40 @@ impl HybridIndex {
     ///
     /// # Errors
     ///
-    /// As [`add`](Self::add); `Error::DimensionMismatch` if a vector is not `embedder.dim()` wide.
+    /// As [`add`](Self::add); `Error::DimensionMismatch` if a vector is not `embedder.dim()` wide;
+    /// `Error::Schema` on a sparse index, which needs an expansion per document
+    /// ([`add_encoded`](Self::add_encoded)).
     pub fn add_embedded(&mut self, docs: &[(SourceDocument, Vec<f32>)]) -> Result<()> {
+        if self.descriptor.sparse.is_some() {
+            return Err(schema_err(
+                "this index is sparse: add_embedded has no expansion to write; use add with the \
+                 encoder attached, or add_encoded",
+            ));
+        }
         for (doc, vector) in docs {
-            if doc.external_id.is_empty() {
-                return Err(schema_err("external id must not be empty"));
-            }
-            let passage = self.passage(&doc.fields);
-            self.stage_one(doc, passage, vector)?;
+            self.add_prepared(doc, vector, None)?;
+        }
+        Ok(())
+    }
+
+    /// As [`add_embedded`](Self::add_embedded), with each document's sparse expansion supplied
+    /// too — a sparse index built from caches (Feature 027; the evaluation harness). The
+    /// expansion is written exactly as `add` writes the encoder's, so the same expansions and
+    /// vectors give the same index.
+    ///
+    /// # Errors
+    ///
+    /// As [`add_embedded`](Self::add_embedded) on an index without the option, which refuses
+    /// the call; `Error::Schema` for an expansion `field_text` refuses (an id out of order,
+    /// repeated, special or outside the vocabulary; a weight the encoder cannot produce).
+    pub fn add_encoded(&mut self, docs: &[(SourceDocument, Vec<f32>, Expansion)]) -> Result<()> {
+        if self.descriptor.sparse.is_none() {
+            return Err(schema_err(
+                "add_encoded writes sparse expansions, and this index has no sparse option",
+            ));
+        }
+        for (doc, vector, expansion) in docs {
+            self.add_prepared(doc, vector, Some(expansion))?;
         }
         Ok(())
     }

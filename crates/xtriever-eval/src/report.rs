@@ -85,6 +85,20 @@ pub struct StageInfo {
     /// configuration's shape: `"replace"` or `{"interpolate": {"alpha": 0.5}}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rerank_mode: Option<crate::run::RerankMode>,
+    /// The sparse expansion the index was built with (Feature 027; sparse configurations
+    /// only). Deterministic facts only — the encoding throughput is a timing, so it goes to
+    /// stderr, never into a report (spec 004 SC-006).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse: Option<SparseStage>,
+}
+
+/// What a sparse report records about its expansion (Feature 027).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SparseStage {
+    /// The settings the index was created with.
+    pub settings: crate::run::SparseSettings,
+    /// The encoder's identity (`xtriever_dense::model::SPARSE_IDENTITY`).
+    pub encoder: String,
 }
 
 /// One dataset's evaluation. **Field order is the on-disk key order** (contract).

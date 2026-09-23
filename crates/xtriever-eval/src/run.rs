@@ -397,12 +397,7 @@ impl EmbeddingCacheKey {
     ///
     /// `Error::Io`, `Error::Json`.
     pub fn write(&self, dir: &Path) -> Result<()> {
-        std::fs::create_dir_all(dir)?;
-        std::fs::write(
-            dir.join(Self::FILE),
-            serde_json::to_string_pretty(self)? + "\n",
-        )?;
-        Ok(())
+        write_key(self, dir, Self::FILE)
     }
 
     /// Whether `dir/cache.json` exists, parses, and equals `self` in every field.
@@ -415,47 +410,60 @@ impl EmbeddingCacheKey {
     /// error, or the first differing field with both values — or `None` when it matches. The
     /// text callers print before re-embedding, so nobody chases a phantom change.
     pub fn mismatch(&self, dir: &Path) -> Option<String> {
-        let path = dir.join(Self::FILE);
-        let text = match std::fs::read_to_string(&path) {
-            Ok(t) => t,
-            Err(e) => return Some(format!("no key file at {} ({e})", path.display())),
-        };
-        let stored: Self = match serde_json::from_str(&text) {
-            Ok(k) => k,
-            Err(e) => return Some(format!("key file {} is unreadable ({e})", path.display())),
-        };
-        let fields: [(&str, String, String); 7] = [
-            (
-                "format_version",
-                stored.format_version.to_string(),
-                self.format_version.to_string(),
-            ),
-            ("config", stored.config.clone(), self.config.clone()),
-            ("dataset", stored.dataset.clone(), self.dataset.clone()),
-            (
-                "embedder_fingerprint",
-                stored.embedder_fingerprint.clone(),
-                self.embedder_fingerprint.clone(),
-            ),
-            (
-                "corpus_sha256",
-                stored.corpus_sha256.clone(),
-                self.corpus_sha256.clone(),
-            ),
-            (
-                "documents",
-                stored.documents.to_string(),
-                self.documents.to_string(),
-            ),
-            ("dim", stored.dim.to_string(), self.dim.to_string()),
-        ];
-        fields
-            .into_iter()
-            .find(|(_, was, now)| was != now)
-            .map(|(name, was, now)| {
-                format!("{name} differs: cache has {was}, this run needs {now}")
-            })
+        key_mismatch(self, dir, Self::FILE)
     }
+}
+
+/// Write a cache key into `dir/file` (created if absent) as pretty JSON.
+fn write_key<K: Serialize>(key: &K, dir: &Path, file: &str) -> Result<()> {
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(dir.join(file), serde_json::to_string_pretty(key)? + "\n")?;
+    Ok(())
+}
+
+/// Why the key file at `dir/file` does not answer to `key` — the missing file, its parse error,
+/// or the first field (by name) whose values differ, both named — or `None` when it matches.
+/// Every field serde gives is compared, so a field added to a key later can never be left out
+/// of the comparison; one the file has and the key does not is a difference too. The text
+/// callers print before rebuilding a cache, so nobody chases a phantom change.
+fn key_mismatch<K: Serialize>(key: &K, dir: &Path, file: &str) -> Option<String> {
+    let path = dir.join(file);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => return Some(format!("no key file at {} ({e})", path.display())),
+    };
+    let stored: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => return Some(format!("key file {} is unreadable ({e})", path.display())),
+    };
+    let current = match serde_json::to_value(key) {
+        Ok(v) => v,
+        Err(e) => return Some(format!("cannot compare with {} ({e})", path.display())),
+    };
+    let (Some(stored), Some(current)) = (stored.as_object(), current.as_object()) else {
+        return Some(format!("key file {} is not a JSON object", path.display()));
+    };
+    let show = |v: Option<&serde_json::Value>| match v {
+        None => "nothing".to_owned(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(v) => v.to_string(),
+    };
+    current
+        .iter()
+        .find(|(name, now)| stored.get(*name) != Some(*now))
+        .map(|(name, now)| {
+            format!(
+                "{name} differs: cache has {}, this run needs {}",
+                show(stored.get(name)),
+                show(Some(now))
+            )
+        })
+        .or_else(|| {
+            stored
+                .keys()
+                .find(|name| !current.contains_key(*name))
+                .map(|name| format!("{name} differs: cache has it, this run has no such field"))
+        })
 }
 
 // ── Feature 005: the hybrid configuration and the stage-agnostic runner ────────────────────
@@ -491,6 +499,40 @@ pub struct SparseSettings {
     pub boost: f32,
 }
 
+impl SparseSettings {
+    /// The largest scale: `xtriever_dense::sparse::MAX_SCALE`, mirrored (a test keeps them
+    /// equal), so a recipe the pipeline would refuse is refused before any encoding.
+    pub const MAX_SCALE: u32 = 1_000;
+
+    /// The spike's settings (research D4): scale 10, boost 1.0.
+    pub const DEFAULT: Self = Self {
+        scale: 10,
+        boost: 1.0,
+    };
+
+    /// `1 ≤ scale ≤ MAX_SCALE`, boost finite and above zero.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Run` naming the value.
+    pub fn validate(&self) -> Result<()> {
+        if !(1..=Self::MAX_SCALE).contains(&self.scale) {
+            return Err(Error::Run(format!(
+                "sparse scale {} is outside 1..={}",
+                self.scale,
+                Self::MAX_SCALE
+            )));
+        }
+        if !(self.boost.is_finite() && self.boost > 0.0) {
+            return Err(Error::Run(format!(
+                "sparse boost {} must be finite and above zero",
+                self.boost
+            )));
+        }
+        Ok(())
+    }
+}
+
 impl HybridConfig {
     /// `k ≥ 100`, `candidate_depth ≥ k`, and both sub-configurations valid.
     ///
@@ -509,6 +551,9 @@ impl HybridConfig {
                 "candidate_depth = {} is below k = {}; a stage could not fill the fused list",
                 self.candidate_depth, self.k
             )));
+        }
+        if let Some(sparse) = &self.sparse {
+            sparse.validate()?;
         }
         self.lexical.validate()?;
         self.dense.validate()
@@ -712,26 +757,41 @@ impl RerankConfig {
         }
     }
 
-    /// `hybrid-sparse-rerank-v1` (Feature 027). RED-CHECKPOINT STUB.
+    /// `hybrid-sparse-rerank-v1` (Feature 027, contract `surfaces-and-eval.md`):
+    /// `hybrid-rerank-v3` over `hybrid-sparse-v1` — the re-rank depth and interpolation
+    /// unchanged, so the comparison with v3 measures the option alone.
     pub fn hybrid_sparse_rerank_v1() -> Self {
         Self {
             name: "hybrid-sparse-rerank-v1".into(),
+            hybrid: HybridConfig::hybrid_sparse_v1(),
             ..Self::hybrid_rerank_v3()
         }
     }
 }
 
 impl HybridConfig {
-    /// `hybrid-sparse-v1` (Feature 027). RED-CHECKPOINT STUB.
+    /// `hybrid-sparse-v1` (Feature 027, contract `surfaces-and-eval.md`):
+    /// `hybrid-baseline-v2` with sparse expansion at the spike's settings (scale 10, boost 1.0).
     pub fn hybrid_sparse_v1() -> Self {
         Self {
             name: "hybrid-sparse-v1".into(),
+            sparse: Some(SparseSettings::DEFAULT),
             ..Self::hybrid_baseline_v2()
         }
     }
 }
 
 // ── Feature 027: the sparse-weights cache ──────────────────────────────────────────────────
+
+/// One document's cached expansion, as the encoder produced it (the harness's mirror of
+/// `xtriever_dense::sparse::Expansion`; this crate names only core types).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CachedExpansion {
+    /// `(token id, weight)`, ascending by id.
+    pub entries: Vec<(u32, f32)>,
+    /// The passage ran past the encoder's window.
+    pub truncated: bool,
+}
 
 /// What a cached set of document expansions was encoded from (contract `surfaces-and-eval.md`).
 /// Stored as `key.json` beside `weights.bin`; any field disagreement is a miss.
@@ -743,6 +803,9 @@ pub struct SparseCacheKey {
     pub dataset: String,
     /// The encoder's identity (`xtriever_dense::model::SPARSE_IDENTITY`).
     pub encoder: String,
+    /// What the encoded passages were built from: the lexical configuration whose fields the
+    /// passage joins (`EvalConfig::name`). Another recipe is other text, so another cache.
+    pub recipe: String,
     /// The manifest's `corpus.jsonl` SHA-256 the loader verified.
     pub corpus_sha256: String,
     /// Corpus size.
@@ -753,38 +816,167 @@ impl SparseCacheKey {
     /// File name inside the cache directory.
     pub const FILE: &'static str = "key.json";
 
-    /// Write `key.json` into `dir` (created if absent). RED-CHECKPOINT STUB.
+    /// The layout this build writes: `weights.bin` as described at [`write_sparse_weights`] —
+    /// 2 since each record carries its truncation flag (review round 6); a key that says 1 is
+    /// a miss.
+    pub const FORMAT_VERSION: u32 = 2;
+
+    /// Write `key.json` into `dir` (created if absent).
     ///
     /// # Errors
     ///
     /// `Error::Io`, `Error::Json`.
-    pub fn write(&self, _dir: &Path) -> Result<()> {
-        Err(Error::Run("SparseCacheKey::write: not implemented".into()))
+    pub fn write(&self, dir: &Path) -> Result<()> {
+        write_key(self, dir, Self::FILE)
     }
 
-    /// Why the cache at `dir` does not answer to this key, or `None` when it matches.
-    /// RED-CHECKPOINT STUB.
-    pub fn mismatch(&self, _dir: &Path) -> Option<String> {
-        None
+    /// Why the cache at `dir` does not answer to this key — the missing key file, its parse
+    /// error, or the first differing field with both values — or `None` when it matches.
+    pub fn mismatch(&self, dir: &Path) -> Option<String> {
+        key_mismatch(self, dir, Self::FILE)
     }
 }
 
 /// Every document's expansion, in corpus order, as `weights.bin`: per document a little-endian
-/// `u32` entry count, then that many `(u32 token id, f32 weight)` pairs. RED-CHECKPOINT STUB.
+/// `u32` entry count, a `u8` truncation flag (0 or 1), then that many `(u32 token id, f32
+/// weight)` pairs. The raw weights, not
+/// term frequencies, so a run at another scale re-uses them (research D10). Written the way
+/// every durable file in the engine is (`xtriever_core::fs`): a temporary file, synced, renamed
+/// into place, and the directory synced.
 ///
 /// # Errors
 ///
-/// `Error::Io`.
-pub fn write_sparse_weights(_path: &Path, _expansions: &[Vec<(u32, f32)>]) -> Result<()> {
-    Err(Error::Run("write_sparse_weights: not implemented".into()))
+/// `Error::Io`; `Error::Run` for an expansion longer than `u32::MAX` entries.
+pub fn write_sparse_weights(path: &Path, expansions: &[CachedExpansion]) -> Result<()> {
+    let mut bytes = Vec::new();
+    for expansion in expansions {
+        append_sparse_weights(&mut bytes, expansion)?;
+    }
+    xtriever_core::fs::write_atomically(path, &path.with_extension("bin.tmp"), &bytes)?;
+    if let Some(dir) = path.parent() {
+        xtriever_core::fs::sync_dir(dir)?;
+    }
+    Ok(())
+}
+
+/// How far an interruptible encode has durably got (Feature 027): `documents` complete records
+/// occupying the first `bytes` of `weights.partial`, synced before this record was written.
+/// A resume truncates the partial file to `bytes` and reads exactly `documents` back, so what a
+/// crash leaves after the last sync — torn bytes, or blocks that read back as zeros — is never
+/// taken for documents.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SparseProgress {
+    /// Complete documents, from the corpus's first.
+    pub documents: u64,
+    /// The bytes they occupy.
+    pub bytes: u64,
+}
+
+impl SparseProgress {
+    /// File name inside the cache directory.
+    pub const FILE: &'static str = "progress.json";
+
+    /// Write `progress.json` into `dir` durably (atomic replace, directory synced). Call it only
+    /// after the partial file's first `bytes` are synced.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Io`, `Error::Json`.
+    pub fn write(&self, dir: &Path) -> Result<()> {
+        let path = dir.join(Self::FILE);
+        xtriever_core::fs::write_atomically(
+            &path,
+            &dir.join("progress.json.tmp"),
+            serde_json::to_string_pretty(self)?.as_bytes(),
+        )?;
+        xtriever_core::fs::sync_dir(dir)?;
+        Ok(())
+    }
+
+    /// The recorded progress, or `None` when the encode never reached a sync point.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Io` other than a missing file; `Error::Json` for an unreadable record.
+    pub fn read(dir: &Path) -> Result<Option<Self>> {
+        match std::fs::read_to_string(dir.join(Self::FILE)) {
+            Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
+/// One document's record in the `weights.bin` layout ([`write_sparse_weights`]): its entry count,
+/// its truncation flag, then its pairs — the one encoding of the format, shared by a writer that appends as it
+/// encodes (an interruptible run) and by [`write_sparse_weights`].
+///
+/// # Errors
+///
+/// `Error::Io`; `Error::Run` for more than `u32::MAX` entries.
+pub fn append_sparse_weights(out: &mut impl Write, expansion: &CachedExpansion) -> Result<()> {
+    let entries = &expansion.entries;
+    let count = u32::try_from(entries.len())
+        .map_err(|_| Error::Run(format!("an expansion of {} entries", entries.len())))?;
+    out.write_all(&count.to_le_bytes())?;
+    out.write_all(&[u8::from(expansion.truncated)])?;
+    for &(id, weight) in entries {
+        out.write_all(&id.to_le_bytes())?;
+        out.write_all(&weight.to_le_bytes())?;
+    }
+    Ok(())
 }
 
 /// Read `weights.bin` back, requiring exactly `documents` expansions and nothing after them.
-/// RED-CHECKPOINT STUB.
 ///
 /// # Errors
 ///
 /// `Error::Io`; `Error::Run` for a file that is short, long, or holds another count.
-pub fn read_sparse_weights(_path: &Path, _documents: usize) -> Result<Vec<Vec<(u32, f32)>>> {
-    Err(Error::Run("read_sparse_weights: not implemented".into()))
+pub fn read_sparse_weights(path: &Path, documents: usize) -> Result<Vec<CachedExpansion>> {
+    let bytes = std::fs::read(path)?;
+    let short = |i: usize| {
+        Error::Run(format!(
+            "{} ends inside document {i} of {documents}",
+            path.display()
+        ))
+    };
+    let word = |at: usize, i: usize| -> Result<[u8; 4]> {
+        bytes
+            .get(at..at + 4)
+            .and_then(|b| b.try_into().ok())
+            .ok_or_else(|| short(i))
+    };
+    let mut out = Vec::with_capacity(documents);
+    let mut at = 0usize;
+    for i in 0..documents {
+        let count = u32::from_le_bytes(word(at, i)?) as usize;
+        let truncated = match bytes.get(at + 4) {
+            Some(0) => false,
+            Some(1) => true,
+            Some(flag) => {
+                return Err(Error::Run(format!(
+                    "{}: document {i} has truncation flag {flag}, not 0 or 1",
+                    path.display()
+                )));
+            }
+            None => return Err(short(i)),
+        };
+        at += 5;
+        let mut entries = Vec::with_capacity(count.min(bytes.len() / 8));
+        for _ in 0..count {
+            let id = u32::from_le_bytes(word(at, i)?);
+            let weight = f32::from_le_bytes(word(at + 4, i)?);
+            entries.push((id, weight));
+            at += 8;
+        }
+        out.push(CachedExpansion { entries, truncated });
+    }
+    if at != bytes.len() {
+        return Err(Error::Run(format!(
+            "{} holds {} bytes after its {documents} documents; the cache and the corpus disagree",
+            path.display(),
+            bytes.len() - at
+        )));
+    }
+    Ok(out)
 }

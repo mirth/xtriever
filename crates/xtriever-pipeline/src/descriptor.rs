@@ -5,9 +5,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use xtriever_core::{Error, FieldName, Result, Schema};
 
-use crate::FORMAT_VERSION;
 use crate::error::{corrupt, write_atomically};
 use crate::rerank::RerankMode;
+use crate::{FORMAT_VERSION, SPARSE_FORMAT_VERSION};
 
 pub(crate) const FILE: &str = "xtriever-pipeline.json";
 
@@ -47,7 +47,8 @@ impl Descriptor {
         write_atomically(&dir.join(FILE), &json)
     }
 
-    /// Read and check the format version.
+    /// Read and check the format version: 2 without a sparse record, 3 with one (Feature 027,
+    /// ADR-0016); anything else is refused by name.
     pub fn read(dir: &Path) -> Result<Self> {
         let path = dir.join(FILE);
         let text = std::fs::read_to_string(&path).map_err(|e| {
@@ -59,14 +60,30 @@ impl Descriptor {
         })?;
         let d: Self = serde_json::from_str(&text)
             .map_err(|e| corrupt(format!("{} is not a valid descriptor: {e}", path.display())))?;
-        if d.format_version != FORMAT_VERSION {
-            return Err(corrupt(format!(
-                "{} is format version {}, this build reads {FORMAT_VERSION}; rebuild the index",
-                path.display(),
-                d.format_version
-            )));
+        match (d.format_version, d.sparse.is_some()) {
+            (FORMAT_VERSION, false) | (SPARSE_FORMAT_VERSION, true) => Ok(d),
+            (SPARSE_FORMAT_VERSION, false) => Err(corrupt(format!(
+                "{} is format version {SPARSE_FORMAT_VERSION} but has no sparse record; a sparse \
+                 index records its expansion",
+                path.display()
+            ))),
+            (FORMAT_VERSION, true) => Err(corrupt(format!(
+                "{} is format version {FORMAT_VERSION} but carries a sparse record; a sparse index \
+                 is format version {SPARSE_FORMAT_VERSION}",
+                path.display()
+            ))),
+            (version, _) => Err(corrupt(format!(
+                "{} is format version {version}, this build reads {FORMAT_VERSION}, or \
+                 {SPARSE_FORMAT_VERSION} for a sparse index; rebuild the index",
+                path.display()
+            ))),
         }
-        Ok(d)
+    }
+
+    /// The lexical stage's schema this descriptor implies: the user's, plus the reserved
+    /// `_sparse` field for a sparse index.
+    pub fn lexical_schema(&self) -> Schema {
+        crate::types::lexical_schema(&self.schema, self.sparse.as_ref().map(|r| r.boost))
     }
 
     /// The identities the index was created with must match what it is opened with (FR-006).
@@ -77,10 +94,10 @@ impl Descriptor {
                 current: fingerprint.to_owned(),
             });
         }
-        if &self.schema != lexical_schema {
+        let expected = self.lexical_schema();
+        if &expected != lexical_schema {
             return Err(corrupt(format!(
-                "descriptor schema {:?} does not match the lexical index's schema {:?}",
-                self.schema, lexical_schema
+                "descriptor schema {expected:?} does not match the lexical index's schema {lexical_schema:?}"
             )));
         }
         Ok(())

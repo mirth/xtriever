@@ -351,7 +351,8 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
     let config = guard.config();
     IndexInfo {
         documents: guard.len(),
-        format_version: xtriever_pipeline::FORMAT_VERSION,
+        // The index's own: 3 for a sparse index (Feature 027), 2 otherwise.
+        format_version: guard.format_version(),
         embedder_fingerprint: guard.embedder().fingerprint().to_owned(),
         reranker_model_id: guard.reranker().map(|r| r.model_id().to_owned()),
         candidate_depth: count(config.candidate_depth),

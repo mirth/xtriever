@@ -74,6 +74,27 @@
 //!   (`None` under `Replace`), under this crate's [`RERANK_COMBINED`]; `features()` has eight
 //!   entries.
 //!
+//! # Feature 027
+//!
+//! - **Sparse lexical expansion, opt-in per index** ([`HybridConfig::sparse`], ADR-0016). A
+//!   sparse index is created by [`HybridIndex::create_sparse`] with the pinned document encoder
+//!   (`xtriever_dense::sparse::SparseEncoder`, build host only). Each passage's expansion is
+//!   written to the reserved lexical field [`SPARSE_FIELD`] as the term `s<id>`, repeated
+//!   `round(weight × scale)` times (default scale 10, field boost 1.0). The encoder's tokenizer
+//!   and query-side table are copied into `<dir>/sparse/`, so a device searches with nothing
+//!   but the index: `search` adds `Term(_sparse, "s<id>")` for each of the query's kept tokens,
+//!   beside `Match` over the user's text fields.
+//! - **Format**: a sparse index's descriptor is [`SPARSE_FORMAT_VERSION`] 3 with a `sparse`
+//!   record (scale, boost, field, encoder identity, the two files' SHA-256s); every other index
+//!   stays [`FORMAT_VERSION`] 2, byte for byte. An older engine refuses a sparse index by name.
+//! - **Adding**: `add` expands with the attached encoder ([`HybridIndex::set_sparse_encoder`];
+//!   none attached is `Error::Model`); `add_embedded` is refused on a sparse index;
+//!   [`HybridIndex::add_encoded`] takes caller-supplied vectors and expansions (the evaluation
+//!   harness's caches) and writes them exactly as `add` does.
+//! - **When to switch it on**: corpora without titles and with vocabulary mismatch between
+//!   questions and answers — FiQA gained +0.017 nDCG@10 in the spike; SciFact and NFCorpus did
+//!   not. It is not the default (Feature 016's floor).
+//!
 //! # Feature 010
 //!
 //! - **The id map's shape**: one map, shared between the committed and the pending view
@@ -94,7 +115,7 @@ mod search;
 mod types;
 
 pub use fusion::rrf;
-pub use index::HybridIndex;
+pub use index::{HybridIndex, dense_passage};
 pub use rerank::{RerankMode, order_interpolated, order_reranked};
 pub use types::{
     Degradation, DegradeReason, HitExplain, HybridConfig, HybridHit, OpenOptions, RERANK_COMBINED,

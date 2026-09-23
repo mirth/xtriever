@@ -126,6 +126,8 @@ fn responses_map_field_by_field() {
                 skipped: Some(PipelineReason::StageError("boom".into())),
             }),
             time_limit_ignored: false,
+            // Feature 027: the FFI surfaces it in PR C.
+            sparse_skipped: None,
         },
     };
     let r = from_response(response, 42);

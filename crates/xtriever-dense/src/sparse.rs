@@ -22,7 +22,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use candle_core::{D, DType, Device, Module, Tensor};
 use candle_nn::{Embedding, LayerNorm, Linear, VarBuilder};
@@ -43,6 +43,11 @@ const HIDDEN: usize = 3072;
 const VOCABULARY: usize = 30_522;
 /// DistilBERT's layer-norm epsilon, fixed in the architecture rather than the configuration.
 const LAYER_NORM_EPS: f64 = 1e-12;
+
+/// The query side's file names inside a sparse index's `sparse/` directory (research D6).
+pub const QUERY_TOKENIZER: &str = "tokenizer.json";
+/// The encoder's `idf.json`, under the name that says what it is to an index.
+pub const QUERY_TABLE: &str = "query-table.json";
 
 /// The largest `scale` a sparse index accepts: at the largest weight the encoder can produce
 /// ([`MAX_WEIGHT`]) an entry is then at most 4,500 occurrences. The spike measured 10 and 100.
@@ -119,6 +124,8 @@ impl Expansion {
 
 /// The pinned document encoder — build host only.
 pub struct SparseEncoder {
+    /// The directory it was loaded from, for [`write_query_side`](Self::write_query_side).
+    dir: PathBuf,
     tokenizer: Tokenizer,
     special: Vec<u32>,
     embeddings: Embeddings,
@@ -194,6 +201,7 @@ impl SparseEncoder {
         // `weights` is dropped here: candle copied every tensor into its own storage.
 
         Ok(Self {
+            dir: dir.to_path_buf(),
             tokenizer,
             special,
             embeddings,
@@ -210,14 +218,9 @@ impl SparseEncoder {
     ///
     /// `Error::Model` if tokenisation or the forward pass fails.
     pub fn encode(&self, text: &str) -> Result<Expansion> {
-        let encoding = self
-            .tokenizer
-            .encode(text, true)
-            .map_err(|e| sparse_err(format!("cannot tokenise: {e}")))?;
-        // Stride 0: whatever ran past the window is the overflow, so any overflow is truncation.
-        let truncated = !encoding.get_overflowing().is_empty();
+        let (ids, truncated) = self.tokenise(text)?;
         let maxima = self
-            .max_logits(encoding.get_ids())
+            .max_logits(&ids)
             .map_err(|e| sparse_err(format!("forward pass failed: {e}")))?;
 
         let mut entries = Vec::new();
@@ -248,23 +251,46 @@ impl SparseEncoder {
     ///
     /// `Error::Model` if tokenisation fails.
     pub fn token_ids(&self, text: &str) -> Result<Vec<u32>> {
+        Ok(self.tokenise(text)?.0)
+    }
+
+    /// The one tokenisation `encode` and `token_ids` share: the window's ids
+    /// (special tokens added, truncated to 512) and whether the text ran past it.
+    fn tokenise(&self, text: &str) -> Result<(Vec<u32>, bool)> {
         let encoding = self
             .tokenizer
             .encode(text, true)
             .map_err(|e| sparse_err(format!("cannot tokenise: {e}")))?;
-        Ok(encoding.get_ids().to_vec())
+        // Stride 0: whatever ran past the window is the overflow, so any overflow is truncation.
+        let truncated = !encoding.get_overflowing().is_empty();
+        Ok((encoding.get_ids().to_vec(), truncated))
     }
 
     /// Copy the query side — the pinned `tokenizer.json`, and `idf.json` as `query-table.json` —
     /// into `dest` (created if absent), each re-read from the encoder's directory and checked
     /// against its pin before it is written. Returns the two files' SHA-256, as a sparse index
-    /// records them (research D6). RED-CHECKPOINT STUB.
+    /// records them (research D6). Each file is written atomically and the directory synced.
     ///
     /// # Errors
     ///
     /// `Error::Model` for a file that fails its pin; `Error::Io` for the writes.
-    pub fn write_query_side(&self, _dest: &Path) -> Result<(String, String)> {
-        Err(sparse_err("write_query_side: not implemented"))
+    pub fn write_query_side(&self, dest: &Path) -> Result<(String, String)> {
+        std::fs::create_dir_all(dest)?;
+        // Destructured, as in `load`: a change in the pin list's shape is a compile error here,
+        // never the wrong file copied under the right name.
+        let [_, tokenizer, _, table] = &PINNED_SPARSE.files;
+        for (pin, name) in [(tokenizer, QUERY_TOKENIZER), (table, QUERY_TABLE)] {
+            // Re-read and re-checked: the directory may have changed since `load`.
+            let bytes = read_pinned(&self.dir, pin, LoadPath::Buffered, sparse_err)?;
+            let path = dest.join(name);
+            xtriever_core::fs::write_atomically(
+                &path,
+                &dest.join(format!("{name}.tmp")),
+                bytes.as_slice(),
+            )?;
+        }
+        xtriever_core::fs::sync_dir(dest)?;
+        Ok((tokenizer.sha256.to_owned(), table.sha256.to_owned()))
     }
 
     /// The identity recorded in a sparse index (data-model `SparseRecord.encoder`).
@@ -527,6 +553,23 @@ fn read_verified(path: &Path, expected: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// The scale rule, owned here with [`field_text`], which applies it: `1..=`[`MAX_SCALE`]. A
+/// sparse index checks its option against it at creation and at open, so an index that
+/// validates can always write its expansions.
+///
+/// # Errors
+///
+/// `Error::Schema` naming the scale.
+pub fn validate_scale(scale: u32) -> Result<()> {
+    if (1..=MAX_SCALE).contains(&scale) {
+        Ok(())
+    } else {
+        Err(schema_err(format!(
+            "sparse scale {scale} is outside 1..={MAX_SCALE}"
+        )))
+    }
+}
+
 /// The `_sparse` field value for an expansion (research D4): each entry's term `s<id>` repeated
 /// `round(weight × scale)` times — computed in f64, halves rounded away from zero — entries of
 /// zero occurrences dropped, terms in ascending id order, separated by single spaces. The empty
@@ -538,11 +581,7 @@ fn read_verified(path: &Path, expected: &str) -> Result<Vec<u8>> {
 /// `Error::Schema` if `scale` is outside `1..=`[`MAX_SCALE`] or the expansion fails
 /// [`Expansion::validate`] — so no input can make the text unboundedly long.
 pub fn field_text(expansion: &Expansion, scale: u32) -> Result<String> {
-    if !(1..=MAX_SCALE).contains(&scale) {
-        return Err(schema_err(format!(
-            "sparse scale {scale} is outside 1..={MAX_SCALE}"
-        )));
-    }
+    validate_scale(scale)?;
     expansion.validate()?;
     let mut out = String::new();
     for &(id, weight) in &expansion.entries {

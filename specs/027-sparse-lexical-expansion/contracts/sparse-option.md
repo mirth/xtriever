@@ -27,6 +27,9 @@ impl Expansion {
     pub fn validate(&self) -> Result<()>;
 }
 pub const SPECIAL_IDS: [u32; 5] = [0, 100, 101, 102, 103];   // the pinned tokenizer's; load refuses another
+/// `1..=MAX_SCALE`; the one scale rule — `field_text` applies it, the pipeline checks its
+/// option against it at create and open.
+pub fn validate_scale(scale: u32) -> Result<()>;
 pub const VOCABULARY_SIZE: u32 = 30_522;
 pub const MAX_SCALE: u32 = 1_000;
 pub const MAX_WEIGHT: f32 = 4.5;   // ≥ ln(1 + ln(1 + f32::MAX)), the encoder's largest weight
@@ -64,8 +67,10 @@ impl HybridIndex {
     /// Create a sparse index: `config.sparse` set, the loaded encoder given and attached.
     pub fn create_sparse(dir: &Path, config: HybridConfig, embedder: Box<dyn Embedder>,
                          encoder: SparseEncoder) -> Result<Self>;
-    /// Attach the encoder so `add` can expand documents; `None` detaches it.
-    pub fn set_sparse_encoder(&mut self, encoder: Option<SparseEncoder>);
+    /// Attach the encoder so `add` can expand documents; `None` detaches it. Refuses an encoder
+    /// whose identity is not the recorded one (`FingerprintMismatch`), and any encoder on an
+    /// index without the option (`Schema`).
+    pub fn set_sparse_encoder(&mut self, encoder: Option<SparseEncoder>) -> Result<()>;
     /// The recorded option, if this index has one.
     pub fn sparse(&self) -> Option<&SparseRecord>;
     /// The descriptor's format version: 3 for a sparse index, 2 otherwise.
@@ -100,8 +105,8 @@ Behaviour on a sparse index:
 | `add` | refuses with `Error::Model` naming the missing encoder unless one is attached; refuses a document that supplies `_sparse` itself |
 | `add_embedded` | refuses: no expansion to write (use `add` or `add_encoded`) |
 | `add_encoded` | refuses an expansion `field_text` refuses; on an index without the option, refuses altogether |
-| `search` | the query of research D7 |
-| `search_lexical` | unchanged |
+| `search` | the query of research D7; if the query side cannot tokenise the query, the text fields alone, with `StageReport::sparse_skipped` set (strict mode: the error) |
+| `search_lexical` | no expansion added; every `Match(None, …)` in the caller's query means the caller's text fields, never `_sparse` |
 
 On an index without the option, every call behaves exactly as before (FR-002), and the
 descriptor stays version 2.

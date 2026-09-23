@@ -57,11 +57,17 @@ struct Candidate {
 
 impl HybridIndex {
     /// Search with a free-text query: `LexicalQuery::Match` over every text field for the lexical
-    /// stage, the embedded text for the dense stage.
+    /// stage — on a sparse index, plus the query's expansion terms against `_sparse` (Feature
+    /// 027) — and the embedded text for the dense stage.
+    ///
+    /// On a sparse index the expansion degrades like an ML stage (Principle VI): if the query
+    /// side cannot tokenise the query, the text fields are searched alone and
+    /// [`StageReport::sparse_skipped`](crate::StageReport::sparse_skipped) says why.
     ///
     /// # Errors
     ///
-    /// As [`search_lexical`](Self::search_lexical).
+    /// As [`search_lexical`](Self::search_lexical); in strict mode, also the query side's
+    /// `Error::Model` when it cannot tokenise the query.
     pub fn search(
         &self,
         query: &str,
@@ -69,16 +75,20 @@ impl HybridIndex {
         k: usize,
         options: &SearchOptions<'_>,
     ) -> Result<Response> {
-        self.search_with(
-            &text_query(&self.config.schema, None, query)?,
+        let (lexical, sparse_skipped) = lexical_query(
+            &self.config.schema,
+            self.sparse_query.as_ref(),
             query,
-            filter,
-            k,
-            options,
-        )
+            options.strict,
+        )?;
+        self.search_with(&lexical, query, filter, k, options, sparse_skipped)
     }
 
-    /// Search with a caller-built lexical query; the dense stage embeds `dense_text`.
+    /// Search with a caller-built lexical query; the dense stage embeds `dense_text`. On a
+    /// sparse index no expansion is added — a caller who wants it writes its `Term(_sparse, …)`
+    /// clauses — and every `Match(None, …)` in the query means the caller's own text fields,
+    /// never the reserved `_sparse` field. `explain`'s lexical score is the whole lexical
+    /// score, any `_sparse` clauses included.
     ///
     /// # Errors
     ///
@@ -92,7 +102,17 @@ impl HybridIndex {
         k: usize,
         options: &SearchOptions<'_>,
     ) -> Result<Response> {
-        self.search_with(query, dense_text, filter, k, options)
+        match &self.sparse_query {
+            Some(_) => self.search_with(
+                &own_fields(&self.config.schema, query),
+                dense_text,
+                filter,
+                k,
+                options,
+                None,
+            ),
+            None => self.search_with(query, dense_text, filter, k, options, None),
+        }
     }
 
     fn search_with(
@@ -102,6 +122,7 @@ impl HybridIndex {
         filter: Option<&Filter>,
         k: usize,
         opts: &SearchOptions<'_>,
+        sparse_skipped: Option<DegradeReason>,
     ) -> Result<Response> {
         let time_limit_ignored = opts.budget.max_time.is_some() && opts.elapsed.is_none();
         // Neither stage runs on the two short-circuits: `dense_candidates` is `None` because
@@ -114,6 +135,7 @@ impl HybridIndex {
                 degraded: None,
                 rerank: None,
                 time_limit_ignored,
+                sparse_skipped: sparse_skipped.clone(),
             },
         };
         if k == 0 {
@@ -200,6 +222,7 @@ impl HybridIndex {
             }),
             rerank,
             time_limit_ignored,
+            sparse_skipped,
         };
         let mut hits = Vec::with_capacity(ordered.len());
         let mut rerank_rank = 0u32;
@@ -430,14 +453,83 @@ impl HybridIndex {
     }
 }
 
-/// The lexical query `search` sends for free text (Feature 027 research D7). Without a sparse
-/// side it is `Match(None, text)`, exactly as before. RED-CHECKPOINT STUB.
-pub(crate) fn text_query(
-    _schema: &xtriever_core::Schema,
-    _sparse: Option<&xtriever_dense::sparse::SparseQuery>,
+/// `Match(Some(f), text)` for each of the user's indexed text fields, in schema order.
+fn field_matches(schema: &xtriever_core::Schema, text: &str) -> Vec<LexicalQuery> {
+    schema
+        .fields
+        .iter()
+        .filter(|f| f.indexed && matches!(f.kind, xtriever_core::FieldKind::Text(_)))
+        .map(|f| LexicalQuery::Match(Some(f.name.clone()), text.to_owned()))
+        .collect()
+}
+
+/// A sparse index's free-text query (Feature 027 research D7): the text over the user's text
+/// fields, spelled out — `Match(None, …)` would also run it through `_sparse`'s analyzer — and
+/// one `Term(_sparse, "s<id>")` per kept query token, ascending; the field's boost applies to
+/// those terms. With no terms it is the text fields alone.
+fn sparse_query(schema: &xtriever_core::Schema, text: &str, terms: &[u32]) -> LexicalQuery {
+    let field = xtriever_core::FieldName::from(crate::SPARSE_FIELD);
+    let mut should = field_matches(schema, text);
+    should.extend(
+        terms
+            .iter()
+            .map(|id| LexicalQuery::Term(field.clone(), format!("s{id}"))),
+    );
+    LexicalQuery::Bool {
+        must: vec![],
+        should,
+        must_not: vec![],
+    }
+}
+
+/// The query `search` sends for free text. Without a sparse side, `Match(None, text)` exactly
+/// as before (FR-002). With one, [`sparse_query`] — and when the query side cannot tokenise the
+/// text the expansion degrades rather than failing the search: no terms, and the reason; in
+/// strict mode, the error.
+pub(crate) fn lexical_query(
+    schema: &xtriever_core::Schema,
+    sparse: Option<&xtriever_dense::sparse::SparseQuery>,
     text: &str,
-) -> Result<LexicalQuery> {
-    Ok(LexicalQuery::Match(None, text.to_owned()))
+    strict: bool,
+) -> Result<(LexicalQuery, Option<DegradeReason>)> {
+    let Some(sparse) = sparse else {
+        return Ok((LexicalQuery::Match(None, text.to_owned()), None));
+    };
+    match sparse.terms(text) {
+        Ok(terms) => Ok((sparse_query(schema, text, &terms), None)),
+        Err(e) if strict => Err(e),
+        Err(e) => Ok((
+            sparse_query(schema, text, &[]),
+            Some(DegradeReason::StageError(e.to_string())),
+        )),
+    }
+}
+
+/// A caller's query on a sparse index: every `Match(None, text)` in it — "all the text fields"
+/// — becomes the caller's own text fields spelled out, so the reserved `_sparse` field, which
+/// the caller never declared, is never searched with analysed text. Everything else is kept as
+/// built; the scores of the spelled-out fields are those `Match(None, …)` gives on an index
+/// without the option.
+pub(crate) fn own_fields(schema: &xtriever_core::Schema, query: &LexicalQuery) -> LexicalQuery {
+    match query {
+        LexicalQuery::Match(None, text) => sparse_query(schema, text, &[]),
+        LexicalQuery::Bool {
+            must,
+            should,
+            must_not,
+        } => {
+            let each = |qs: &[LexicalQuery]| qs.iter().map(|q| own_fields(schema, q)).collect();
+            LexicalQuery::Bool {
+                must: each(must),
+                should: each(should),
+                must_not: each(must_not),
+            }
+        }
+        LexicalQuery::Boost(inner, factor) => {
+            LexicalQuery::Boost(Box::new(own_fields(schema, inner)), *factor)
+        }
+        other => other.clone(),
+    }
 }
 
 /// The time check at a check point: only when both a limit and a time source exist.
@@ -461,7 +553,8 @@ mod tests {
     use xtriever_core::{AnalyzerId, FieldDef, FieldKind, FieldName, LexicalQuery, Schema};
     use xtriever_dense::sparse::SparseQuery;
 
-    use super::text_query;
+    use super::{lexical_query, own_fields};
+    use crate::DegradeReason;
 
     fn field(name: &str, kind: FieldKind, indexed: bool) -> FieldDef {
         FieldDef {
@@ -520,12 +613,54 @@ mod tests {
         .unwrap()
     }
 
+    /// A tokenizer that fails on any word it does not know: its unknown token is not in its
+    /// vocabulary.
+    const FAILING_TOKENIZER: &str = r#"{"version": "1.0", "truncation": null, "padding": null,
+      "added_tokens": [], "normalizer": null, "pre_tokenizer": {"type": "Whitespace"},
+      "post_processor": null, "decoder": null,
+      "model": {"type": "WordLevel", "unk_token": "[UNK]", "vocab": {"cat": 0, "dog": 1}}}"#;
+    const FAILING_TABLE: &str = r#"{"cat": 2.0, "dog": 1.0}"#;
+
+    /// Review round 5 (Principle VI): a query the query side cannot tokenise degrades to the
+    /// text fields alone, with the reason; strict mode returns the error.
+    #[test]
+    fn a_query_the_query_side_cannot_tokenise_degrades_to_the_text_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("t.json"), FAILING_TOKENIZER).unwrap();
+        std::fs::write(tmp.path().join("q.json"), FAILING_TABLE).unwrap();
+        let sparse = SparseQuery::open(
+            &tmp.path().join("t.json"),
+            &tmp.path().join("q.json"),
+            &sha256(FAILING_TOKENIZER.as_bytes()),
+            &sha256(FAILING_TABLE.as_bytes()),
+        )
+        .unwrap();
+
+        let (query, skipped) = lexical_query(&schema(), Some(&sparse), "cat zebra", false).unwrap();
+        assert_eq!(
+            query,
+            LexicalQuery::Bool {
+                must: vec![],
+                should: vec![
+                    LexicalQuery::Match(Some(FieldName::from("title")), "cat zebra".to_owned()),
+                    LexicalQuery::Match(Some(FieldName::from("body")), "cat zebra".to_owned()),
+                ],
+                must_not: vec![],
+            }
+        );
+        assert!(matches!(skipped, Some(DegradeReason::StageError(_))));
+        assert!(lexical_query(&schema(), Some(&sparse), "cat zebra", true).is_err());
+        // A query it can tokenise is not degraded.
+        let (_, skipped) = lexical_query(&schema(), Some(&sparse), "cat dog", false).unwrap();
+        assert_eq!(skipped, None);
+    }
+
     /// Without the option the query is exactly what it was before Feature 027 (FR-002).
     #[test]
     fn without_the_option_the_query_is_match_over_every_field() {
         assert_eq!(
-            text_query(&schema(), None, "dog cat").unwrap(),
-            LexicalQuery::Match(None, "dog cat".to_owned())
+            lexical_query(&schema(), None, "dog cat", false).unwrap(),
+            (LexicalQuery::Match(None, "dog cat".to_owned()), None)
         );
     }
 
@@ -547,20 +682,63 @@ mod tests {
         let mut should = matches("dog the cat dog");
         should.extend([term(6), term(7)]);
         assert_eq!(
-            text_query(&schema(), Some(&sparse), "dog the cat dog").unwrap(),
-            LexicalQuery::Bool {
-                must: vec![],
-                should,
-                must_not: vec![],
-            }
+            lexical_query(&schema(), Some(&sparse), "dog the cat dog", false).unwrap(),
+            (
+                LexicalQuery::Bool {
+                    must: vec![],
+                    should,
+                    must_not: vec![],
+                },
+                None
+            )
         );
         // No kept token: the fields alone, still spelled out.
         assert_eq!(
-            text_query(&schema(), Some(&sparse), "the").unwrap(),
+            lexical_query(&schema(), Some(&sparse), "the", false).unwrap(),
+            (
+                LexicalQuery::Bool {
+                    must: vec![],
+                    should: matches("the"),
+                    must_not: vec![],
+                },
+                None
+            )
+        );
+    }
+
+    /// Review round 6: on a sparse index a caller's `Match(None, …)` means the caller's text
+    /// fields, wherever it sits in the query; everything else is kept as built.
+    #[test]
+    fn a_callers_match_over_every_field_means_the_callers_fields() {
+        let fields = |text: &str| LexicalQuery::Bool {
+            must: vec![],
+            should: vec![
+                LexicalQuery::Match(Some(FieldName::from("title")), text.to_owned()),
+                LexicalQuery::Match(Some(FieldName::from("body")), text.to_owned()),
+            ],
+            must_not: vec![],
+        };
+        let kept = LexicalQuery::Phrase(FieldName::from("body"), "cat dog".to_owned(), 1);
+        let term = LexicalQuery::Term(FieldName::from("_sparse"), "s6".to_owned());
+        let query = LexicalQuery::Bool {
+            must: vec![LexicalQuery::Match(None, "cat".to_owned())],
+            should: vec![
+                LexicalQuery::Boost(Box::new(LexicalQuery::Match(None, "dog".to_owned())), 2.0),
+                kept.clone(),
+                term.clone(),
+            ],
+            must_not: vec![LexicalQuery::Match(None, "fish".to_owned())],
+        };
+        assert_eq!(
+            own_fields(&schema(), &query),
             LexicalQuery::Bool {
-                must: vec![],
-                should: matches("the"),
-                must_not: vec![],
+                must: vec![fields("cat")],
+                should: vec![
+                    LexicalQuery::Boost(Box::new(fields("dog")), 2.0),
+                    kept,
+                    term
+                ],
+                must_not: vec![fields("fish")],
             }
         );
     }

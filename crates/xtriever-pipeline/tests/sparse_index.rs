@@ -279,7 +279,7 @@ fn a_sparse_index_refuses_additions_it_cannot_expand() {
         other => panic!("expected Schema, got {other:?}"),
     }
 
-    index.set_sparse_encoder(Some(encoder()));
+    index.set_sparse_encoder(Some(encoder())).unwrap();
     let mut forged = doc;
     forged.fields.insert(
         FieldName::from(SPARSE_FIELD),
@@ -415,4 +415,103 @@ fn an_altered_query_side_or_record_is_refused_at_open() {
         Err(Error::Corrupt(m)) => assert!(m.contains('3') && m.contains("sparse"), "{m}"),
         other => panic!("expected Corrupt, got {other:?}"),
     }
+}
+
+/// Review round 4: a `create_sparse` that fails copying the query side leaves the directory
+/// empty, so a retry can create into it. The encoder's `tokenizer.json` changes after load.
+#[test]
+#[ignore = "needs the sparse encoder"]
+#[cfg(unix)]
+fn a_failed_create_sparse_leaves_the_directory_empty() {
+    let h = hybrid();
+    let copy = tempfile::tempdir().unwrap();
+    for f in &PINNED_SPARSE.files {
+        let from = encoder_dir().join(f.name);
+        if f.name == "tokenizer.json" {
+            std::fs::copy(&from, copy.path().join(f.name)).unwrap();
+        } else {
+            std::os::unix::fs::symlink(&from, copy.path().join(f.name)).unwrap();
+        }
+    }
+    let enc = SparseEncoder::load(copy.path(), LoadPath::Buffered).unwrap();
+    let tokenizer = copy.path().join("tokenizer.json");
+    let mut bytes = std::fs::read(&tokenizer).unwrap();
+    bytes.push(b'\n');
+    std::fs::write(&tokenizer, bytes).unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    match HybridIndex::create_sparse(
+        tmp.path(),
+        sparse_config(&h, SparseOption::default()),
+        support::fixture_embedder(&h),
+        enc,
+    ) {
+        Err(Error::Model { message, .. }) => {
+            assert!(message.contains("tokenizer.json"), "{message}")
+        }
+        other => panic!("expected Model, got {other:?}"),
+    }
+    assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
+    build_sparse(tmp.path(), &h);
+}
+
+/// Review round 4: a document that is not staged is not counted as truncated.
+#[test]
+#[ignore = "needs the sparse encoder"]
+fn a_document_that_fails_is_not_counted_as_truncated() {
+    let h = hybrid();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = HybridIndex::create_sparse(
+        tmp.path(),
+        sparse_config(&h, SparseOption::default()),
+        support::fixture_embedder(&h),
+        encoder(),
+    )
+    .unwrap();
+    let truncated = Expansion {
+        entries: vec![(2003, 0.5)],
+        truncated: true,
+    };
+    let doc = h.documents[0].source();
+    assert!(matches!(
+        index.add_encoded(&[(doc.clone(), vec![0.5; 3], truncated.clone())]),
+        Err(Error::DimensionMismatch { .. })
+    ));
+    assert_eq!(index.sparse_truncated(), 0);
+    index
+        .add_encoded(&[(doc, h.documents[0].vector.clone(), truncated)])
+        .unwrap();
+    assert_eq!(index.sparse_truncated(), 1);
+}
+
+/// Review round 5: an index takes only the encoder it records — another is refused by
+/// identity, as the embedder is by fingerprint — and an index without the option takes none.
+#[test]
+#[ignore = "needs the sparse encoder"]
+fn set_sparse_encoder_refuses_another_encoder() {
+    let h = hybrid();
+    let tmp = tempfile::tempdir().unwrap();
+    drop(build_sparse(tmp.path(), &h));
+    let descriptor = tmp.path().join("xtriever-pipeline.json");
+    let mut json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&descriptor).unwrap()).unwrap();
+    json["sparse"]["encoder"] = serde_json::Value::from("another-encoder@rev");
+    std::fs::write(&descriptor, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
+
+    let mut index = HybridIndex::open(tmp.path(), support::fixture_embedder(&h)).unwrap();
+    match index.set_sparse_encoder(Some(encoder())) {
+        Err(Error::FingerprintMismatch { index, current }) => {
+            assert_eq!(index, "another-encoder@rev");
+            assert_eq!(current, SPARSE_IDENTITY);
+        }
+        other => panic!("expected FingerprintMismatch, got {other:?}"),
+    }
+    index.set_sparse_encoder(None).unwrap();
+
+    let plain_dir = tempfile::tempdir().unwrap();
+    let (_, mut plain) = support::build_from_fixture(plain_dir.path());
+    assert!(matches!(
+        plain.set_sparse_encoder(Some(encoder())),
+        Err(Error::Schema(_))
+    ));
 }

@@ -16,6 +16,9 @@
 //! beir run    --dataset D --config lexical-baseline-v2 | hybrid-baseline-v2 | hybrid-rerank-v2   (Feature 013: one joined `contents` field for BM25; same flags as the v1)
 //! beir run    --dataset D --config hybrid-rerank-v2 --rerank-depth N (+ the re-rank flags)   (Feature 014: depth override; report config `hybrid-rerank-v2@dN`; explain lines carry `fused_scores`)
 //! beir run    --dataset D --config hybrid-rerank-v3 (+ the re-rank flags)                    (Feature 015: the interpolating re-rank rule, α 0.5, depth 20; v1/v2 stay replace-order)
+//! beir run    --dataset D --config hybrid-sparse-v1 | hybrid-sparse-rerank-v1 [--sparse-encoder-dir E] [--sparse-cache-dir S]
+//!             (+ the hybrid / re-rank flags)   (Feature 027: v2 / v3 with sparse expansion; the encoding is cached in S/<dataset>/
+//!              {key.json, weights.bin}, written as `weights.partial` while it runs, so an interrupted encode resumes)
 //! beir compare a.json b.json                        (cross-configuration table, no ADR line)
 //! beir delta  before.json... -- after.json...      (or two single files; same configuration only)
 //! beir smoke  --dataset scifact --baseline F [--cache DIR]
@@ -34,20 +37,25 @@ use std::time::Instant;
 
 use anyhow::{Context, bail};
 use xtriever_core::{DocId, Embedder, LexicalIndex, Reranker, TextKind, VectorIndex};
+use xtriever_dense::sparse::{Expansion, SparseEncoder};
 use xtriever_dense::{FlatIndex, LoadPath, MiniLmEmbedder};
 use xtriever_eval::dataset::{Dataset, Manifest};
-use xtriever_eval::report::{EvalReport, StageInfo, compare, delta, score, smoke};
+use xtriever_eval::report::{EvalReport, SparseStage, StageInfo, compare, delta, score, smoke};
 use xtriever_eval::run::{
-    DenseConfig, EmbeddingCacheKey, EvalConfig, HybridConfig, RerankConfig, build, build_external,
-    build_passages, execute, execute_dense, execute_external,
+    CachedExpansion, DenseConfig, EmbeddingCacheKey, EvalConfig, HybridConfig, RerankConfig,
+    SparseCacheKey, SparseProgress, append_sparse_weights, build, build_external, build_passages,
+    execute, execute_dense, execute_external, read_sparse_weights,
 };
 use xtriever_lexical::TantivyIndex;
-use xtriever_pipeline::{HybridIndex, SearchOptions, SourceDocument};
+use xtriever_pipeline::{HybridIndex, SearchOptions, SourceDocument, SparseOption, dense_passage};
 use xtriever_rerank::MiniLmCrossEncoder;
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+// Shared helpers; each example uses a part of them (`beir` parses its own command line, with
+// positional subcommands).
+#[allow(dead_code)]
+mod common;
+
+use common::{dir_bytes, repo_root};
 
 struct Args {
     positional: Vec<String>,
@@ -142,12 +150,174 @@ fn named_config(a: &Args) -> anyhow::Result<Config> {
         "hybrid-baseline-v2" => Ok(Config::Hybrid(HybridConfig::hybrid_baseline_v2())),
         "hybrid-rerank-v2" => Ok(Config::Rerank(RerankConfig::hybrid_rerank_v2())),
         "hybrid-rerank-v3" => Ok(Config::Rerank(RerankConfig::hybrid_rerank_v3())),
+        "hybrid-sparse-v1" => Ok(Config::Hybrid(HybridConfig::hybrid_sparse_v1())),
+        "hybrid-sparse-rerank-v1" => Ok(Config::Rerank(RerankConfig::hybrid_sparse_rerank_v1())),
         other => {
             bail!(
-                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1, hybrid-rerank-v1, lexical-baseline-v2, hybrid-baseline-v2, hybrid-rerank-v2, hybrid-rerank-v3"
+                "unknown configuration `{other}`; known: lexical-baseline-v1, dense-baseline-v1, hybrid-baseline-v1, hybrid-rerank-v1, lexical-baseline-v2, hybrid-baseline-v2, hybrid-rerank-v2, hybrid-rerank-v3, hybrid-sparse-v1, hybrid-sparse-rerank-v1"
             )
         }
     }
+}
+
+/// The pinned sparse document encoder (Feature 027).
+fn sparse_encoder_dir(a: &Args) -> PathBuf {
+    a.flags.get("sparse-encoder-dir").map_or_else(
+        || repo_root().join("reference/models/opensearch-neural-sparse-encoding-doc-v3-distill"),
+        PathBuf::from,
+    )
+}
+
+/// Where each dataset's encoded expansions are cached (Feature 027, research D10).
+fn sparse_cache_dir(a: &Args) -> PathBuf {
+    a.flags.get("sparse-cache-dir").map_or_else(
+        || repo_root().join("target/xt-sparse-cache-027"),
+        PathBuf::from,
+    )
+}
+
+/// Every passage's expansion, in corpus order: read from `<cache>/<dataset>/weights.bin` when
+/// `key.json` matches, else encoded — appended to `weights.partial` as it goes, resuming from
+/// its last complete document, and renamed to `weights.bin` when done. The raw weights are
+/// cached, so any scale re-uses them; the pipeline validates each one at `add_encoded`.
+fn sparse_expansions(
+    dataset: &Dataset,
+    recipe: &str,
+    passages: &[String],
+    encoder: &SparseEncoder,
+    a: &Args,
+) -> anyhow::Result<Vec<Expansion>> {
+    let dir = sparse_cache_dir(a).join(&dataset.name);
+    let key = SparseCacheKey {
+        format_version: SparseCacheKey::FORMAT_VERSION,
+        dataset: dataset.name.clone(),
+        encoder: encoder.identity().to_owned(),
+        recipe: recipe.to_owned(),
+        corpus_sha256: dataset
+            .hashes
+            .get("corpus.jsonl")
+            .cloned()
+            .context("dataset hashes lack corpus.jsonl")?,
+        documents: passages.len() as u64,
+    };
+    let finished = dir.join("weights.bin");
+    let partial = dir.join("weights.partial");
+    // Each cached record carries its truncation flag, so a cache hit needs no tokenizer.
+    let from_cache = |cached: Vec<CachedExpansion>| -> Vec<Expansion> {
+        cached
+            .into_iter()
+            .map(|c| Expansion {
+                entries: c.entries,
+                truncated: c.truncated,
+            })
+            .collect()
+    };
+    let report = |expansions: &[Expansion]| {
+        eprintln!(
+            "{} of {} passages truncated to the encoder's window",
+            expansions.iter().filter(|e| e.truncated).count(),
+            expansions.len()
+        );
+    };
+    let matches = key.mismatch(&dir).is_none();
+    if matches && finished.exists() {
+        let expansions = from_cache(read_sparse_weights(&finished, passages.len())?);
+        eprintln!("encoded 0 passages (sparse cache hit: {})", dir.display());
+        report(&expansions);
+        return Ok(expansions);
+    }
+    // Resume only from the last synced point the progress record names: the partial file is
+    // cut back to it and exactly that many documents are read, so nothing a crash left after
+    // it — torn bytes, or blocks that read back as zeros — is taken for a document.
+    let progress = if matches && partial.exists() {
+        SparseProgress::read(&dir)?
+    } else {
+        None
+    };
+    let mut expansions = match progress {
+        Some(progress) => {
+            let file = std::fs::OpenOptions::new().write(true).open(&partial)?;
+            file.set_len(progress.bytes)?;
+            file.sync_all()?;
+            let documents = usize::try_from(progress.documents)?;
+            anyhow::ensure!(
+                documents <= passages.len(),
+                "{} records {documents} documents, more than the corpus's {}",
+                dir.join(SparseProgress::FILE).display(),
+                passages.len()
+            );
+            eprintln!(
+                "resuming the sparse encode at document {documents} of {} ({})",
+                passages.len(),
+                dir.display()
+            );
+            from_cache(read_sparse_weights(&partial, documents)?)
+        }
+        None => {
+            if dir.exists() {
+                if let Some(why) = key.mismatch(&dir) {
+                    eprintln!("sparse cache at {}: {why}; re-encoding", dir.display());
+                }
+                std::fs::remove_dir_all(&dir)?;
+            }
+            key.write(&dir)?;
+            std::fs::File::create(&partial)?;
+            Vec::new()
+        }
+    };
+    let file = std::fs::OpenOptions::new().append(true).open(&partial)?;
+    let mut bytes = file.metadata()?.len();
+    let mut out = std::io::BufWriter::new(file);
+    let first = expansions.len();
+    let started = Instant::now();
+    for (i, passage) in passages.iter().enumerate().skip(first) {
+        let expansion = encoder.encode(passage)?;
+        let cached = CachedExpansion {
+            entries: expansion.entries,
+            truncated: expansion.truncated,
+        };
+        let mut record = Vec::with_capacity(5 + 8 * cached.entries.len());
+        append_sparse_weights(&mut record, &cached)?;
+        out.write_all(&record)?;
+        bytes += record.len() as u64;
+        expansions.push(Expansion {
+            entries: cached.entries,
+            truncated: cached.truncated,
+        });
+        let done = i + 1 - first;
+        if done % 1000 == 0 {
+            // A sync point: the records are durable before the progress record names them.
+            out.flush()?;
+            out.get_ref().sync_all()?;
+            SparseProgress {
+                documents: (i + 1) as u64,
+                bytes,
+            }
+            .write(&dir)?;
+            let rate = done as f64 / started.elapsed().as_secs_f64();
+            eprintln!(
+                "  encoded {}/{} ({rate:.2} docs/s, about {:.0} min left)",
+                i + 1,
+                passages.len(),
+                (passages.len() - i - 1) as f64 / rate / 60.0
+            );
+        }
+    }
+    out.flush()?;
+    out.into_inner().map_err(|e| e.into_error())?.sync_all()?;
+    std::fs::rename(&partial, &finished)?;
+    xtriever_core::fs::sync_dir(&dir)?;
+    // The finished file supersedes the progress record; best effort, a stale one is ignored.
+    let _ = std::fs::remove_file(dir.join(SparseProgress::FILE));
+    let encoded = passages.len() - first;
+    eprintln!(
+        "encoded {encoded} passages in {:.1} s ({:.2} docs/s, {} threads)",
+        started.elapsed().as_secs_f64(),
+        encoded as f64 / started.elapsed().as_secs_f64().max(f64::MIN_POSITIVE),
+        MiniLmEmbedder::thread_count()
+    );
+    report(&expansions);
+    Ok(expansions)
 }
 
 fn model_dir(a: &Args) -> PathBuf {
@@ -488,6 +658,7 @@ fn evaluate_dense(dataset: &str, cfg: &DenseConfig, a: &Args) -> anyhow::Result<
         reranker_model_id: None,
         rerank_depth: None,
         rerank_mode: None,
+        sparse: None,
     });
     report_line(dataset, &cfg.name, &report);
     Ok(report)
@@ -648,37 +819,74 @@ fn evaluate_hybrid(
         .iter()
         .map(|f| xtriever_core::FieldName::from(f.name.as_str()))
         .collect();
-    let mut hybrid_cfg = xtriever_pipeline::HybridConfig::new(schema, dense_fields);
+    let mut hybrid_cfg = xtriever_pipeline::HybridConfig::new(schema, dense_fields.clone());
     hybrid_cfg.candidate_depth = cfg.candidate_depth;
     hybrid_cfg.rrf_k = cfg.rrf_k;
-    let mut index = HybridIndex::create(&index_dir, hybrid_cfg, Box::new(embedder))?;
+    let docs = build_external(&ds, &cfg.lexical)?;
+
+    // Feature 027: a sparse recipe builds a sparse index from the cached expansions of the very
+    // passages the pipeline would encode (`dense_passage`).
+    let (mut index, mut expansions, sparse_stage) = match cfg.sparse {
+        Some(settings) => {
+            let encoder = SparseEncoder::load(&sparse_encoder_dir(a), load_path)
+                .context("loading the sparse encoder")?;
+            let passages: Vec<String> = docs
+                .iter()
+                .map(|(_, fields)| dense_passage(&dense_fields, fields))
+                .collect();
+            let expansions = sparse_expansions(&ds, &cfg.lexical.name, &passages, &encoder, a)?;
+            let stage = SparseStage {
+                settings,
+                encoder: encoder.identity().to_owned(),
+            };
+            hybrid_cfg.sparse = Some(SparseOption {
+                scale: settings.scale,
+                boost: settings.boost,
+            });
+            let index =
+                HybridIndex::create_sparse(&index_dir, hybrid_cfg, Box::new(embedder), encoder)?;
+            (index, Some(expansions.into_iter()), Some(stage))
+        }
+        None => (
+            HybridIndex::create(&index_dir, hybrid_cfg, Box::new(embedder))?,
+            None,
+            None,
+        ),
+    };
 
     let started = Instant::now();
-    let docs = build_external(&ds, &cfg.lexical)?;
     let mut batch = Vec::with_capacity(1000);
     for (i, (external_id, fields)) in docs.into_iter().enumerate() {
         let vector = floats
             .row(i)
             .with_context(|| format!("cache row {i} ({external_id})"))?;
-        batch.push((
-            SourceDocument {
-                external_id,
-                fields,
-                chunk: None,
-            },
-            vector,
-        ));
+        let doc = SourceDocument {
+            external_id,
+            fields,
+            chunk: None,
+        };
+        batch.push((doc, vector));
         if batch.len() == 1000 {
-            index.add_embedded(&batch)?;
-            batch.clear();
+            ingest(&mut index, &mut batch, expansions.as_mut())?;
         }
     }
-    index.add_embedded(&batch)?;
+    if !batch.is_empty() {
+        ingest(&mut index, &mut batch, expansions.as_mut())?;
+    }
     index.commit()?;
     eprintln!(
         "embedded 0 documents (004 cache); ingested {} documents in {:.1} s",
         index.len(),
         started.elapsed().as_secs_f64()
+    );
+    eprintln!(
+        "lexical stage: {} bytes ({})",
+        dir_bytes(&index_dir.join("lexical")).context("measuring the lexical stage")?,
+        if sparse_stage.is_some() {
+            "with the sparse field"
+        } else {
+            "without the sparse field"
+        }
     );
 
     // Feature 006: attach the cross-encoder through the timing decorator.
@@ -702,6 +910,9 @@ fn evaluate_hybrid(
         .transpose()?;
     let mut lex_ms = 0.0f64;
     let mut queries = 0usize;
+    // Feature 027: queries whose expansion was dropped (the query side could not tokenise
+    // them) — counted and named, so a sparse measurement never hides them.
+    let mut sparse_skipped = 0usize;
     let started = Instant::now();
     // Feature 015: the configuration's order rule is passed as a per-search override, so the
     // index directory's recorded mode never decides which rule a report measures.
@@ -723,6 +934,10 @@ fn evaluate_hybrid(
         queries += 1;
         if r.stages.degraded.is_some() {
             eprintln!("warning: query degraded: {:?}", r.stages.degraded);
+        }
+        if let Some(reason) = &r.stages.sparse_skipped {
+            sparse_skipped += 1;
+            eprintln!("warning: query {query_id}: sparse expansion skipped: {reason:?}");
         }
         if let Some(rr) = &r.stages.rerank
             && (rr.skipped.is_some() || rr.scored < rr.candidates)
@@ -808,6 +1023,9 @@ fn evaluate_hybrid(
         started.elapsed().as_secs_f64(),
         lex_ms / queries.max(1) as f64
     );
+    if sparse_stage.is_some() {
+        eprintln!("sparse expansion skipped for {sparse_skipped} of {queries} queries");
+    }
     if let Some(totals) = &rerank_totals {
         let (elapsed, pairs) = *totals.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         eprintln!(
@@ -836,9 +1054,40 @@ fn evaluate_hybrid(
         reranker_model_id,
         rerank_depth,
         rerank_mode: rerank.map(|r| r.mode),
+        sparse: sparse_stage,
     });
     report_line(dataset, config_name, &report);
     Ok(report)
+}
+
+/// Stage one batch through the add path the index takes: `add_embedded` without the sparse
+/// option, `add_encoded` with each document's cached expansion on a sparse index — never both,
+/// since each refuses the other kind of index.
+/// The batch is drained, keeping its capacity for the next one.
+fn ingest(
+    index: &mut HybridIndex,
+    batch: &mut Vec<(SourceDocument, Vec<f32>)>,
+    expansions: Option<&mut std::vec::IntoIter<Expansion>>,
+) -> anyhow::Result<()> {
+    match expansions {
+        None => {
+            index.add_embedded(batch)?;
+            batch.clear();
+        }
+        Some(expansions) => {
+            let encoded = batch
+                .drain(..)
+                .map(|(doc, vector)| {
+                    let expansion = expansions.next().with_context(|| {
+                        format!("no cached expansion for document {}", doc.external_id)
+                    })?;
+                    Ok((doc, vector, expansion))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            index.add_encoded(&encoded)?;
+        }
+    }
+    Ok(())
 }
 
 /// Index, retrieve and score one dataset. Returns the report.

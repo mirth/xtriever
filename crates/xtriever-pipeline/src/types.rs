@@ -54,6 +54,23 @@ pub struct HybridConfig {
 /// D4); a user schema may not name it.
 pub const SPARSE_FIELD: &str = "_sparse";
 
+/// The lexical stage's schema for a user schema: unchanged, or with the reserved `_sparse`
+/// field appended — text under the unstemmed `standard` analyzer, which keeps `s<id>` whole,
+/// indexed, not stored, at the option's boost (research D4).
+pub(crate) fn lexical_schema(user: &Schema, sparse_boost: Option<f32>) -> Schema {
+    let mut schema = user.clone();
+    if let Some(boost) = sparse_boost {
+        schema.fields.push(xtriever_core::FieldDef {
+            name: FieldName::from(SPARSE_FIELD),
+            kind: xtriever_core::FieldKind::Text(xtriever_core::AnalyzerId("standard".into())),
+            indexed: true,
+            stored: false,
+            boost,
+        });
+    }
+    schema
+}
+
 /// How a sparse index writes and scores its expansions (Feature 027, data-model
 /// `SparseOption`). The encoder itself is not part of the configuration: an opened index is
 /// searched without it, and `create_sparse` and `set_sparse_encoder` take it.
@@ -279,6 +296,9 @@ pub struct StageReport {
     pub rerank: Option<RerankReport>,
     /// A time limit was set but no time source was supplied, so it was ignored.
     pub time_limit_ignored: bool,
+    /// Set when a sparse index's query expansion could not be built (Feature 027) and the
+    /// lexical stage searched the text fields alone; `strict` makes it an error instead.
+    pub sparse_skipped: Option<DegradeReason>,
 }
 
 /// The re-rank stage's outcome for one search.
