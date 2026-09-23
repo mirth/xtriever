@@ -8,8 +8,8 @@
 index/                      # a pipeline format-v2 hybrid index, opened unchanged by 007's surface
 ├── xtriever-pipeline.json  # descriptor (untouched format)
 ├── lexical/                # one segment after merge
-├── dense/manifest.bin           # since Feature 024 (dense format 2): manifest + vectors.<g>.bin, not index.bin
-├── dense/vectors.<g>.bin
+├── dense/manifest.bin           # since Feature 024: manifest + vectors.<g>.bin, not index.bin
+├── dense/vectors.<g>.bin        # since Feature 026: dense format 3, eight-bit rows of 396 bytes (was 1,540)
 ├── passages.bin
 ├── ids.json
 └── corpus.json             # 008 sidecar (identity + counts); the pipeline ignores it
@@ -55,7 +55,10 @@ expected.json               # host goldens for the device parity check
 - Copies the layout above into `swift/Xtriever/Sources/Xtriever/XtrieverData/wikipedia/`.
 - Prints the staged size of `XtrieverData` and fails (exit 1) if it exceeds **2,000,000,000
   bytes** — the bundle budget; the number is revisited in the report against the measured
-  artefact and, if changed, changed in the script and here together.
+  artefact and, if changed, changed in the script and here together. Measured: 1,076,413,167
+  bytes for the format-2 artefact (Feature 008), 585,130,234 bytes for the same 427,947 passages
+  in format 3 (Feature 026) — the vectors fell from 660,750,511 to 169,467,012 bytes and the
+  other three files did not change.
 - `DeviceMeasurementTests` reads `TEST_RUNNER_XTRIEVER_CORPUS` (`scifact` default, `wikipedia`)
   and resolves `XtrieverData/<corpus>/{index,queries.json,expected.json}`; the record carries
   `corpus`, `index.bytes`, `openedInPlace: true`.

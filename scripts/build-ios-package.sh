@@ -9,7 +9,7 @@
 #
 #     scripts/build-ios-package.sh [--debug] [--with-models] [--with-fixtures] [--with-scifact] [--with-wiki|--with-wiki-dev] [--app] [--demo]
 #
-#   --with-models    stage both pinned models into the library bundle (~175 MB; needed by every
+#   --with-models    stage both pinned models into the library bundle (~51.5 MB eight-bit, Feature 026; needed by every
 #                    Swift test and by any device run — a device has no host filesystem)
 #   --with-fixtures  build the 40-document parity fixture index + goldens and stage them
 #   --with-scifact   stage the SciFact hybrid-rerank index and the measurement queries/truth

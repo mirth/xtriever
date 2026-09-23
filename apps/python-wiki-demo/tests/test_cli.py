@@ -37,7 +37,7 @@ def test_empty_result_prints_the_line_and_exits_0(monkeypatch):
     assert code == 0, err
     assert 'no passages found for "the of and"' in out
     assert "stages: lexical 0 · dense 0 · re-rank none" in out
-    assert "wall: fused 4 ms · peak resident 5 MB" in out
+    assert "wall: fused 4 ms · peak resident 5.2 MB" in out  # 5 MiB in decimal MB (Feature 026)
 
 
 def test_negative_budget_is_a_usage_error():

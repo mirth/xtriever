@@ -15,6 +15,8 @@ use std::path::Path;
 
 use crate::error::model_err;
 use crate::gguf_header::{BertPin, GgufHeader};
+// The arithmetic's one literal, defined beside the matmul it selects (`quantised_bert`).
+use crate::quantised_bert::compute;
 
 /// One pinned model file: name, exact size and SHA-256 (spec FR-003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,15 +146,6 @@ macro_rules! q8_revision {
         "1a9ef5ce8cb08936338233731314f3ff61ce0930"
     };
 }
-/// The arithmetic the eight-bit matrices are multiplied in (`quantised_bert`): expanded to
-/// `f16` at load, multiplied by the float kernel — the owner's choice over candle's eight-bit
-/// CPU kernel, which is 3.7× slower for the sequences this stage feeds. A different arithmetic
-/// would be different numbers, so the fingerprint names it.
-macro_rules! compute {
-    () => {
-        "f16"
-    };
-}
 macro_rules! q8_weights_sha256 {
     () => {
         "718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a"
@@ -194,7 +187,7 @@ pub const PINNED_Q8: PinnedArtefact = PinnedArtefact {
 };
 
 /// The identity string for the eight-bit artefact: [`MODEL_ID`]'s inputs with the artefact and
-/// `dtype=q8_0` in place of the float file, `compute=f16` for the arithmetic the encoder's
+/// `dtype=q8_0` in place of the float file, `compute=f32` for the arithmetic the encoder's
 /// matrices are multiplied in (`compute!()`), and the borrowed pooler named by its
 /// own file's hash, since it too produced the score (spec FR-006).
 pub const MODEL_ID_Q8: &str = concat!(

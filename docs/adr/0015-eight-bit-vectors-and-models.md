@@ -79,18 +79,28 @@ rather than relevance scores. Nothing is quantised in this repository.
 The tokenizer continues to come from the pinned float model directory, because neither quantised
 repository ships one. The artefact supplies weights only.
 
-**The matrices are multiplied in f16** (owner's decision, 2026-09-21). candle's eight-bit CPU
-kernel is 3.7× slower than the float path for the 256-token sequences this engine feeds it, and
-quality is the same under eight-bit, f16 and f32 arithmetic to three decimals on SciFact. Each
-eight-bit tensor is expanded to `f16` once at load — half the float model's RAM, float speed —
-and the fingerprints say so (`compute=f16`); the mode is fixed in code, never read from the
-environment. The expansion is itself a rounding: a code times its `f16` block scale needs up to
-19 significant bits and `f16` holds 11, so most weights are rounded once more at load,
-deterministically, which is part of what `compute=f16` names; an `f32` expansion would hold the
-products exactly at the float model's RAM. The artefact's own rounding is what the SciFact
-numbers show to be the dominant change; the f16 rounding on top of it did not move them. A
-kernel of our own for eight-bit arithmetic at float speed is out of scope (a commodity component,
-Principle I).
+**The matrices are expanded to f32 at load and multiplied by the float kernel** (owner's
+decision, 2026-09-22, superseding f16 chosen on 2026-09-21). candle's eight-bit CPU kernel is
+3.7× slower than the float path for the 256-token sequences this engine feeds it (442 ms per
+embedding against 125), and quality is the same under eight-bit, f16 and f32 arithmetic to
+three decimals on SciFact, so the eight-bit tensors are expanded once at load and the float
+kernel runs over them; the fingerprints name the arithmetic (`compute=f32`) and the mode is
+fixed in code, never read from the environment. f16 was chosen first for its RAM — half the
+float model's — and held on the host: the host's own goldens agreed bit for bit at 1, 4 and 10
+threads. It did not hold across platforms. Against goldens minted on macOS with the same
+eight-bit models, the Android emulator (arm64-v8a, the same architecture) disagreed on 36 of
+800 hit identifiers or their order and by 0.0134 in a re-rank score, where the float models
+had agreed on all 800 within 5.2e-6: an `f16` activation carries 11 significant bits, so the
+seventh-decimal differences between two platforms' kernels become third-decimal ones and six
+blocks amplify them into rank flips among near ties. Under f32 the emulator agrees on all 800,
+the dense scores are identical to the bit and the largest re-rank difference is 6.7e-6 — the
+float models' parity. The cost is 39 MB of resident memory for the two models when mapped
+(embedder 159.2 → 178.9 MB, re-ranker 153.0 → 172.3 MB, `beir model-memory`), no change in
+speed (123 ms per embedding against 120), none on disk or in a bundle. The parity contract the
+demonstrations have held since Feature 007 — the same index and query give the same answer on
+every platform — is worth more than the margin under the ceiling, which the measurement record
+states. A kernel of our own for eight-bit arithmetic at float speed is out of scope (a commodity
+component, Principle I).
 
 **The re-ranker's pooler is borrowed too** (owner's decision, 2026-09-21). The published
 cross-encoder scores `classifier(tanh(pooler(CLS)))`; the pinned eight-bit file carries the

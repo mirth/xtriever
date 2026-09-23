@@ -1,0 +1,73 @@
+{
+  "generatedBy": "apps/android-wiki-demo MeasurementTest (Feature 025), run for Feature 026 T029 with the eight-bit models",
+  "host": {
+    "cores": 10,
+    "machine": "MacBookPro18,3",
+    "os": "macOS 26.7"
+  },
+  "emulated": true,
+  "claims": "Correctness is a real claim: identifiers, order, lexical bits and fused bits are identical to the host's and the model scores are within 1e-3. Latency and memory describe an emulated device on a host machine and are not a physical-device result; they must not be compared with the iPhone's record.",
+  "device": {
+    "model": "sdk_gphone64_arm64",
+    "systemImage": "16 (API 36)",
+    "abi": "arm64-v8a"
+  },
+  "threads": 4,
+  "threadsSource": "Runtime.availableProcessors",
+  "loadPath": "mmap",
+  "index": {
+    "candidate_depth": 100,
+    "documents": 8529,
+    "embedder_fingerprint": "leliuga/all-MiniLM-L6-v2-GGUF@ddf2e25d5b8530422e7b14aa39f33a657ff9aec0;weights=sha256:e5ec722e8c82dc4ffaf965175ca472f5da3f97b695590b5b0780bdbfa29bcaf3;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=q8_0;compute=f32;prefix=none;engine=candle-0.9.2",
+    "format_version": 2,
+    "rerank_depth": 20,
+    "rerank_mode": {
+      "interpolate": {
+        "alpha": 0.5
+      }
+    },
+    "reranker_model_id": "cstr/ms-marco-MiniLM-L-6-v2-GGUF@1a9ef5ce8cb08936338233731314f3ff61ce0930;weights=sha256:718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a;pooler=sha256:382eb35e6b806190f9781c0b3646090e696a9c4c6267eef88c4f70df949676b9;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=q8_0;compute=f32;engine=candle-0.9.2",
+    "rrf_k": 60,
+    "corpus_identity": "287ac7ebda560bc2f0f3ec696bb036302a4c9d31b59f331c576bb78afc1b2998",
+    "corpus": "the bundled slice: index"
+  },
+  "queries": 20,
+  "perDepth": {
+    "0": {
+      "medianMs": 318,
+      "maxMs": 383
+    },
+    "5": {
+      "medianMs": 1598,
+      "maxMs": 1755
+    },
+    "10": {
+      "medianMs": 2885,
+      "maxMs": 3256
+    },
+    "20": {
+      "medianMs": 5354,
+      "maxMs": 5830
+    }
+  },
+  "peakResidentBytes": 440180736,
+  "ceilingBytes": 600000000,
+  "parity": {
+    "verdict": "PASS",
+    "queriesCompared": 20,
+    "depthsCompared": [
+      0,
+      5,
+      10,
+      20
+    ],
+    "hitsCompared": 800,
+    "identifiersIdentical": 800,
+    "orderMismatches": 0,
+    "lexicalBitMismatches": 0,
+    "fusedBitMismatches": 0,
+    "denseMaxAbsoluteDifference": 0,
+    "rerankMaxAbsoluteDifference": 6.67572021484375e-06,
+    "tolerance": 0.0010000000474974513
+  }
+}

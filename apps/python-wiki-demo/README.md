@@ -65,11 +65,13 @@ apps/python-wiki-demo/.venv/bin/wikidemo measure                                
 demo-built slice is a complete artefact in the same shape. The sections below follow the same
 order.
 
-**Dense format 2 (Feature 024).** An artefact built before that feature holds `index/dense/index.bin`
-and is refused at open — "dense index is format version 1 … rebuild the index" — because the
-dense vectors now live in a manifest plus one row file per generation
-(`index/dense/manifest.bin`, `index/dense/vectors.<generation>.bin`). Rebuild the slice
-(`wikidemo build …`, minutes); the shipped artefact was converted once in place.
+**Dense format 3 (Feature 026).** The dense vectors live in a manifest plus one row file per
+generation (`index/dense/manifest.bin`, `index/dense/vectors.<generation>.bin`, Feature 024),
+and since Feature 026 every row is eight-bit: 396 bytes a vector instead of 1,540, so the
+shipped artefact is 585 MB where it was 1,076 MB. An artefact built before either feature —
+format 1's `index/dense/index.bin`, or format 2's float rows — is refused at open naming both
+versions, with the instruction to rebuild. Rebuild the slice (`wikidemo build …`, minutes); the
+shipped artefact was rebuilt once (hours).
 
 ## Build an index
 
@@ -193,12 +195,19 @@ writes a record under `specs/019-python-wiki-demo/runs/` with the per-depth late
 the footprint. Exit 1 on a parity `FAIL`. `--against DIR` compares two artefacts' live
 responses instead — a demo-built slice against the Rust-built slice of the same articles.
 
-The committed record (`MacBookPro18,3`, 10 threads, both models memory-mapped): parity
-**PASS**, 800 of 800 hits identical on every score bit; medians fused **246 ms**,
-re-ranked at depth 10 **1,005 ms** (total 1,251 ms), re-ranked at depth 20 1,683 ms. The
-iPhone 16e (Feature 018, same queries, depth 10): 341.5 / 1,369 / 1,704.5 ms. The laptop's
-peak resident size (1,029 MB) includes the memory-mapped 1 GB index; the phone's 600 MB
-ceiling is a phone rule, recorded for comparison only.
+The committed record (`MacBookPro18,3`, 10 threads, both models memory-mapped, the eight-bit
+artefacts and the format-3 corpus of Feature 026, `specs/026-eight-bit-precision/runs/`):
+parity **PASS**, 800 of 800 hits identical on every score bit; medians fused **141.5 ms**,
+re-ranked at depth 10 **988.5 ms** (total 1,127 ms), re-ranked at depth 20 1,749.5 ms — three
+idle runs that day ranged 123–142 / 841–989 / 1,514–1,750 ms. The iPhone 16e (Feature 018,
+float models and the format-2 corpus, same queries, depth 10): 341.5 / 1,369 / 1,704.5 ms.
+The record carries two memory measures, each judged against the phone's 600 MB ceiling: the
+peak resident size, **639 MB — over**, which it has always carried as `peakBytes`, and since
+Feature 026 the peak `phys_footprint`, **441 MB — under** (`footprintPeakBytes`), the measure
+ADR-0010 defines the ceiling on. They differ because resident size also counts the clean pages
+of the memory-mapped 585 MB index, which the system reclaims freely and iOS does not count; it
+varies by some 20 MB between runs with what was paged in. The ceiling is a phone rule,
+recorded for comparison only.
 
 ## Threads
 
@@ -213,5 +222,5 @@ The engine's CPU pool follows `RAYON_NUM_THREADS`; set it before the process sta
 ```
 
 The demo's own logic is checked against the 40-document fixture and its goldens
-(`swift/Xtriever/Tests/Fixtures/`) — no 1 GB artefact needed — and the search output
+(`swift/Xtriever/Tests/Fixtures/`) — no 585 MB artefact needed — and the search output
 against the engine's score bits.

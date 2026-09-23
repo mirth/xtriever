@@ -51,12 +51,26 @@ ensure_ascii=False))`. For the full corpus and the pinned embedder this is
   "perDepthMedianMs": {"0": 0, "5": 0, "10": 0, "20": 0},
   "perDepthMaxMs": {"0": 0, "5": 0, "10": 0, "20": 0},
   "latency": {"medianFusedMs": 0, "maxFusedMs": 0, "medianRerankedMs": 0, "maxRerankedMs": 0, "medianRerankedAtEngineDefaultMs": 0, "medianTotalMs": 0, "maxTotalMs": 0},
-  "footprint": {"peakBytes": 0, "peakMethod": "ru_maxrss", "ceilingBytes": 600000000, "underCeiling": true},
+  "footprint": {"peakBytes": 0, "peakMethod": "ru_maxrss", "ceilingBytes": 600000000, "underCeiling": true,
+                "footprintPeakBytes": 0, "footprintMethod": "phys_footprint", "footprintUnderCeiling": true},
   "parity": {"queriesCompared": 20, "lexicalBitIdentical": 20, "fusedOrderIdentical": 20, "denseMaxAbsDiff": 0.0, "rerankMaxAbsDiff": 0.0, "allBitsIdentical": 800, "hitsCompared": 800, "toleranceAbs": 0.001, "verdict": "PASS"},
   "notes": [],
   "recordedAt": "2026-09-17T10:00:00Z"
 }
 ```
+
+`footprint.peakBytes` is the resident peak, `ru_maxrss`, in every record — the same quantity
+as each `queries[].peakBytesAfter` — and `underCeiling` judges it. Feature 026 adds a second
+measure beside it, never in its place: `footprintPeakBytes` is the process's lifetime peak
+`phys_footprint` where the platform reports it (macOS: `proc_pid_rusage`,
+`ri_lifetime_max_phys_footprint`), `footprintMethod` names it, and `footprintUnderCeiling`
+judges it; all three are `null` where the platform has no such counter. `phys_footprint` is
+the counter iOS enforces and the device tests read as their ledger — the measure ADR-0010
+defines the ceiling on — and it excludes the clean pages of the memory-mapped index that
+resident size counts, so on the full corpus the two differ by some 200 MB, the resident figure
+varying between runs with what was paged in. Each verdict judges its own measure; which one a
+criterion uses is its wording, not the recorder's choice. The fields are additive and the
+existing ones keep their meaning, so the schema version is unchanged.
 
 `latency.medianRerankedMs` is depth 10 (the demo default), `medianRerankedAtEngineDefaultMs`
 depth 20, `medianTotalMs` the per-query sum of depth 0 and depth 10 — so the row lines up

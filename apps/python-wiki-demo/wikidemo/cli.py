@@ -13,7 +13,7 @@ import xtriever
 from . import DEFAULT_DEPTH, DEFAULT_K, DEPTHS
 from .chunking import CHUNKERS, DEFAULT_CHUNKER
 from .hits import displayed, marks
-from .inputs import MissingInput, UnusableInput, require, resolve
+from .inputs import DEFAULTS, MissingInput, UnusableInput, require, resolve
 from .render import WARMUP_LINE, dropped_line, empty_line, error_line, list_block, open_line, stage_line, wall_line
 from .search import open_artefact, requested_mode_label, run_search
 
@@ -24,9 +24,11 @@ DEPTH_HELP = (
 
 
 def _common(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--artefact", help="the Wikipedia artefact directory (index/, ATTRIBUTION.txt); env XTRIEVER_WIKI_ARTEFACT; default target/xt-wiki")
-    p.add_argument("--embedder", help="the embedder directory; env XTRIEVER_MODEL_DIR; default reference/models/all-MiniLM-L6-v2")
-    p.add_argument("--reranker", help="the re-ranker directory; env XTRIEVER_RERANK_MODEL_DIR; default reference/models/ms-marco-MiniLM-L-6-v2")
+    # The defaults are quoted from the one table that holds them, so the help cannot drift from
+    # what `resolve` does (it did once, when Feature 026 moved them to the eight-bit directories).
+    p.add_argument("--artefact", help=f"the Wikipedia artefact directory (index/, ATTRIBUTION.txt); env XTRIEVER_WIKI_ARTEFACT; default {DEFAULTS['artefact']}")
+    p.add_argument("--embedder", help=f"the embedder directory; env XTRIEVER_MODEL_DIR; default {DEFAULTS['embedder']}")
+    p.add_argument("--reranker", help=f"the re-ranker directory; env XTRIEVER_RERANK_MODEL_DIR; default {DEFAULTS['reranker']}")
 
 
 def _positive(text: str) -> int:

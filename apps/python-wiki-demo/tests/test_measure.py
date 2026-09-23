@@ -245,7 +245,20 @@ def test_record_shape_and_no_hostname():
         "queriesCompared": 2, "lexicalBitIdentical": 2, "fusedOrderIdentical": 2, "denseMaxAbsDiff": 0.0,
         "rerankMaxAbsDiff": 0.0, "allBitsIdentical": 16, "hitsCompared": 16, "toleranceAbs": 0.001, "verdict": "PASS",
     }
-    assert rec["footprint"] == {"peakBytes": 5, "peakMethod": "ru_maxrss", "ceilingBytes": 600_000_000, "underCeiling": True}
+    # Without a footprint counter: the resident peak and its verdict, the footprint fields null.
+    assert rec["footprint"] == {
+        "peakBytes": 5, "peakMethod": "ru_maxrss", "ceilingBytes": 600_000_000, "underCeiling": True,
+        "footprintPeakBytes": None, "footprintMethod": None, "footprintUnderCeiling": None,
+    }
+    # With one (macOS): each measure judged separately, neither verdict replacing the other —
+    # a resident peak over the ceiling stays a FAIL beside a footprint under it (review PR C).
+    with_fp = make_record(corpus="wikipedia", index_meta={}, open_ms=0, embedder_load_ms=0, reranker_load_ms=0, warmup_ms=0, runs=runs, depths=DEPTHS, comparison=c, peak_bytes=638_156_800, footprint_bytes=439_682_152)
+    assert with_fp["footprint"] == {
+        "peakBytes": 638_156_800, "peakMethod": "ru_maxrss", "ceilingBytes": 600_000_000, "underCeiling": False,
+        "footprintPeakBytes": 439_682_152, "footprintMethod": "phys_footprint", "footprintUnderCeiling": True,
+    }
+    fp_over = make_record(corpus="wikipedia", index_meta={}, open_ms=0, embedder_load_ms=0, reranker_load_ms=0, warmup_ms=0, runs=runs, depths=DEPTHS, comparison=c, peak_bytes=500, footprint_bytes=600_000_001)
+    assert fp_over["footprint"]["underCeiling"] is True and fp_over["footprint"]["footprintUnderCeiling"] is False
     at_ceiling = make_record(corpus="wikipedia", index_meta={}, open_ms=0, embedder_load_ms=0, reranker_load_ms=0, warmup_ms=0, runs=runs, depths=DEPTHS, comparison=c, peak_bytes=600_000_000)
     assert at_ceiling["footprint"]["underCeiling"] is True  # inclusive, as the device tests
     over = make_record(corpus="wikipedia", index_meta={}, open_ms=0, embedder_load_ms=0, reranker_load_ms=0, warmup_ms=0, runs=runs, depths=DEPTHS, comparison=c, peak_bytes=600_000_001)

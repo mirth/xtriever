@@ -8,33 +8,60 @@
 //! `blk.N.attn_q`, `blk.N.ffn_up`, …); the norms, biases, token-type and position tables are
 //! dequantised once at load (they are float in the file anyway).
 //!
-//! **The arithmetic is f16 over the eight-bit weights** (owner's decision, 2026-09-21; the
-//! fingerprint names it, `compute=f16`, from the same literal as the pins in `model.rs`). Each
-//! weight matrix is expanded from its eight-bit blocks once at load and held as `f16` — half
-//! the float model's RAM — and each multiply converts the activations to `f16`, runs the float
-//! kernel, and converts back. The expansion is not exact: a code times its `f16` block scale
-//! needs up to 19 significant bits and `f16` holds 11, so most weights are rounded once more
-//! at load (candle's `dequantize_f16` expands to `f32` and narrows). That rounding is
-//! deterministic and is part of what `compute=f16` names; an `f32` expansion would hold every
-//! product exactly, at the float model's RAM. Measured on SciFact before the choice (the
-//! embedder, 256-token inputs): candle's eight-bit CPU kernel, built for one token at a time,
-//! took 442 ms per embedding against 120 ms for this path and 125 ms for the float artefact,
-//! with nDCG@10 0.64646 / 0.64642 / 0.64631 for the eight-bit, f16 and f32 arithmetic. The
-//! mode is fixed here in code: candle's `QMatMul::from_arc` reads it from two environment
-//! variables, and an environment variable must not be able to change a number, so the matmul
-//! is constructed explicitly and `from_arc` is never called.
+//! **The arithmetic is f32 over the eight-bit weights** (owner's decision, 2026-09-22; one
+//! literal, `compute!` below, both selects the matmul and gives the fingerprint its
+//! `compute=f32`, and a test fails if the two part). Each
+//! weight matrix is expanded from its eight-bit blocks once at load — a code times its block
+//! scale, held exactly in `f32` — and multiplied by the float kernel, so the only rounding is
+//! the artefact's own. Measured on SciFact before the choice (the embedder, 256-token inputs):
+//! candle's eight-bit CPU kernel, built for one token at a time, took 442 ms per embedding
+//! against 123 ms for this path, 120 ms for an `f16` expansion and 125 ms for the float
+//! artefact, with nDCG@10 0.64646 / 0.64631 / 0.64642 for the eight-bit, f32 and f16
+//! arithmetic. `f16` was chosen first for its RAM (half the float model's) and held on the
+//! host but not across platforms: an `f16` activation carries 11 significant bits, and the
+//! Android emulator disagreed with macOS-minted goldens on 36 of 800 hits where the float
+//! models had agreed on all 800; under `f32` it agrees on all 800 again, for 39 MB more
+//! resident memory across the two models (ADR-0015). The mode is fixed here in code: candle's
+//! `QMatMul::from_arc` reads it from two environment variables, and an environment variable
+//! must not be able to change a number, so the matmul is constructed explicitly and `from_arc`
+//! is never called.
 //!
 //! This file is byte-identical in `xtriever-dense` and `xtriever-rerank` (see `gguf_header.rs`
 //! for why); `tests/twins.rs` in the dense crate fails if the two copies ever differ.
 
-use candle_core::quantized::QMatMul;
-use candle_core::{D, DType, Module, Result, Tensor};
+use candle_core::quantized::{QMatMul, QTensor};
+use candle_core::{D, DType, Device, Module, Result, Tensor};
 use candle_nn::LayerNorm;
 use candle_transformers::quantized_nn::{Embedding, layer_norm};
 use candle_transformers::quantized_var_builder::VarBuilder;
 
-/// A linear layer whose matrix is the artefact's eight-bit tensor expanded to `f16` at load,
-/// constructed explicitly so candle's environment switches cannot change the mode.
+/// The arithmetic the eight-bit matrices are multiplied in: expanded to `f32` at load and
+/// multiplied by the float kernel — the owner's choice over candle's eight-bit CPU kernel,
+/// which is 3.7× slower for the sequences these stages feed, and over `f16`, which did not
+/// hold parity across platforms (ADR-0015). The one literal both uses read: [`expand`] selects
+/// the matmul by it, and the fingerprint and model identity in `model.rs` name it (`compute=`),
+/// so the arithmetic and the identity an index records cannot drift apart.
+macro_rules! compute {
+    () => {
+        "f32"
+    };
+}
+pub(crate) use compute;
+
+/// One eight-bit weight matrix as the matmul `compute!()` names, constructed explicitly so
+/// candle's environment switches (`QMatMul::from_arc`) cannot change the mode.
+fn expand(weight: &QTensor, device: &Device) -> Result<QMatMul> {
+    match compute!() {
+        "f32" => Ok(QMatMul::Tensor(weight.dequantize(device)?)),
+        "f16" => Ok(QMatMul::TensorF16(weight.dequantize_f16(device)?)),
+        other => Err(candle_core::Error::Msg(format!(
+            "compute!() names `{other}`, which no matmul is built for"
+        ))),
+    }
+}
+
+/// A linear layer whose matrix is the artefact's eight-bit tensor, expanded at load by
+/// [`expand`].
 struct Linear {
     weight: QMatMul,
     bias: Tensor,
@@ -42,8 +69,7 @@ struct Linear {
 
 impl Linear {
     fn new(vb: &VarBuilder, in_dim: usize, out_dim: usize) -> Result<Self> {
-        let weight = vb.get((out_dim, in_dim), "weight")?;
-        let weight = QMatMul::TensorF16(weight.dequantize_f16(vb.device())?);
+        let weight = expand(&*vb.get((out_dim, in_dim), "weight")?, vb.device())?;
         let bias = vb.get(out_dim, "bias")?.dequantize(vb.device())?;
         Ok(Self { weight, bias })
     }
@@ -186,5 +212,32 @@ impl QuantisedBert {
             .contiguous()?
             .flatten_from(D::Minus2)?;
         block.output.forward(&context)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+    use candle_core::quantized::{GgmlDType, QMatMul, QTensor};
+    use candle_core::{Device, Tensor};
+
+    /// The matmul `expand` builds is the one `compute!()` names — the literal the fingerprint
+    /// records (review PR C: the variant and the literal used to be two edits apart).
+    #[test]
+    fn the_matmul_is_the_one_the_fingerprint_names() {
+        let device = Device::Cpu;
+        let values: Vec<f32> = (0..64).map(|i| i as f32 / 64.0 - 0.5).collect();
+        let q = QTensor::quantize(
+            &Tensor::from_vec(values, (2, 32), &device).unwrap(),
+            GgmlDType::Q8_0,
+        )
+        .unwrap();
+        let built = super::expand(&q, &device).unwrap();
+        match (super::compute!(), &built) {
+            ("f32", QMatMul::Tensor(t)) => assert_eq!(t.dtype(), candle_core::DType::F32),
+            ("f16", QMatMul::TensorF16(t)) => assert_eq!(t.dtype(), candle_core::DType::F16),
+            (name, _) => panic!("compute!() names `{name}` but expand built another matmul"),
+        }
     }
 }
