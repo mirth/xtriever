@@ -54,6 +54,25 @@
 //!   candle, never set here). Across architectures the SIMD reduction paths differ, so agreement
 //!   is within the golden tolerance, not bit-for-bit; the fingerprint deliberately excludes the
 //!   architecture so an index built on one machine opens on another.
+//!
+//! # Feature 027
+//!
+//! - **The sparse document encoder** ([`sparse::SparseEncoder`], build host only) expands a
+//!   document into weighted vocabulary entries with the pinned
+//!   `opensearch-neural-sparse-encoding-doc-v3-distill` ([`model::PINNED_SPARSE`], 268 MB,
+//!   verified by size and SHA-256 before anything is parsed). One document at a time, truncated
+//!   to 512 tokens: the masked-LM logits' maximum over positions through
+//!   `log1p(log1p(relu(·)))`, special tokens zeroed. The DistilBERT forward pass is written
+//!   out over `candle_nn`'s layers with **exact GELU** — candle 0.9.2's own DistilBERT uses the
+//!   tanh approximation, which the model's reference does not — and holds every weight within
+//!   1e-4 of the PyTorch reference (`reference/gen_027_fixtures.py`; measured 1.6e-5), with
+//!   bit-identical expansions across thread counts on one architecture.
+//! - **The query side** ([`sparse::SparseQuery`]) needs no model: a query's distinct token ids
+//!   that are not special tokens and have a positive entry in the encoder's `idf.json`. It is
+//!   built from a tokenizer and table verified against expected hashes, so a sparse index can
+//!   carry its own copies (research D6).
+//! - [`sparse::field_text`] turns an expansion into the lexical field value a sparse index
+//!   stores: the term `s<id>` repeated `round(weight × scale)` times.
 //! - **`mmap` feature** (off by default): `LoadPath::Mmap` and `FlatIndex::open_mapped*`
 //!   read the weights and the index through a read-only memory map. This is the crate's only
 //!   hand-written `unsafe` block, in `bytes::map_readonly`, admitted by constitution v1.2.0 and
@@ -70,6 +89,7 @@ pub mod model;
 #[doc(hidden)]
 pub mod quantise;
 mod quantised_bert;
+pub mod sparse;
 
 pub use embedder::MiniLmEmbedder;
 pub use index::{DenseStats, FlatIndex, validate_compaction_threshold};

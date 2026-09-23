@@ -1,0 +1,18 @@
+{
+ "files": {
+  "documents.json": "ac0aff1e51de0519f7e3265ac227072f1d4bb688bba0b2e4ef40da6a53b91339",
+  "expansions.json": "b10d811b53ab29cf123000f51655f99358cae6793231f709a84b029aa486324a",
+  "queries.json": "30da80ab2740a78d51c44dfa155f8e300ea31d06a3f53675861972a6693e194f"
+ },
+ "generator": "reference/gen_027_fixtures.py",
+ "generator_sha256": "b8e3bf86768af2dad949dc59dc358728120190b90f315c4aeccd76686dc324d4",
+ "model": "opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3c48695e2e53a978208e8aba48335e3c0",
+ "numpy": "2.5.3",
+ "tolerance": {
+  "half_margin": 0.001,
+  "scale": 10,
+  "weight_abs": 0.0001
+ },
+ "torch": "2.14.0",
+ "transformers": "5.17.0"
+}

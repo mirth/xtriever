@@ -191,6 +191,83 @@ pub const FINGERPRINT_Q8: &str = concat!(
     ";prefix=none;engine=candle-0.9.2"
 );
 
+/// The sparse document encoder (Feature 027 research D1, D3): repository, revision and every
+/// file it needs — the model, its tokenizer and the query-side table (`idf.json`). Mirrors
+/// `reference/models/manifest-sparse-doc-v3.json`; `tests/sparse_pins.rs` keeps them equal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PinnedSparseEncoder {
+    /// Hugging Face repository.
+    pub repository: &'static str,
+    /// Git revision the files were fetched at.
+    pub revision: &'static str,
+    /// `config.json`, `tokenizer.json`, `model.safetensors`, `idf.json`, in verification order.
+    pub files: [PinnedFile; 4],
+    /// The activation the document weights go through, as the manifest names it.
+    pub activation: &'static str,
+    /// The encoder's window in model tokens, special tokens included.
+    pub max_tokens: usize,
+}
+
+macro_rules! sparse_repository {
+    () => {
+        "opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill"
+    };
+}
+macro_rules! sparse_revision {
+    () => {
+        "babf71f3c48695e2e53a978208e8aba48335e3c0"
+    };
+}
+macro_rules! sparse_weights_sha256 {
+    () => {
+        "83a3cc9757876b8590aac53f4f6685012f89d7fb4bbeb540815a54d325f7f70a"
+    };
+}
+
+/// The sparse document encoder this crate expands documents with (Feature 027).
+pub const PINNED_SPARSE: PinnedSparseEncoder = PinnedSparseEncoder {
+    repository: sparse_repository!(),
+    revision: sparse_revision!(),
+    files: [
+        PinnedFile {
+            name: "config.json",
+            bytes: 596,
+            sha256: "ee97780493e7d0a3b7b788ea98f3391e6be6b0b379921b465ca55bfdd0d9cbe3",
+        },
+        PinnedFile {
+            name: "tokenizer.json",
+            bytes: 711_649,
+            sha256: "91f1def9b9391fdabe028cd3f3fcc4efd34e5d1f08c3bf2de513ebb5911a1854",
+        },
+        PinnedFile {
+            name: "model.safetensors",
+            bytes: 267_954_768,
+            sha256: sparse_weights_sha256!(),
+        },
+        PinnedFile {
+            name: "idf.json",
+            bytes: 889_360,
+            sha256: "da23a1c0b9252776cc8c6d70fd14723e218f484d489cd9027ac6e4065d5b9edd",
+        },
+    ],
+    activation: "log1p_log1p_relu",
+    max_tokens: 512,
+};
+
+/// Short name used in the sparse encoder's `Error::Model { model, .. }`.
+pub const SPARSE_MODEL_NAME: &str = "opensearch-neural-sparse-encoding-doc-v3-distill";
+
+/// The sparse encoder's identity, recorded in a sparse index (Feature 027 data-model
+/// `SparseRecord.encoder`): every input whose change would change a document's expansion.
+pub const SPARSE_IDENTITY: &str = concat!(
+    sparse_repository!(),
+    "@",
+    sparse_revision!(),
+    ";weights=sha256:",
+    sparse_weights_sha256!(),
+    ";activation=log1p_log1p_relu;max_tokens=512;engine=candle-0.9.2"
+);
+
 /// The embedder fingerprint (spec FR-004, research D6): every input whose change would change
 /// the vectors — model identity, pooling, normalisation, truncation length, weight precision,
 /// prefixes (none) and the inference engine version (ADR-0001). Not included: thread count and
@@ -215,7 +292,7 @@ pub const FINGERPRINT: &str = concat!(
 /// `Error::Model` naming the file and both sizes or both hashes (spec FR-003).
 pub fn verify_files(dir: &Path) -> xtriever_core::Result<()> {
     for pin in &PINNED.files {
-        verify_file(dir, pin)?;
+        verify_file(dir, pin, model_err)?;
     }
     Ok(())
 }
@@ -227,7 +304,7 @@ pub fn verify_files(dir: &Path) -> xtriever_core::Result<()> {
 /// `Error::Model` naming the file and both sizes or both hashes.
 pub fn verify_files_q8(dir: &Path) -> xtriever_core::Result<()> {
     for pin in &PINNED_Q8.files {
-        verify_file(dir, pin)?;
+        verify_file(dir, pin, model_err)?;
     }
     Ok(())
 }
@@ -268,43 +345,113 @@ fn bert_pin() -> BertPin {
     }
 }
 
-fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {
-    use sha2::{Digest, Sha256};
-
+/// Read one pinned file whole through `load_path` and check **those bytes** — size, then SHA-256
+/// — before returning them, so what the caller parses is exactly what was verified (Feature 027;
+/// the sparse encoder's loader). `err` names the model whose file it is.
+///
+/// # Errors
+///
+/// `err(…)` naming the file and both sizes or both hashes, or why it could not be read.
+pub(crate) fn read_pinned(
+    dir: &Path,
+    pin: &PinnedFile,
+    load_path: crate::LoadPath,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<crate::bytes::Bytes> {
     let path = dir.join(pin.name);
-    let size = std::fs::metadata(&path)
-        .map_err(|e| model_err(format!("cannot stat {}: {e}", path.display())))?
-        .len();
-    if size != pin.bytes {
-        return Err(model_err(format!(
-            "{} is {size} bytes, expected exactly {} bytes",
+    // The size first, from the metadata: a wrong file is refused before it is read.
+    check_size(&path, pin, err)?;
+    let bytes = crate::bytes::read(&path, load_path)
+        .map_err(|e| err(format!("cannot read {}: {e}", path.display())))?;
+    let slice = bytes.as_slice();
+    if slice.len() as u64 != pin.bytes {
+        return Err(err(format!(
+            "{} is {} bytes, expected exactly {} bytes",
             path.display(),
+            slice.len(),
             pin.bytes
         )));
     }
-    let mut file = std::fs::File::open(&path)
-        .map_err(|e| model_err(format!("cannot open {}: {e}", path.display())))?;
+    check_sha256(&path, &sha256_hex(slice), pin.sha256, err)?;
+    Ok(bytes)
+}
+
+/// The SHA-256 of `bytes`, as lower-case hex.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    hex(&Sha256::digest(bytes))
+}
+
+fn hex(digest: &[u8]) -> String {
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The SHA-256 of a whole file, as lower-case hex, streamed in 1 MiB chunks so a large file is
+/// never held in memory; `err` names the model whose file it is.
+fn sha256_file(
+    path: &Path,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<String> {
+    use sha2::{Digest, Sha256};
+
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| err(format!("cannot open {}: {e}", path.display())))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1 << 20];
     loop {
         let read = std::io::Read::read(&mut file, &mut buf)
-            .map_err(|e| model_err(format!("cannot hash {}: {e}", path.display())))?;
+            .map_err(|e| err(format!("cannot hash {}: {e}", path.display())))?;
         if read == 0 {
             break;
         }
         hasher.update(&buf[..read]);
     }
-    let digest: String = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    if digest != pin.sha256 {
-        return Err(model_err(format!(
-            "{} has sha256 {digest}, expected {}",
+    Ok(hex(&hasher.finalize()))
+}
+
+fn check_size(
+    path: &Path,
+    pin: &PinnedFile,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<()> {
+    let size = std::fs::metadata(path)
+        .map_err(|e| err(format!("cannot stat {}: {e}", path.display())))?
+        .len();
+    if size != pin.bytes {
+        return Err(err(format!(
+            "{} is {size} bytes, expected exactly {} bytes",
             path.display(),
-            pin.sha256
+            pin.bytes
         )));
     }
     Ok(())
+}
+
+/// `digest` (of `path`) against `expected`; the one mismatch message every hash check in the
+/// crate gives, whichever error `err` raises.
+pub(crate) fn check_sha256(
+    path: &Path,
+    digest: &str,
+    expected: &str,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<()> {
+    if digest != expected {
+        return Err(err(format!(
+            "{} has sha256 {digest}, expected {expected}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Verify one pinned file by size and a streamed SHA-256, holding none of it: for a file the
+/// caller does not parse (the sparse encoder's query-side table).
+pub(crate) fn verify_file(
+    dir: &Path,
+    pin: &PinnedFile,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<()> {
+    let path = dir.join(pin.name);
+    check_size(&path, pin, err)?;
+    check_sha256(&path, &sha256_file(&path, err)?, pin.sha256, err)
 }

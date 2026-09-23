@@ -1,0 +1,12 @@
+# Direct dependencies for reference/gen_027_fixtures.py (Feature 027: the sparse encoder's oracle).
+#
+# torch / transformers / tokenizers / safetensors / numpy are Feature 012's pins
+# (reference/requirements-012.in) — the stack the sparse spike measured with, so the oracle
+# encodes documents exactly as the spike did. Unlike the 012 and 022 locks, this one is compiled
+# with hashes (uv pip compile --generate-hashes), so scripts/setup-reference-venv.sh 027 installs
+# it with --require-hashes like the other oracles.
+torch==2.14.0
+transformers==5.17.0
+tokenizers==0.23.2
+safetensors==0.8.0
+numpy==2.5.3
