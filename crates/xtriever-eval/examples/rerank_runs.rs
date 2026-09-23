@@ -32,6 +32,8 @@
     clippy::print_stdout
 )]
 
+// Shared helpers; each example uses a part of them.
+#[allow(dead_code)]
 mod common;
 
 use std::collections::BTreeMap;

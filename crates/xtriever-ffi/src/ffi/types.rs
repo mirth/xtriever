@@ -124,6 +124,9 @@ pub struct StageReport {
     pub rerank: Option<RerankReport>,
     /// A time limit was set but no time source was supplied (never through this FFI).
     pub time_limit_ignored: bool,
+    /// Set when a sparse index's query expansion could not be built (Feature 027) and the text
+    /// fields were searched alone; strict mode returns the error instead.
+    pub sparse_skipped: Option<DegradeReason>,
 }
 
 /// The re-rank stage's outcome.

@@ -8,11 +8,18 @@
 | `hybrid-sparse-rerank-v1` | `hybrid-rerank-v3` with the same option |
 
 `beir run --config hybrid-sparse-rerank-v1 --sparse-encoder-dir DIR [--sparse-cache-dir C]`.
-The sparse cache: `C/<dataset>/{key.json, weights.bin}`; `key.json` holds the encoder identity,
-the corpus SHA-256 and the document count, `weights.bin` every document's entries (count, then
-`(u32 id, f32 weight)` pairs, in corpus order). A key mismatch is a miss; a miss encodes and
-records the throughput (documents per second, thread count) on stderr and in the report's
-`stage` block. The report's `stage` block also records the lexical index's bytes.
+The sparse cache: `C/<dataset>/<recipe>/{key.json, weights.bin}`, one directory per passage
+recipe; `key.json` holds the layout version
+(2), the dataset, the encoder identity, the passage recipe (the lexical configuration's name),
+the corpus SHA-256 and the document count, `weights.bin` every document's record in corpus
+order (entry count `u32`, truncation flag `u8`, then `(u32 id, f32 weight)` pairs). A run
+warns for every query whose expansion was skipped and prints how many were. A key
+mismatch is a miss. While an encode runs it appends to `weights.partial` and, every 1,000
+documents, syncs it and records `progress.json` (documents, bytes); an interrupted encode
+resumes from that record, and the finished file is renamed to `weights.bin`. The throughput
+(documents per second, thread count) and the lexical index's bytes go to stderr — never into
+the report, which stays byte-identical across runs (spec 004 SC-006); the report's `stage`
+block records the settings and the encoder identity.
 
 ## Command line (PR C)
 

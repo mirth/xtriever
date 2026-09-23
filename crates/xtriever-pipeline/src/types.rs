@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use xtriever_core::{Budget, ChunkInfo, DocId, FeatureName, FieldName, Schema, Value, features};
 
 use crate::rerank::RerankMode;
@@ -43,6 +44,71 @@ pub struct HybridConfig {
     /// rows dead (`0.0..=1.0`); `None` (the default) compacts only on `merge` (Feature 024;
     /// recorded in the descriptor).
     pub dense_compact_dead_share: Option<f32>,
+    /// Sparse lexical expansion (Feature 027): `None` (the default) changes nothing. A sparse
+    /// index is created by [`HybridIndex::create_sparse`](crate::HybridIndex::create_sparse),
+    /// which takes the encoder; recorded in the descriptor, so an opened index reports it.
+    pub sparse: Option<SparseOption>,
+}
+
+/// The reserved lexical field a sparse index writes its expansions to (Feature 027 research
+/// D4); a user schema may not name it.
+pub const SPARSE_FIELD: &str = "_sparse";
+
+/// The lexical stage's schema for a user schema: unchanged, or with the reserved `_sparse`
+/// field appended — text under the unstemmed `standard` analyzer, which keeps `s<id>` whole,
+/// indexed, not stored, at the option's boost (research D4).
+pub(crate) fn lexical_schema(user: &Schema, sparse_boost: Option<f32>) -> Schema {
+    let mut schema = user.clone();
+    if let Some(boost) = sparse_boost {
+        schema.fields.push(xtriever_core::FieldDef {
+            name: FieldName::from(SPARSE_FIELD),
+            kind: xtriever_core::FieldKind::Text(xtriever_core::AnalyzerId("standard".into())),
+            indexed: true,
+            stored: false,
+            boost,
+        });
+    }
+    schema
+}
+
+/// How a sparse index writes and scores its expansions (Feature 027, data-model
+/// `SparseOption`). The encoder itself is not part of the configuration: an opened index is
+/// searched without it, and `create_sparse` and `set_sparse_encoder` take it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SparseOption {
+    /// A weight becomes `round(weight × scale)` occurrences of its term; `1..=`
+    /// [`xtriever_dense::sparse::MAX_SCALE`].
+    pub scale: u32,
+    /// The `_sparse` field's boost; finite and above zero.
+    pub boost: f32,
+}
+
+impl Default for SparseOption {
+    /// The spike's settings: scale 10, boost 1.0.
+    fn default() -> Self {
+        Self {
+            scale: 10,
+            boost: 1.0,
+        }
+    }
+}
+
+/// What a sparse index records about its expansion (data-model `SparseRecord`; format version
+/// 3, ADR-0016). Written once at creation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SparseRecord {
+    /// As created.
+    pub scale: u32,
+    /// As created.
+    pub boost: f32,
+    /// The reserved lexical field, [`SPARSE_FIELD`].
+    pub field: String,
+    /// The encoder's identity (`xtriever_dense::model::SPARSE_IDENTITY`).
+    pub encoder: String,
+    /// SHA-256 of `<index>/sparse/tokenizer.json`.
+    pub tokenizer_sha256: String,
+    /// SHA-256 of `<index>/sparse/query-table.json`.
+    pub table_sha256: String,
 }
 
 impl HybridConfig {
@@ -58,6 +124,7 @@ impl HybridConfig {
             rerank_depth: 20,
             rerank_mode: RerankMode::default(),
             dense_compact_dead_share: None,
+            sparse: None,
         }
     }
 }
@@ -229,6 +296,9 @@ pub struct StageReport {
     pub rerank: Option<RerankReport>,
     /// A time limit was set but no time source was supplied, so it was ignored.
     pub time_limit_ignored: bool,
+    /// Set when a sparse index's query expansion could not be built (Feature 027) and the
+    /// lexical stage searched the text fields alone; `strict` makes it an error instead.
+    pub sparse_skipped: Option<DegradeReason>,
 }
 
 /// The re-rank stage's outcome for one search.

@@ -216,6 +216,8 @@ impl From<IndexConfig> for HybridConfig {
             rerank_depth: to_usize(c.rerank_depth),
             rerank_mode: c.rerank_mode.map_or_else(Default::default, Into::into),
             dense_compact_dead_share: c.dense_compact_dead_share,
+            // Feature 027 PR C adds the option to the FFI configuration.
+            sparse: None,
         }
     }
 }
@@ -349,7 +351,8 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
     let config = guard.config();
     IndexInfo {
         documents: guard.len(),
-        format_version: xtriever_pipeline::FORMAT_VERSION,
+        // The index's own: 3 for a sparse index (Feature 027), 2 otherwise.
+        format_version: guard.format_version(),
         embedder_fingerprint: guard.embedder().fingerprint().to_owned(),
         reranker_model_id: guard.reranker().map(|r| r.model_id().to_owned()),
         candidate_depth: count(config.candidate_depth),
@@ -467,6 +470,7 @@ pub fn from_response(response: Response, elapsed_ms: u64) -> SearchResponse {
                 skipped: r.skipped.map(reason),
             }),
             time_limit_ignored: s.time_limit_ignored,
+            sparse_skipped: s.sparse_skipped.map(reason),
         },
         elapsed_ms,
     }

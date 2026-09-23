@@ -52,6 +52,7 @@ fn stage(kind: &str) -> StageInfo {
         reranker_model_id: None,
         rerank_depth: None,
         rerank_mode: None,
+        sparse: None,
     }
 }
 
@@ -84,6 +85,7 @@ fn the_new_stage_keys_round_trip_and_are_omitted_when_absent() {
         reranker_model_id: Some("cross-encoder/x@rev".into()),
         rerank_depth: Some(20),
         rerank_mode: None,
+        sparse: None,
         ..stage("hybrid-rerank")
     });
     let json = serde_json::to_string_pretty(&r).unwrap();

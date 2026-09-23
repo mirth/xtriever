@@ -28,10 +28,12 @@
     clippy::print_stdout
 )]
 
+// Shared helpers; each example uses a part of them.
+#[allow(dead_code)]
 mod common;
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Context;
 use serde::Deserialize;
@@ -44,7 +46,7 @@ use xtriever_eval::report::score;
 use xtriever_eval::run::{EvalConfig, Run, build};
 use xtriever_lexical::TantivyIndex;
 
-use common::{flags, repo_root};
+use common::{dir_bytes, flags, repo_root};
 
 #[derive(Deserialize)]
 struct DocRow {
@@ -56,21 +58,6 @@ struct DocRow {
 struct QueryRow {
     query_id: String,
     terms: Vec<(u32, f32)>,
-}
-
-fn dir_bytes(dir: &Path) -> u64 {
-    let mut total = 0;
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            total += if path.is_dir() {
-                dir_bytes(&path)
-            } else {
-                path.metadata().map(|m| m.len()).unwrap_or(0)
-            };
-        }
-    }
-    total
 }
 
 fn main() -> anyhow::Result<()> {
@@ -184,7 +171,7 @@ fn main() -> anyhow::Result<()> {
         index.add(&batch)?;
     }
     index.commit()?;
-    let bytes = dir_bytes(&index_dir);
+    let bytes = dir_bytes(&index_dir)?;
     eprintln!(
         "{dataset}: scale {scale}; {} documents, {:.0} sparse tokens each, {missing} without an encoding; index {bytes} bytes",
         docs.len(),
