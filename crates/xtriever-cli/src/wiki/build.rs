@@ -59,6 +59,20 @@ impl Embedder for SharedEmbedder {
 /// # Errors
 ///
 /// Any value but `buffered` / `mmap`.
+/// The sparse option the flags ask for (Feature 027): `None` without `--sparse-encoder`; with
+/// it, the given scale and boost or the engine's defaults (`SparseOption::default()`). A scale
+/// or boost without an encoder is refused rather than ignored.
+///
+/// RED-CHECKPOINT STUB: not called by `run` until T037, so a build still works meanwhile.
+///
+/// # Errors
+///
+/// A scale or boost given without `--sparse-encoder`.
+#[allow(dead_code)]
+pub fn sparse_option(_args: &BuildArgs) -> anyhow::Result<Option<xtriever_pipeline::SparseOption>> {
+    bail!("not implemented")
+}
+
 pub fn load_path(flag: &str) -> anyhow::Result<LoadPath> {
     match flag {
         "buffered" => Ok(LoadPath::Buffered),
@@ -410,4 +424,72 @@ fn flush_shard(
 fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
     let text = serde_json::to_string_pretty(value)? + "\n";
     std::fs::write(path, text).with_context(|| format!("writing {}", path.display()))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod sparse_tests {
+    use clap::Parser;
+    use xtriever_pipeline::SparseOption;
+
+    use super::sparse_option;
+    use crate::wiki::{BuildArgs, WikiCommand};
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        wiki: WikiCommand,
+    }
+
+    fn args(extra: &[&str]) -> BuildArgs {
+        let mut argv = vec!["xtriever", "build", "--out", "target/x"];
+        argv.extend_from_slice(extra);
+        match Cli::try_parse_from(argv).unwrap().wiki {
+            WikiCommand::Build(a) => a,
+            _ => panic!("not a build"),
+        }
+    }
+
+    /// Feature 027 (T037): no `--sparse-encoder`, no option — the build is what it was.
+    #[test]
+    fn without_the_encoder_flag_there_is_no_option() {
+        assert_eq!(sparse_option(&args(&[])).unwrap(), None);
+    }
+
+    /// The encoder alone takes the engine's defaults, never restated here.
+    #[test]
+    fn the_encoder_alone_takes_the_engines_defaults() {
+        assert_eq!(
+            sparse_option(&args(&["--sparse-encoder", "enc"])).unwrap(),
+            Some(SparseOption::default())
+        );
+    }
+
+    #[test]
+    fn scale_and_boost_are_taken_as_given() {
+        let a = args(&[
+            "--sparse-encoder",
+            "enc",
+            "--sparse-scale",
+            "20",
+            "--sparse-boost",
+            "0.5",
+        ]);
+        assert_eq!(
+            sparse_option(&a).unwrap(),
+            Some(SparseOption {
+                scale: 20,
+                boost: 0.5
+            })
+        );
+    }
+
+    /// A scale or boost without an encoder would be silently ignored; it is refused instead.
+    #[test]
+    fn a_scale_or_boost_without_the_encoder_is_refused() {
+        for extra in [["--sparse-scale", "20"], ["--sparse-boost", "0.5"]] {
+            let e = sparse_option(&args(&extra)).unwrap_err().to_string();
+            assert!(e.contains("--sparse-encoder"), "{e}");
+        }
+    }
 }

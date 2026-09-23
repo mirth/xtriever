@@ -290,12 +290,14 @@ pub struct SparseOptionConfig {
     /// The pinned sparse document encoder's directory
     /// (`opensearch-neural-sparse-encoding-doc-v3-distill`).
     pub encoder_dir: String,
-    /// A weight becomes `round(weight × scale)` occurrences of its term; `1..=1000`.
-    #[uniffi(default = 10)]
-    pub scale: u32,
-    /// The `_sparse` field's boost; finite and above zero.
-    #[uniffi(default = 1.0)]
-    pub boost: f32,
+    /// A weight becomes `round(weight × scale)` occurrences of its term; `1..=1000`. `None` =
+    /// the engine's default (`SparseOption::default()`, 10) — taken from the engine, never
+    /// restated here.
+    #[uniffi(default = None)]
+    pub scale: Option<u32>,
+    /// The `_sparse` field's boost; finite and above zero. `None` = the engine's default (1.0).
+    #[uniffi(default = None)]
+    pub boost: Option<f32>,
 }
 
 /// What a sparse index records about its expansion (Feature 027).

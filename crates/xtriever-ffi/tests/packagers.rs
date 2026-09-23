@@ -1,6 +1,9 @@
 //! Feature 027 (FR-012, FR-013): the packagers stage the index and the two pinned models, never
 //! the sparse encoder — a device searches a sparse index with the query side the index carries.
-//! Model-free; runs in CI.
+//! A guard, like the pin tests: green at the red checkpoint, and it fails the day a packager
+//! learns to stage the encoder. It reads the scripts, so an operator who deliberately points an
+//! embedder override (`XTRIEVER_MODEL_MANIFEST`) at the encoder's manifest is outside it — that
+//! app would fail to load the encoder as an embedder. Model-free; runs in CI.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::path::Path;

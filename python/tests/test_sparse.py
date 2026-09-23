@@ -41,18 +41,20 @@ def test_a_reopened_sparse_index_answers_as_the_one_that_built_it(tmp_path):
     h = fixture()
     built = build_sparse(tmp_path, h)
     reopened = xtriever.IndexHandle.open(str(tmp_path / "idx"), str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP)
+    plain = xtriever.IndexHandle.create(
+        str(tmp_path / "plain"), config(h), str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP
+    )
+    plain.add([document(d) for d in h["documents"]])
+    plain.commit()
     assert built.info().sparse is not None, "the index was not built sparse"
     assert reopened.info().sparse == built.info().sparse
+    opts = xtriever.SearchOptions(k=10, explain=True)
+    differs = 0
     for q in h["queries"]:
-        opts = xtriever.SearchOptions(k=10, explain=True)
         a = built.search(q["text"], opts)
         b = reopened.search(q["text"], opts)
         assert search_hit_tuples(a.hits) == search_hit_tuples(b.hits), q["id"]
-        assert a.stages.sparse_skipped is None
-
-
-def test_an_index_without_the_option_reports_none(tmp_path):
-    h = fixture()
-    handle = xtriever.IndexHandle.create(str(tmp_path / "idx"), config(h), str(EMBEDDER), None, xtriever.LoadPath.MMAP)
-    assert handle.info().format_version == 2
-    assert handle.info().sparse is None
+        differs += search_hit_tuples(a.hits) != search_hit_tuples(plain.search(q["text"], opts).hits)
+    # The same documents without the option must answer differently somewhere, or the
+    # expansion did nothing.
+    assert differs > 0, "the expansion changed no fixture query's results"

@@ -114,6 +114,12 @@ pub(crate) fn create(
         embedder_load,
         reranker,
     } = load_models(embedder_dir, reranker_dir, load_path)?;
+    if config.sparse.is_some() {
+        // RED-CHECKPOINT STUB (Feature 027 T033): refused, never silently dropped.
+        return Err(XtrieverError::Schema {
+            message: format!("IndexConfig.sparse: {}", "not implemented"),
+        });
+    }
     let index = HybridIndex::create(
         std::path::Path::new(index_dir),
         HybridConfig::from(config),
@@ -216,7 +222,7 @@ impl From<IndexConfig> for HybridConfig {
             rerank_depth: to_usize(c.rerank_depth),
             rerank_mode: c.rerank_mode.map_or_else(Default::default, Into::into),
             dense_compact_dead_share: c.dense_compact_dead_share,
-            // Feature 027 PR C adds the option to the FFI configuration.
+            // Set by `create` from `IndexConfig.sparse`, which also needs the encoder loaded.
             sparse: None,
         }
     }
@@ -362,7 +368,8 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
         dense_compact_dead_share: config.dense_compact_dead_share,
         embedder_load_ms: ms(inner.embedder_load),
         reranker_load_ms: inner.reranker_load.map(ms),
-        // RED-CHECKPOINT STUB (Feature 027 T033): the record is not reported yet.
+        // RED-CHECKPOINT STUB (Feature 027 T033): "not implemented" — the record is not
+        // reported yet; scripts/check-no-stubs.sh fails while this line stands.
         sparse: None,
     }
 }

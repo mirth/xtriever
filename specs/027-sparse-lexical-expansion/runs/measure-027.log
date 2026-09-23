@@ -1,0 +1,70 @@
+# Feature 027 T027/T028: the measurement chain's milestone lines, verbatim apart from local
+# paths (removed). Source of runs/sizes.json: encode time and rate, truncation, lexical bytes.
+# Run 2026-09-23 on the build host, 10 threads, buffered load; the reports are the *.json here.
+MEASURE start hybrid-sparse-rerank-v1 scifact 18:06
+encoded 5183 passages in 1655.5 s (3.13 docs/s, 10 threads)
+455 of 5183 passages truncated to the encoder's window
+lexical stage: 7971865 bytes (with the sparse field)
+sparse expansion skipped for 0 of 300 queries
+scifact hybrid-sparse-rerank-v1: nDCG@10=0.721656 Recall@100=0.955000 (BEIR-rounded 0.72166 / 0.955) scored=300 dropped_self_ids=0
+MEASURE done hybrid-sparse-rerank-v1 scifact 18:50
+MEASURE start hybrid-sparse-v1 scifact 18:50
+455 of 5183 passages truncated to the encoder's window
+lexical stage: 7971865 bytes (with the sparse field)
+sparse expansion skipped for 0 of 300 queries
+scifact hybrid-sparse-v1: nDCG@10=0.708458 Recall@100=0.955000 (BEIR-rounded 0.70846 / 0.955) scored=300 dropped_self_ids=0
+MEASURE done hybrid-sparse-v1 scifact 18:51
+scifact splade-field-s10-plain-b1: nDCG@10=0.714637 Recall@100=0.948667
+scifact re-ranked: nDCG@10=0.721656 Recall@100=0.955000 (pairs scored 1289, reused 4711)
+MEASURE xcheck EQUAL
+MEASURE start hybrid-baseline-v2 scifact 18:54
+lexical stage: 3203473 bytes (without the sparse field)
+scifact hybrid-baseline-v2: nDCG@10=0.715420 Recall@100=0.955000 (BEIR-rounded 0.71542 / 0.955) scored=300 dropped_self_ids=0
+MEASURE done hybrid-baseline-v2 scifact 18:54
+MEASURE start hybrid-rerank-v3 scifact 18:54
+lexical stage: 3203473 bytes (without the sparse field)
+scifact hybrid-rerank-v3: nDCG@10=0.721936 Recall@100=0.955000 (BEIR-rounded 0.72194 / 0.955) scored=300 dropped_self_ids=0
+MEASURE done hybrid-rerank-v3 scifact 19:11
+MEASURE start hybrid-sparse-rerank-v1 nfcorpus 19:11
+encoded 3633 passages in 1245.8 s (2.92 docs/s, 10 threads)
+330 of 3633 passages truncated to the encoder's window
+lexical stage: 9156810 bytes (with the sparse field)
+sparse expansion skipped for 0 of 323 queries
+nfcorpus hybrid-sparse-rerank-v1: nDCG@10=0.357673 Recall@100=0.321665 (BEIR-rounded 0.35767 / 0.32166) scored=323 dropped_self_ids=0
+MEASURE done hybrid-sparse-rerank-v1 nfcorpus 19:48
+MEASURE start hybrid-sparse-v1 nfcorpus 19:48
+330 of 3633 passages truncated to the encoder's window
+lexical stage: 9148912 bytes (with the sparse field)
+sparse expansion skipped for 0 of 323 queries
+nfcorpus hybrid-sparse-v1: nDCG@10=0.348032 Recall@100=0.321665 (BEIR-rounded 0.34803 / 0.32166) scored=323 dropped_self_ids=0
+MEASURE done hybrid-sparse-v1 nfcorpus 19:49
+MEASURE start hybrid-baseline-v2 nfcorpus 19:49
+lexical stage: 2370914 bytes (without the sparse field)
+nfcorpus hybrid-baseline-v2: nDCG@10=0.353589 Recall@100=0.320988 (BEIR-rounded 0.35359 / 0.32099) scored=323 dropped_self_ids=0
+MEASURE done hybrid-baseline-v2 nfcorpus 19:49
+MEASURE start hybrid-rerank-v3 nfcorpus 19:49
+lexical stage: 2370914 bytes (without the sparse field)
+nfcorpus hybrid-rerank-v3: nDCG@10=0.362470 Recall@100=0.320988 (BEIR-rounded 0.36247 / 0.32099) scored=323 dropped_self_ids=0
+MEASURE done hybrid-rerank-v3 nfcorpus 20:06
+MEASURE start hybrid-sparse-rerank-v1 fiqa 20:06
+encoded 57638 passages in 9598.1 s (6.01 docs/s, 10 threads)
+2417 of 57638 passages truncated to the encoder's window
+lexical stage: 62409566 bytes (with the sparse field)
+sparse expansion skipped for 0 of 648 queries
+fiqa hybrid-sparse-rerank-v1: nDCG@10=0.406795 Recall@100=0.713246 (BEIR-rounded 0.4068 / 0.71325) scored=648 dropped_self_ids=0
+MEASURE done hybrid-sparse-rerank-v1 fiqa 23:07
+MEASURE start hybrid-sparse-v1 fiqa 23:07
+2417 of 57638 passages truncated to the encoder's window
+lexical stage: 61588480 bytes (with the sparse field)
+sparse expansion skipped for 0 of 648 queries
+fiqa hybrid-sparse-v1: nDCG@10=0.400876 Recall@100=0.713246 (BEIR-rounded 0.40088 / 0.71325) scored=648 dropped_self_ids=0
+MEASURE done hybrid-sparse-v1 fiqa 23:08
+MEASURE start hybrid-baseline-v2 fiqa 23:08
+lexical stage: 18248401 bytes (without the sparse field)
+fiqa hybrid-baseline-v2: nDCG@10=0.370057 Recall@100=0.705902 (BEIR-rounded 0.37006 / 0.7059) scored=648 dropped_self_ids=0
+MEASURE done hybrid-baseline-v2 fiqa 23:10
+MEASURE start hybrid-rerank-v3 fiqa 23:10
+lexical stage: 18248075 bytes (without the sparse field)
+fiqa hybrid-rerank-v3: nDCG@10=0.389641 Recall@100=0.705902 (BEIR-rounded 0.38964 / 0.7059) scored=648 dropped_self_ids=0
+MEASURE done hybrid-rerank-v3 fiqa 23:32
+MEASURE ALL DONE 23:32

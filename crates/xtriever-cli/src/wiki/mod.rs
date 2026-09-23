@@ -59,6 +59,16 @@ pub struct BuildArgs {
     /// Read only the first N articles — development builds; the identity is marked partial.
     #[arg(long)]
     pub limit: Option<usize>,
+    /// Build a sparse index (Feature 027) with the pinned sparse document encoder in this
+    /// directory. Off by default; pair it with the re-ranker (ADR-0017).
+    #[arg(long)]
+    pub sparse_encoder: Option<PathBuf>,
+    /// The sparse option's scale (needs `--sparse-encoder`; default: the engine's, 10).
+    #[arg(long)]
+    pub sparse_scale: Option<u32>,
+    /// The `_sparse` field's boost (needs `--sparse-encoder`; default: the engine's, 1.0).
+    #[arg(long)]
+    pub sparse_boost: Option<f32>,
 }
 
 /// `wiki verify` arguments.

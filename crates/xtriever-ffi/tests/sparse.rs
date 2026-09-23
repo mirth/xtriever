@@ -26,8 +26,9 @@ fn s(p: &std::path::Path) -> String {
 fn sparse_option() -> SparseOptionConfig {
     SparseOptionConfig {
         encoder_dir: s(&support::sparse_encoder_dir()),
-        scale: 10,
-        boost: 1.0,
+        // The engine's defaults, as a binding caller who omits them gets.
+        scale: None,
+        boost: None,
     }
 }
 
@@ -181,7 +182,7 @@ fn the_wire_searches_a_sparse_index_as_the_pipeline_does() {
 
 /// An index without the option is what it was: format version 2, no sparse record.
 #[test]
-#[ignore = "needs both models"]
+#[ignore = "needs the embedder"]
 fn an_index_without_the_option_reports_none() {
     let h = support::fixture_docs();
     let tmp = tempfile::tempdir().unwrap();
