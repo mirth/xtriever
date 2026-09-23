@@ -10,7 +10,9 @@ use sha2::{Digest, Sha256};
 use xtriever_core::Error;
 use xtriever_dense::LoadPath;
 use xtriever_dense::model::SPARSE_MODEL_NAME;
-use xtriever_dense::sparse::{Expansion, SparseEncoder, SparseQuery, field_text};
+use xtriever_dense::sparse::{
+    Expansion, MAX_SCALE, MAX_WEIGHT, SparseEncoder, SparseQuery, field_text,
+};
 
 fn expansion(entries: &[(u32, f32)]) -> Expansion {
     Expansion {
@@ -25,28 +27,78 @@ fn field_text_repeats_each_term_by_its_rounded_weight() {
     let e = expansion(&[(5, 0.26), (7, 0.04), (42, 1.0)]);
     let mut want = vec!["s5"; 3];
     want.extend(vec!["s42"; 10]);
-    assert_eq!(field_text(&e, 10), want.join(" "));
+    assert_eq!(field_text(&e, 10).unwrap(), want.join(" "));
 }
 
 #[test]
 fn field_text_rounds_halves_away_from_zero() {
     // Exact halves in binary: 0.25 × 2 = 0.5 → 1, 0.75 × 2 = 1.5 → 2, 1.25 × 2 = 2.5 → 3.
     let e = expansion(&[(1, 0.25), (2, 0.75), (3, 1.25)]);
-    assert_eq!(field_text(&e, 2), "s1 s2 s2 s3 s3 s3");
+    assert_eq!(field_text(&e, 2).unwrap(), "s1 s2 s2 s3 s3 s3");
 }
 
 #[test]
 fn field_text_of_nothing_is_empty() {
-    assert_eq!(field_text(&expansion(&[]), 10), "");
-    assert_eq!(field_text(&expansion(&[(9, 0.01), (10, 0.049)]), 10), "");
+    assert_eq!(field_text(&expansion(&[]), 10).unwrap(), "");
+    assert_eq!(
+        field_text(&expansion(&[(9, 0.01), (10, 0.049)]), 10).unwrap(),
+        ""
+    );
 }
 
 #[test]
 fn field_text_uses_single_spaces_and_ascending_ids() {
-    let text = field_text(&expansion(&[(3, 0.2), (30_521, 0.1), (100, 0.3)]), 10);
+    let text = field_text(&expansion(&[(3, 0.2), (100, 0.3), (30_521, 0.1)]), 10).unwrap();
     assert!(!text.starts_with(' ') && !text.ends_with(' ') && !text.contains("  "));
-    // The entries are ascending by contract; the text keeps their order.
-    assert_eq!(text, "s3 s3 s30521 s100 s100 s100");
+    assert_eq!(text, "s3 s3 s100 s100 s100 s30521");
+}
+
+fn refused(e: &Expansion, scale: u32) -> String {
+    match field_text(e, scale) {
+        Err(Error::Schema(message)) => message,
+        other => panic!("expected Schema, got {other:?}"),
+    }
+}
+
+/// Review finding: a caller-built expansion (an evaluation cache, `add_encoded`) is refused,
+/// never repaired — a repeated or out-of-order id would silently change a term frequency.
+#[test]
+fn field_text_refuses_ids_that_are_not_strictly_ascending() {
+    let m = refused(&expansion(&[(42, 0.3), (42, 0.3)]), 10);
+    assert!(m.contains("entry 1") && m.contains("token 42"), "{m}");
+    let m = refused(&expansion(&[(7, 0.3), (5, 0.3)]), 10);
+    assert!(
+        m.contains("token 5") && m.contains("follows token 7"),
+        "{m}"
+    );
+}
+
+#[test]
+fn field_text_refuses_weights_the_encoder_cannot_produce() {
+    for bad in [0.0, -0.5, f32::NAN, f32::INFINITY, MAX_WEIGHT + 0.001, 1e6] {
+        let m = refused(&expansion(&[(1, 0.2), (9, bad)]), 10);
+        assert!(m.contains("entry 1") && m.contains("token 9"), "{bad}: {m}");
+    }
+    assert!(field_text(&expansion(&[(1, MAX_WEIGHT)]), 10).is_ok());
+}
+
+/// Review finding: no input may make the field text unboundedly long.
+#[test]
+fn field_text_refuses_a_scale_outside_its_range() {
+    let e = expansion(&[(1, 0.5)]);
+    for bad in [0, MAX_SCALE + 1, u32::MAX] {
+        assert!(refused(&e, bad).contains(&bad.to_string()));
+    }
+    let longest = field_text(&expansion(&[(1, MAX_WEIGHT)]), MAX_SCALE).unwrap();
+    assert_eq!(longest.split(' ').count(), 4_500);
+}
+
+/// The weight bound is the encoder's own: `ln(1 + ln(1 + x))` of the largest finite logit.
+#[test]
+fn max_weight_bounds_every_weight_the_encoder_can_produce() {
+    let largest = f64::from(f32::MAX).ln_1p().ln_1p() as f32;
+    assert!(largest <= MAX_WEIGHT, "{largest}");
+    assert!(MAX_WEIGHT - largest < 0.01, "{largest}: the bound is loose");
 }
 
 fn counts(text: &str) -> BTreeMap<u32, u64> {
@@ -66,7 +118,7 @@ proptest! {
         scale in 1u32..=100,
     ) {
         let e = expansion(&weights.iter().map(|(&i, &w)| (i, w)).collect::<Vec<_>>());
-        let got = counts(&field_text(&e, scale));
+        let got = counts(&field_text(&e, scale).unwrap());
         let want: BTreeMap<u32, u64> = weights
             .iter()
             .filter_map(|(&i, &w)| {

@@ -51,15 +51,56 @@ The Rust side:
   way.
 - `model::verify_file` now takes the error to raise, so a bad encoder file is reported as
   `Error::Model { model: "opensearch-neural-sparse-encoding-doc-v3-distill", .. }` rather than
-  under the embedder's name. Its streamed hash is shared as `sha256_file`.
+  under the embedder's name. `model::read_pinned` reads a pinned file once and checks the bytes
+  it returns, and one `sha256_hex` serves every in-memory hash in the crate.
 - `SparseEncoder::token_ids` goes beyond the contract. It mirrors the embedder's tokenization
   helper, so a tokenization mismatch fails a test of its own instead of surfacing as wrong
   weights.
 
+**The spike's two harness examples** (`crates/xtriever-eval/examples/splade_field.rs` and
+`rerank_runs.rs`, about 480 lines) are included on purpose. They produced the measurements the
+spec rests on, and `rerank_runs` is T026's cross-check in PR B: fed the v2 lexical run and the
+dense run, it must reproduce `hybrid-rerank-v3`. PR B's harness supersedes `splade_field`, which
+PR B either removes or says why it keeps.
+
+**Size.** This pull request is over Rule 3's ~800 changed lines: about 1,700 lines of Rust
+(the encoder, the pins, three test files, the two examples) before fixtures, the generator and
+the lock file. The owner accepted the size. Splitting it would have separated the encoder from
+its tests.
+
+**Review round 1** (`/code-review`, ten findings, nine fixed in this pull request, one accepted):
+
+1. `load` hashed each file, then read it again to parse it, so the parsed bytes were not the
+   verified bytes, and the 268 MB weights were read twice. Each file is now read once
+   (`read_pinned`) and the verified bytes are the ones parsed.
+2. A NaN logit became weight 0 (`f32::max` ignores NaN), so a broken forward pass would have
+   produced empty expansions and a successful build. `encode` now refuses a non-finite logit.
+3. `field_text` had no bound, so a large scale or a bogus weight could write billions of terms.
+   It now returns `Result`. The scale must be in `1..=MAX_SCALE` (1,000), and a weight must be at
+   most `MAX_WEIGHT` (4.5). That bound is the encoder's own: `ln(1 + ln(1 + f32::MAX))` ≈ 4.4967,
+   checked by a test. So one entry is at most 4,500 occurrences.
+4. `field_text` trusted that ids were ascending and unique, so a duplicated id doubled its term
+   frequency. `Expansion::validate` now refuses, rather than repairs, anything the encoder could
+   not have produced. PR B's `add_encoded` goes through it.
+5. There were two SHA-256-to-hex implementations. Now there is one (`model::sha256_hex`), and
+   the unused error parameter is gone.
+6. `rerank_runs`' score cache was keyed without the model, so a second model silently reused the
+   first model's scores. Each line now records the model. Lines from another model are not
+   reused, and a line with no model recorded is refused (such a cache predates the key).
+7. `splade_field` wrote its own field text, rounding in f32 with a trailing space. It now calls
+   `field_text` with a whole-number `--scale`.
+8. `rerank_runs` aborted on a torn last line and could have written a NaN score as `null`. A
+   torn last line is now skipped with a warning, and a non-finite score is refused rather than
+   written.
+9. `rerank_runs` hard-coded the fusion constant, the depths and α. It now reads them from
+   `RerankConfig::hybrid_rerank_v3()` and validates `--depth` and `--alpha` as the harness does.
+   Re-run on SciFact after the change, with a fresh cache: nDCG@10 0.721936 and Recall@100 0.955000, equal to the recorded `hybrid-rerank-v3` (0.7219361, 0.955).
+10. Size: accepted, as above.
+
 **Local gate:**
 
 - `cargo fmt --check` and `cargo clippy --workspace --all-targets` (`-D warnings`) are clean.
-- `cargo nextest run --workspace`: 378 passed, 81 skipped. The skips are model-backed tests, as
+- `cargo nextest run --workspace`: 382 passed, 80 skipped. The skips are model-backed tests, as
   before.
 - `cargo deny check`: all four sections ok.
 - `cargo check` passes for iOS, the iOS simulator and Android. wasm32 fails on `getrandom`, as

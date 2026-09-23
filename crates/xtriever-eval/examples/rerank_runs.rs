@@ -4,17 +4,23 @@
 //! ```text
 //! cargo run --release -p xtriever-eval --example rerank_runs -- --dataset D
 //!     --lexical L.jsonl --dense D.jsonl --out R.jsonl [--scores CACHE.jsonl]
-//!     [--depth 20] [--alpha 0.5] [--rerank-model-dir reference/models/ms-marco-MiniLM-L-6-v2-q8]
+//!     [--depth N] [--alpha A] [--rerank-model-dir reference/models/ms-marco-MiniLM-L-6-v2-q8]
 //! ```
 //!
 //! Each judged query's lexical and dense lists (external ids, rank order) are fused by the
-//! pipeline's own `rrf` (k 60, depth 100, ties by `DocId`, which is corpus order as the harness
-//! builds it), the first `depth` fused candidates are scored by the pinned cross-encoder over the
-//! pipeline's stored passage (the `contents` text: `title + " " + text`), and the list is ordered
-//! by the pipeline's own `order_interpolated` — `hybrid-rerank-v3`'s rule. Fed the v2 lexical run
-//! and the dense run, it must reproduce `hybrid-rerank-v3`. Cross-encoder scores are cached per
-//! `(query, document)`: the model scores each pair alone (Feature 006), so a cached score is the
-//! score, and a new setting pays only for the pairs it adds.
+//! pipeline's own `rrf` with `hybrid-rerank-v3`'s constant and depth (ties by `DocId`, which is
+//! corpus order as the harness builds it), the first `depth` fused candidates are scored by the
+//! pinned cross-encoder over the pipeline's stored passage (the `contents` text:
+//! `title + " " + text`), and the list is ordered by the pipeline's own `order_interpolated`.
+//! Every setting — the fusion constant and depth, the re-rank depth and α — is read from
+//! `RerankConfig::hybrid_rerank_v3()`, so fed the v2 lexical run and the dense run it reproduces
+//! `hybrid-rerank-v3`; `--depth` and `--alpha` override the last two, `--depth` within `1..=k`.
+//!
+//! Cross-encoder scores are cached per `(model, query, document)`: the model scores each pair
+//! alone (Feature 006), so a cached score is the score, and a new setting pays only for the
+//! pairs it adds. A line from another model is not reused; a line recording no model is refused
+//! (the cache predates the key — delete it); a torn last line from an interrupted run is
+//! skipped with a warning; a non-finite score is refused rather than written.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -31,7 +37,7 @@ use serde::Deserialize;
 use xtriever_core::{Budget, DocId, FieldName, Hit, Passage, Reranker, Value};
 use xtriever_eval::dataset::{Dataset, Manifest};
 use xtriever_eval::report::score;
-use xtriever_eval::run::{EvalConfig, Run, build};
+use xtriever_eval::run::{RerankConfig, RerankMode, Run, build};
 use xtriever_pipeline::{order_interpolated, rrf};
 use xtriever_rerank::{LoadPath, MiniLmCrossEncoder};
 
@@ -65,9 +71,46 @@ struct RunRow {
 
 #[derive(Deserialize)]
 struct Cached {
+    m: Option<String>,
     q: String,
     d: String,
     s: f32,
+}
+
+/// The cached scores `model` produced, keyed `(query, document)`.
+fn load_cache(path: &str, model: &str) -> anyhow::Result<BTreeMap<(String, String), f32>> {
+    let mut cache = BTreeMap::new();
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(cache);
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let (mut other, mut torn) = (0usize, 0usize);
+    for (n, line) in lines.iter().enumerate() {
+        let c: Cached = match serde_json::from_str(line) {
+            Ok(c) => c,
+            // An interrupted run can leave its last line half-written; that pair is re-scored.
+            Err(_) if n + 1 == lines.len() && !text.ends_with('\n') => {
+                torn += 1;
+                continue;
+            }
+            Err(e) => anyhow::bail!("{path} line {}: {e}", n + 1),
+        };
+        match c.m.as_deref() {
+            Some(m) if m == model => {
+                anyhow::ensure!(c.s.is_finite(), "{path} line {}: score {}", n + 1, c.s);
+                cache.insert((c.q, c.d), c.s);
+            }
+            Some(_) => other += 1,
+            None => anyhow::bail!(
+                "{path} line {}: no model recorded; the cache predates the model key, delete it",
+                n + 1
+            ),
+        }
+    }
+    if other + torn > 0 {
+        eprintln!("{path}: {other} lines from another model not reused, {torn} torn line skipped");
+    }
+    Ok(cache)
 }
 
 fn load_run(path: &str) -> anyhow::Result<BTreeMap<String, Vec<String>>> {
@@ -86,8 +129,30 @@ fn main() -> anyhow::Result<()> {
     let f = flags();
     let get = |k: &str| f.get(k).map(String::as_str);
     let dataset = get("dataset").context("--dataset")?;
-    let depth: usize = get("depth").and_then(|s| s.parse().ok()).unwrap_or(20);
-    let alpha: f64 = get("alpha").and_then(|s| s.parse().ok()).unwrap_or(0.5);
+    let v3 = RerankConfig::hybrid_rerank_v3();
+    let RerankMode::Interpolate { alpha: v3_alpha } = v3.mode else {
+        anyhow::bail!("hybrid-rerank-v3 no longer interpolates; this harness reproduces it")
+    };
+    let depth: usize = match get("depth") {
+        Some(s) => s.parse().with_context(|| format!("--depth {s}"))?,
+        None => v3.rerank_depth,
+    };
+    let alpha: f64 = match get("alpha") {
+        Some(s) => s.parse().with_context(|| format!("--alpha {s}"))?,
+        None => v3_alpha,
+    };
+    let config = RerankConfig {
+        rerank_depth: depth,
+        mode: RerankMode::Interpolate { alpha },
+        ..v3
+    };
+    // The same checks the harness applies: 1 ≤ depth ≤ k, and a valid fused recipe.
+    config.validate()?;
+    anyhow::ensure!(
+        (0.0..=1.0).contains(&alpha),
+        "--alpha {alpha} is outside [0, 1]"
+    );
+    let hybrid = &config.hybrid;
     let lexical = load_run(get("lexical").context("--lexical")?)?;
     let dense = load_run(get("dense").context("--dense")?)?;
     let out = get("out").context("--out")?;
@@ -102,8 +167,7 @@ fn main() -> anyhow::Result<()> {
         dataset,
         &repo_root().join("reference/datasets/beir"),
     )?;
-    let cfg = EvalConfig::lexical_baseline_v2();
-    let (_, docs, ids) = build(&ds, &cfg)?;
+    let (_, docs, ids) = build(&ds, &hybrid.lexical)?;
     let contents = FieldName::from("contents");
     // DocId → the passage the pipeline stores for it (its one dense field, `contents`).
     let mut passage: BTreeMap<u32, String> = BTreeMap::new();
@@ -125,15 +189,12 @@ fn main() -> anyhow::Result<()> {
             .collect()
     };
 
-    let mut cache: BTreeMap<(String, String), f32> = BTreeMap::new();
-    if let Some(path) = get("scores")
-        && let Ok(text) = std::fs::read_to_string(path)
-    {
-        for line in text.lines() {
-            let c: Cached = serde_json::from_str(line)?;
-            cache.insert((c.q, c.d), c.s);
-        }
-    }
+    let reranker = MiniLmCrossEncoder::load(&model_dir, LoadPath::Mmap)?;
+    let model = reranker.model_id().to_owned();
+    let mut cache = match get("scores") {
+        Some(path) => load_cache(path, &model)?,
+        None => BTreeMap::new(),
+    };
     let mut cache_out = match get("scores") {
         Some(path) => Some(std::io::BufWriter::new(
             std::fs::OpenOptions::new()
@@ -143,7 +204,6 @@ fn main() -> anyhow::Result<()> {
         )),
         None => None,
     };
-    let reranker = MiniLmCrossEncoder::load(&model_dir, LoadPath::Mmap)?;
     let budget = Budget {
         max_time: None,
         max_items: None,
@@ -163,7 +223,7 @@ fn main() -> anyhow::Result<()> {
         };
         let lex = hits(lexical.get(query_id).map_or(&[][..], Vec::as_slice));
         let den = hits(dense.get(query_id).map_or(&[][..], Vec::as_slice));
-        let fused = rrf(&lex, &den, 60, 100);
+        let fused = rrf(&lex, &den, hybrid.rrf_k, hybrid.k);
         let n = depth.min(fused.len());
         let mut scores: Vec<Option<f32>> = vec![None; fused.len()];
         let mut missing: Vec<usize> = Vec::new();
@@ -188,6 +248,7 @@ fn main() -> anyhow::Result<()> {
             let got = reranker.rerank(text, &passages, &budget)?;
             for (&j, s) in missing.iter().zip(got) {
                 let s = s.context("the cross-encoder left a pair unscored without a budget")?;
+                anyhow::ensure!(s.is_finite(), "the cross-encoder returned {s}");
                 scores[j] = Some(s);
                 scored += 1;
                 let ext = ids
@@ -198,13 +259,13 @@ fn main() -> anyhow::Result<()> {
                     writeln!(
                         w,
                         "{}",
-                        serde_json::json!({ "q": query_id, "d": ext, "s": s })
+                        serde_json::json!({ "m": model, "q": query_id, "d": ext, "s": s })
                     )?;
                 }
                 cache.insert((query_id.clone(), ext), s);
             }
         }
-        let ordered = order_interpolated(&fused, &scores, cfg.k, alpha);
+        let ordered = order_interpolated(&fused, &scores, hybrid.k, alpha);
         let mut external = Vec::with_capacity(ordered.len());
         for (id, ..) in ordered {
             external.push(ids.external(id).context("unknown DocId")?.to_owned());

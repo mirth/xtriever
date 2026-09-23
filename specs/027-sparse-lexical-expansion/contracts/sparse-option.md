@@ -12,6 +12,8 @@ impl SparseEncoder {
     /// One document, alone, truncated to 512 tokens: its kept `(token id, weight)` entries,
     /// ascending by id, weights > 0, special tokens excluded (research D3).
     pub fn encode(&self, text: &str) -> Result<Expansion>;
+    /// The token ids the encoder sees, for the tokenization-parity test.
+    pub fn token_ids(&self, text: &str) -> Result<Vec<u32>>;
     /// The identity recorded in a sparse index (data-model `SparseRecord.encoder`).
     pub fn identity(&self) -> &str;
 }
@@ -19,6 +21,12 @@ impl SparseEncoder {
 /// One document's expansion; `truncated` says the document ran past the encoder's window, so
 /// a build can count them (spec User Story 1, scenario 1).
 pub struct Expansion { pub entries: Vec<(u32, f32)>, pub truncated: bool }
+impl Expansion {
+    /// Ids strictly ascending; weights finite, > 0 and ≤ MAX_WEIGHT. `Error::Schema` otherwise.
+    pub fn validate(&self) -> Result<()>;
+}
+pub const MAX_SCALE: u32 = 1_000;
+pub const MAX_WEIGHT: f32 = 4.5;   // ≥ ln(1 + ln(1 + f32::MAX)), the encoder's largest weight
 
 /// The query side — every installation that searches a sparse index.
 pub struct SparseQuery { /* private */ }
@@ -31,12 +39,15 @@ impl SparseQuery {
 }
 
 /// `s<id>` repeated `round(weight × scale)` times — the one rule both the pipeline and the
-/// evaluation cache use (research D4).
-pub fn field_text(expansion: &Expansion, scale: u32) -> String;
+/// evaluation cache use (research D4). `Error::Schema` for a scale outside `1..=MAX_SCALE` or
+/// an expansion that fails `validate`, so no input makes the text unboundedly long.
+pub fn field_text(expansion: &Expansion, scale: u32) -> Result<String>;
 ```
 
 Errors: `Error::Model { model: "opensearch-neural-sparse-encoding-doc-v3-distill", .. }` for the
-encoder; `Error::Corrupt` for a stored tokenizer or table whose hash differs.
+encoder — including a forward pass that produces a non-finite logit; `Error::Corrupt` for a
+stored tokenizer or table whose hash differs; `Error::Schema` for an expansion or scale
+`field_text` refuses. `load` reads each file once and parses the bytes it verified.
 
 ## `xtriever-pipeline` (PR B)
 
@@ -58,7 +69,7 @@ Behaviour on a sparse index:
 
 | call | behaviour |
 |---|---|
-| `create` | refuses a user schema field named `_sparse`, a scale of 0, a non-finite or non-positive boost, or an encoder that fails verification; copies the query side; writes descriptor version 3 |
+| `create` | refuses a user schema field named `_sparse`, a scale outside `1..=1000`, a non-finite or non-positive boost, or an encoder that fails verification; copies the query side; writes descriptor version 3 |
 | `open*` | verifies `<dir>/sparse/*` against the recorded hashes; version 3 without a record, or 2 with one, is `Corrupt` |
 | `add` | refuses with `Error::Model` naming the missing encoder unless one is attached |
 | `add_embedded` | refuses: no expansion to write (use `add` or `add_encoded`) |

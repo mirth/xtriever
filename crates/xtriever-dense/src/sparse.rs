@@ -30,9 +30,8 @@ use tokenizers::{Tokenizer, TruncationParams};
 use xtriever_core::Result;
 
 use crate::LoadPath;
-use crate::bytes;
-use crate::error::{corrupt, sparse_err};
-use crate::model::{PINNED_SPARSE, SPARSE_IDENTITY};
+use crate::error::{corrupt, schema_err, sparse_err};
+use crate::model::{PINNED_SPARSE, SPARSE_IDENTITY, read_pinned, sha256_hex};
 
 /// The configuration the forward pass is written for; `config.json` must say exactly this.
 const DIM: usize = 768;
@@ -42,6 +41,16 @@ const HIDDEN: usize = 3072;
 const VOCABULARY: usize = 30_522;
 /// DistilBERT's layer-norm epsilon, fixed in the architecture rather than the configuration.
 const LAYER_NORM_EPS: f64 = 1e-12;
+
+/// The largest `scale` a sparse index accepts: at the largest weight the encoder can produce
+/// ([`MAX_WEIGHT`]) an entry is then at most 4,500 occurrences. The spike measured 10 and 100.
+pub const MAX_SCALE: u32 = 1_000;
+
+/// The largest weight an expansion may carry. The encoder's weight is `ln(1 + ln(1 + x))` of an
+/// `f32` logit `x`, which is at most `ln(1 + ln(1 + f32::MAX))` ≈ 4.4967 — so a larger weight
+/// did not come from the encoder, and [`field_text`] refuses it rather than write thousands of
+/// occurrences (a test checks the bound).
+pub const MAX_WEIGHT: f32 = 4.5;
 
 /// The tokens whose weights the recipe zeroes and the query side never keeps.
 const SPECIAL_TOKENS: [&str; 5] = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"];
@@ -54,6 +63,35 @@ pub struct Expansion {
     pub entries: Vec<(u32, f32)>,
     /// The document ran past the encoder's window and was truncated to it.
     pub truncated: bool,
+}
+
+impl Expansion {
+    /// Check the shape the encoder produces and an index can store: ids strictly ascending
+    /// (so none repeats), every weight finite, above zero and at most [`MAX_WEIGHT`]. An
+    /// expansion from elsewhere — a cache, a caller — is refused, never repaired.
+    ///
+    /// # Errors
+    ///
+    /// `Error::Schema` naming the first offending entry.
+    pub fn validate(&self) -> Result<()> {
+        for (i, &(id, weight)) in self.entries.iter().enumerate() {
+            if !(weight.is_finite() && weight > 0.0 && weight <= MAX_WEIGHT) {
+                return Err(schema_err(format!(
+                    "expansion entry {i} (token {id}) has weight {weight}; weights must be \
+                     finite, above zero and at most {MAX_WEIGHT}"
+                )));
+            }
+            if let Some(&(previous, _)) = i.checked_sub(1).and_then(|j| self.entries.get(j))
+                && previous >= id
+            {
+                return Err(schema_err(format!(
+                    "expansion entry {i} (token {id}) follows token {previous}; ids must be \
+                     strictly ascending"
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The pinned document encoder — build host only.
@@ -75,18 +113,27 @@ impl std::fmt::Debug for SparseEncoder {
 }
 
 impl SparseEncoder {
-    /// Verify every pinned file (size, SHA-256), then load. Order: the files → `config.json`
-    /// parsed and asserted → the tokenizer → the weights through `load_path` → the model.
-    /// Nothing is parsed before its bytes are verified.
+    /// Verify every pinned file (size, SHA-256), then load. Each file is read once — the
+    /// weights through `load_path` — and the bytes read are the bytes checked and then parsed:
+    /// `config.json` asserted, the tokenizer built, the model built. Nothing is parsed before
+    /// every file is verified.
     ///
     /// # Errors
     ///
     /// `Error::Model` naming the encoder, the file and both values on a mismatch, or what failed
     /// to load.
     pub fn load(dir: &Path, load_path: LoadPath) -> Result<Self> {
-        crate::model::verify_files_sparse(dir)?;
-        assert_config(dir)?;
-        let mut tokenizer = load_tokenizer(&dir.join(PINNED_SPARSE.files[1].name), sparse_err)?;
+        let [config, tokenizer, weights, table] = &PINNED_SPARSE.files;
+        // Every file is read once and its bytes checked before any of them is parsed; the
+        // table is only verified here (the query side reads it from an index's copy).
+        let config = read_pinned(dir, config, LoadPath::Buffered, sparse_err)?;
+        let tokenizer_bytes = read_pinned(dir, tokenizer, LoadPath::Buffered, sparse_err)?;
+        let weights = read_pinned(dir, weights, load_path, sparse_err)?;
+        drop(read_pinned(dir, table, LoadPath::Buffered, sparse_err)?);
+
+        assert_config(config.as_slice())?;
+        let mut tokenizer = Tokenizer::from_bytes(tokenizer_bytes.as_slice())
+            .map_err(|e| sparse_err(format!("cannot load {}: {e}", PINNED_SPARSE.files[1].name)))?;
         tokenizer
             .with_truncation(Some(TruncationParams {
                 max_length: PINNED_SPARSE.max_tokens,
@@ -96,7 +143,6 @@ impl SparseEncoder {
         tokenizer.with_padding(None);
         let special = special_ids(&tokenizer);
 
-        let weights = bytes::read(&dir.join(PINNED_SPARSE.files[2].name), load_path)?;
         let device = Device::Cpu;
         let vb = VarBuilder::from_slice_safetensors(weights.as_slice(), DType::F32, &device)
             .map_err(|e| sparse_err(format!("cannot load weights: {e}")))?;
@@ -145,6 +191,12 @@ impl SparseEncoder {
 
         let mut entries = Vec::new();
         for (id, &logit) in (0u32..).zip(&maxima) {
+            // A broken forward pass must not pass for a document with nothing to expand.
+            if !logit.is_finite() {
+                return Err(sparse_err(format!(
+                    "the forward pass produced a non-finite logit ({logit}) for token {id}"
+                )));
+            }
             if self.special.contains(&id) {
                 continue;
             }
@@ -301,12 +353,9 @@ impl Head {
 }
 
 /// Assert `config.json` against the architecture the forward pass is written for.
-fn assert_config(dir: &Path) -> Result<()> {
-    let path = dir.join(PINNED_SPARSE.files[0].name);
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| sparse_err(format!("cannot read {}: {e}", path.display())))?;
-    let config: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| sparse_err(format!("cannot parse {}: {e}", path.display())))?;
+fn assert_config(bytes: &[u8]) -> Result<()> {
+    let config: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|e| sparse_err(format!("cannot parse config.json: {e}")))?;
     let expected = [
         ("model_type", serde_json::json!("distilbert")),
         ("dim", serde_json::json!(DIM)),
@@ -330,13 +379,6 @@ fn assert_config(dir: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// A tokenizer from verified bytes; `err` names whose file it is.
-fn load_tokenizer(path: &Path, err: fn(String) -> xtriever_core::Error) -> Result<Tokenizer> {
-    let bytes =
-        std::fs::read(path).map_err(|e| err(format!("cannot read {}: {e}", path.display())))?;
-    Tokenizer::from_bytes(&bytes).map_err(|e| err(format!("cannot load {}: {e}", path.display())))
 }
 
 /// The ids of [`SPECIAL_TOKENS`] the tokenizer knows, ascending.
@@ -436,14 +478,9 @@ impl SparseQuery {
 
 /// Read `path` whole and check its SHA-256 against `expected` before anything parses it.
 fn read_verified(path: &Path, expected: &str) -> Result<Vec<u8>> {
-    use sha2::{Digest, Sha256};
-
     let bytes =
         std::fs::read(path).map_err(|e| corrupt(format!("cannot read {}: {e}", path.display())))?;
-    let digest: String = Sha256::digest(&bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let digest = sha256_hex(&bytes);
     if digest != expected {
         return Err(corrupt(format!(
             "{} has sha256 {digest}, expected {expected}",
@@ -455,18 +492,26 @@ fn read_verified(path: &Path, expected: &str) -> Result<Vec<u8>> {
 
 /// The `_sparse` field value for an expansion (research D4): each entry's term `s<id>` repeated
 /// `round(weight × scale)` times — computed in f64, halves rounded away from zero — entries of
-/// zero occurrences dropped, terms in the entries' (ascending) order, separated by single spaces.
-/// The empty expansion is the empty string.
-#[must_use]
-pub fn field_text(expansion: &Expansion, scale: u32) -> String {
+/// zero occurrences dropped, terms in ascending id order, separated by single spaces. The empty
+/// expansion is the empty string. This is the one rule the pipeline and the evaluation harness
+/// both use.
+///
+/// # Errors
+///
+/// `Error::Schema` if `scale` is outside `1..=`[`MAX_SCALE`] or the expansion fails
+/// [`Expansion::validate`] — so no input can make the text unboundedly long.
+pub fn field_text(expansion: &Expansion, scale: u32) -> Result<String> {
+    if !(1..=MAX_SCALE).contains(&scale) {
+        return Err(schema_err(format!(
+            "sparse scale {scale} is outside 1..={MAX_SCALE}"
+        )));
+    }
+    expansion.validate()?;
     let mut out = String::new();
     for &(id, weight) in &expansion.entries {
-        let occurrences = (f64::from(weight) * f64::from(scale)).round();
-        // An encoder's weights are finite and positive; a caller-built expansion may not be.
-        if !occurrences.is_finite() || occurrences < 1.0 {
-            continue;
-        }
-        for _ in 0..occurrences as u64 {
+        // Validated: finite and at most MAX_WEIGHT × MAX_SCALE, so the cast is exact.
+        let occurrences = (f64::from(weight) * f64::from(scale)).round() as u64;
+        for _ in 0..occurrences {
             if !out.is_empty() {
                 out.push(' ');
             }
@@ -474,5 +519,5 @@ pub fn field_text(expansion: &Expansion, scale: u32) -> String {
             let _ = write!(out, "s{id}");
         }
     }
-    out
+    Ok(out)
 }

@@ -215,11 +215,9 @@ fn term_frequencies_match_the_reference_at_the_default_scale() {
             entries: expected.expansions[&doc.id].clone(),
             truncated: doc.truncated,
         };
-        let ours = occurrences(&field_text(
-            &encoder().encode(&doc.text).unwrap(),
-            tol.scale,
-        ));
-        let theirs = occurrences(&field_text(&reference, tol.scale));
+        let expansion = encoder().encode(&doc.text).unwrap();
+        let ours = occurrences(&field_text(&expansion, tol.scale).unwrap());
+        let theirs = occurrences(&field_text(&reference, tol.scale).unwrap());
         let boundary: BTreeMap<u32, bool> = reference
             .entries
             .iter()

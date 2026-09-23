@@ -11,9 +11,10 @@
 //! `DIR/<dataset>/docs.jsonl` holds each document's `(token id, weight)` pairs and
 //! `queries.jsonl` each judged query's `(token id, idf)` pairs — Feature 012's encodings of
 //! `opensearch-neural-sparse-encoding-doc-v3-distill@babf71f3`, exported unchanged. A token
-//! enters the field as the literal term `s<id>`, repeated `round(weight × scale)` times (Feature
-//! 012's `bm25x`, whose scale was 100), so BM25 reads the weight as term frequency; the field's
-//! analyzer is the unstemmed `standard`, which keeps `s<id>` whole.
+//! enters the field as the literal term `s<id>`, repeated `round(weight × scale)` times — the
+//! shipped rule, `xtriever_dense::sparse::field_text`, with a whole-number scale in
+//! `1..=MAX_SCALE` — so BM25 reads the weight as term frequency; the field's analyzer is the
+//! unstemmed `standard`, which keeps `s<id>` whole.
 //!
 //! One index per `(dataset, scale)`; each `(query weighting, boost)` is a query-time choice:
 //! `Bool { should: [Match(contents, text), Boost(Term(sparse, s<id>), b × q)…] }` with `q` = 1
@@ -35,6 +36,7 @@ use serde::Deserialize;
 use xtriever_core::{
     AnalyzerId, FieldDef, FieldKind, FieldName, LexicalIndex, LexicalQuery, Value,
 };
+use xtriever_dense::sparse::{Expansion, field_text};
 use xtriever_eval::dataset::{Dataset, Manifest};
 use xtriever_eval::report::score;
 use xtriever_eval::run::{EvalConfig, Run, build};
@@ -96,7 +98,12 @@ fn main() -> anyhow::Result<()> {
     let sparse_dir = PathBuf::from(get("sparse-dir").context("--sparse-dir")?).join(dataset);
     let runs_dir = PathBuf::from(get("runs-dir").context("--runs-dir")?);
     std::fs::create_dir_all(&runs_dir)?;
-    let scale: f32 = get("scale").and_then(|s| s.parse().ok()).unwrap_or(10.0);
+    let scale: u32 = match get("scale") {
+        Some(s) => s
+            .parse()
+            .with_context(|| format!("--scale {s} is not a whole number"))?,
+        None => 10,
+    };
     let chunk: usize = get("chunk").and_then(|s| s.parse().ok()).unwrap_or(2000);
     let boosts: Vec<f32> = get("boosts")
         .unwrap_or("0,0.1,0.2,0.3,0.5,0.7")
@@ -160,21 +167,22 @@ fn main() -> anyhow::Result<()> {
         let mut batch = part.to_vec();
         for doc in &mut batch {
             let ext = ids.external(doc.id).context("unknown DocId")?;
-            let mut text = String::new();
-            match weights.get(ext) {
+            let text = match weights.get(ext) {
                 Some(terms) => {
-                    for &(id, w) in terms {
-                        let reps = (w * scale).round() as usize;
-                        for _ in 0..reps {
-                            text.push('s');
-                            text.push_str(&id.to_string());
-                            text.push(' ');
-                        }
-                        tokens += reps as u64;
-                    }
+                    let expansion = Expansion {
+                        entries: terms.clone(),
+                        truncated: false,
+                    };
+                    let text =
+                        field_text(&expansion, scale).with_context(|| format!("document {ext}"))?;
+                    tokens += text.split(' ').filter(|t| !t.is_empty()).count() as u64;
+                    text
                 }
-                None => missing += 1,
-            }
+                None => {
+                    missing += 1;
+                    String::new()
+                }
+            };
             doc.fields.insert(sparse.clone(), Value::Text(text));
         }
         index.add(&batch)?;

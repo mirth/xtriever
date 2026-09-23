@@ -8,7 +8,7 @@ nothing (FR-002).
 | field | type | default | rule |
 |---|---|---|---|
 | `encoder_dir` | path | — | the pinned encoder's directory; verified at create (FR-003) |
-| `scale` | u32 | 10 | ≥ 1; a weight becomes `round(weight × scale)` occurrences (FR-004) |
+| `scale` | u32 | 10 | `1..=1000` (`sparse::MAX_SCALE`); a weight becomes `round(weight × scale)` occurrences (FR-004) |
 | `boost` | f32 | 1.0 | finite, > 0; the `_sparse` field's boost (FR-005) |
 
 ## SparseRecord (in the descriptor, format version 3)
@@ -41,8 +41,10 @@ with the recorded boost. Any failure: `Error::Corrupt` naming what differs (FR-0
 
 ## DocumentExpansion (per document, transient)
 
-`Vec<(token id: u32, weight: f32)>`, ascending by token id, every weight > 0, special tokens
-absent. Becomes the `_sparse` field value: for each entry, the term `s<id>` repeated
+`Vec<(token id: u32, weight: f32)>`, strictly ascending by token id, every weight finite, > 0
+and ≤ 4.5 (`sparse::MAX_WEIGHT`: `ln(1 + ln(1 + f32::MAX))` ≈ 4.4967 is the most the encoder can
+produce), special tokens absent. `Expansion::validate` checks this; an expansion that fails it —
+from a cache or a caller — is refused (`Error::Schema`), never repaired. Becomes the `_sparse` field value: for each entry, the term `s<id>` repeated
 `round(weight × scale)` times (half away from zero), entries of zero occurrences dropped, terms
 in ascending id order separated by single spaces. An expansion with no occurrences is the empty
 string; the document is still indexed and found by its text.

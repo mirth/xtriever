@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use crate::error::{model_err, sparse_err};
+use crate::error::model_err;
 use crate::gguf_header::{BertPin, GgufHeader};
 // The arithmetic's one literal, defined beside the matmul it selects (`quantised_bert`).
 use crate::quantised_bert::compute;
@@ -345,21 +345,50 @@ fn bert_pin() -> BertPin {
     }
 }
 
-/// Verify the sparse encoder's directory ([`PINNED_SPARSE`]) the same way (Feature 027).
+/// Read one pinned file whole through `load_path` and check **those bytes** — size, then SHA-256
+/// — before returning them, so what the caller parses is exactly what was verified (Feature 027;
+/// the sparse encoder's loader). `err` names the model whose file it is.
 ///
 /// # Errors
 ///
-/// `Error::Model` naming the encoder, the file and both sizes or both hashes.
-pub fn verify_files_sparse(dir: &Path) -> xtriever_core::Result<()> {
-    for pin in &PINNED_SPARSE.files {
-        verify_file(dir, pin, sparse_err)?;
+/// `err(…)` naming the file and both sizes or both hashes, or why it could not be read.
+pub(crate) fn read_pinned(
+    dir: &Path,
+    pin: &PinnedFile,
+    load_path: crate::LoadPath,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<crate::bytes::Bytes> {
+    let path = dir.join(pin.name);
+    // The size first, from the metadata: a wrong file is refused before it is read.
+    check_size(&path, pin, err)?;
+    let bytes = crate::bytes::read(&path, load_path)
+        .map_err(|e| err(format!("cannot read {}: {e}", path.display())))?;
+    let slice = bytes.as_slice();
+    if slice.len() as u64 != pin.bytes {
+        return Err(err(format!(
+            "{} is {} bytes, expected exactly {} bytes",
+            path.display(),
+            slice.len(),
+            pin.bytes
+        )));
     }
-    Ok(())
+    check_sha256(&path, &sha256_hex(slice), pin, err)?;
+    Ok(bytes)
 }
 
-/// The SHA-256 of a whole file, as lower-case hex, streamed in 1 MiB chunks; `err` names the
-/// model whose file it is.
-pub(crate) fn sha256_file(
+/// The SHA-256 of `bytes`, as lower-case hex.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    hex(&Sha256::digest(bytes))
+}
+
+fn hex(digest: &[u8]) -> String {
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The SHA-256 of a whole file, as lower-case hex, streamed in 1 MiB chunks so a large file is
+/// never held in memory; `err` names the model whose file it is.
+fn sha256_file(
     path: &Path,
     err: fn(String) -> xtriever_core::Error,
 ) -> xtriever_core::Result<String> {
@@ -377,20 +406,15 @@ pub(crate) fn sha256_file(
         }
         hasher.update(&buf[..read]);
     }
-    Ok(hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect())
+    Ok(hex(&hasher.finalize()))
 }
 
-fn verify_file(
-    dir: &Path,
+fn check_size(
+    path: &Path,
     pin: &PinnedFile,
     err: fn(String) -> xtriever_core::Error,
 ) -> xtriever_core::Result<()> {
-    let path = dir.join(pin.name);
-    let size = std::fs::metadata(&path)
+    let size = std::fs::metadata(path)
         .map_err(|e| err(format!("cannot stat {}: {e}", path.display())))?
         .len();
     if size != pin.bytes {
@@ -400,7 +424,15 @@ fn verify_file(
             pin.bytes
         )));
     }
-    let digest = sha256_file(&path, err)?;
+    Ok(())
+}
+
+fn check_sha256(
+    path: &Path,
+    digest: &str,
+    pin: &PinnedFile,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<()> {
     if digest != pin.sha256 {
         return Err(err(format!(
             "{} has sha256 {digest}, expected {}",
@@ -409,4 +441,14 @@ fn verify_file(
         )));
     }
     Ok(())
+}
+
+fn verify_file(
+    dir: &Path,
+    pin: &PinnedFile,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<()> {
+    let path = dir.join(pin.name);
+    check_size(&path, pin, err)?;
+    check_sha256(&path, &sha256_file(&path, err)?, pin, err)
 }
