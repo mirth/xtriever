@@ -51,12 +51,23 @@ ensure_ascii=False))`. For the full corpus and the pinned embedder this is
   "perDepthMedianMs": {"0": 0, "5": 0, "10": 0, "20": 0},
   "perDepthMaxMs": {"0": 0, "5": 0, "10": 0, "20": 0},
   "latency": {"medianFusedMs": 0, "maxFusedMs": 0, "medianRerankedMs": 0, "maxRerankedMs": 0, "medianRerankedAtEngineDefaultMs": 0, "medianTotalMs": 0, "maxTotalMs": 0},
-  "footprint": {"peakBytes": 0, "peakMethod": "ru_maxrss", "ceilingBytes": 600000000, "underCeiling": true},
+  "footprint": {"peakBytes": 0, "peakMethod": "phys_footprint", "residentPeakBytes": 0, "ceilingBytes": 600000000, "underCeiling": true},
   "parity": {"queriesCompared": 20, "lexicalBitIdentical": 20, "fusedOrderIdentical": 20, "denseMaxAbsDiff": 0.0, "rerankMaxAbsDiff": 0.0, "allBitsIdentical": 800, "hitsCompared": 800, "toleranceAbs": 0.001, "verdict": "PASS"},
   "notes": [],
   "recordedAt": "2026-09-17T10:00:00Z"
 }
 ```
+
+`footprint.peakBytes` is the ceiling's own measure: the process's lifetime peak
+`phys_footprint` where the platform reports it (macOS: `proc_pid_rusage`,
+`ri_lifetime_max_phys_footprint` — the counter iOS enforces and the device tests read as their
+ledger, ADR-0010), `peakMethod: "phys_footprint"`; elsewhere the resident peak, `peakMethod:
+"ru_maxrss"`. `residentPeakBytes` is always `ru_maxrss`, the figure every record before Feature
+026 carried as `peakBytes`: it counts clean pages of the memory-mapped index, so on the full
+corpus it exceeds the footprint by some 200 MB, varying between runs with what was paged in.
+`underCeiling` judges `peakBytes`. `queries[].peakBytesAfter` stays the resident peak. Added in
+Feature 026 without a schema version change: the fields added are new, and a reader of the
+earlier records finds `peakMethod: "ru_maxrss"` in them.
 
 `latency.medianRerankedMs` is depth 10 (the demo default), `medianRerankedAtEngineDefaultMs`
 depth 20, `medianTotalMs` the per-query sum of depth 0 and depth 10 — so the row lines up

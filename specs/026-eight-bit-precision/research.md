@@ -94,9 +94,9 @@ models had agreed on all 800 within 5.2e-6 (Feature 025). An `f16` activation ho
 significant bits; two platforms' kernels differ at the seventh decimal in `f32`, which `f16`
 turns into third-decimal differences that six blocks amplify into rank flips among near ties.
 Expanding to `f32` instead restored the float models' parity on the emulator — 800 of 800,
-dense scores identical to the bit, re-rank within 6.7e-6 — for 37 MB more resident memory
-across the two models when mapped (`beir model-memory`: embedder 151.8 → 170.6 MB, re-ranker
-145.9 → 164.3 MB) and no change in speed, on disk or in a bundle. **The owner chose f32**
+dense scores identical to the bit, re-rank within 6.7e-6 — for 39 MB more resident memory
+across the two models when mapped (`beir model-memory`: embedder 159.2 → 178.9 MB, re-ranker
+153.0 → 172.3 MB) and no change in speed, on disk or in a bundle. **The owner chose f32**
 (2026-09-22); the fingerprints name it (`compute=f32`), and every golden, cache, corpus and
 record minted under `compute=f16` was regenerated. ADR-0015 records both decisions.
 

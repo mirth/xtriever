@@ -55,7 +55,9 @@ Output, in order (research D16):
 3. `fused (lexical + dense), <n> hits, <wall> ms` then the hits, each: `<rank>. <title>  <external_id>  passage <ordinal+1>`, the URL line (omitted when the text has no title line), the passage (indented), and with `--explain` eight lines `<name>: <value | not seen by this stage>`
 4. unless `--depth 0`: `re-ranked (<mode>, depth <d>), <n> hits, <wall> ms` then the hits with a mark column (`↑n` / `↓n` / `=` / `new`), then `dropped from the head: <id> (was <rank>)…` when any
 5. `stages: lexical <n> · dense <n | skipped (<reason>)> · re-rank <c> candidates, <s> scored [· re-rank skipped (<reason>)] [· degraded: <stage> (<reason>)] · time limit ignored: <yes|no> · engine <ms> ms` (for the last call; the fused call's stage line is printed after its list when `--depth 0`)
-6. `wall: fused <ms> ms · re-ranked <ms> ms · total <ms> ms · peak resident <MB> MB`
+6. `wall: fused <ms> ms · re-ranked <ms> ms · total <ms> ms · peak resident <MB> MB` — decimal
+   megabytes to one place, the unit the 600 MB ceiling is written in (Feature 026; the figure was
+   mebibytes labelled MB until then)
 7. no hits: `no passages found for "<query>"` in place of the list, exit 0
 
 Engine error (`XtrieverError`): `wikidemo: <ErrorKind>: <message>` on stderr, exit 1; under

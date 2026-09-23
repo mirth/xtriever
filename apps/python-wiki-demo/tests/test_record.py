@@ -13,6 +13,8 @@ from wikidemo.record import (
     corpus_identity,
     machine_name,
     now_rfc3339,
+    megabytes,
+    peak_footprint_bytes,
     peak_resident_bytes,
 )
 
@@ -90,6 +92,25 @@ def test_machine_name_is_a_hardware_model_not_a_hostname():
     node = platform.node()
     assert not node or node not in name
     assert node.split(".")[0] not in name if node else True
+
+
+def test_peak_footprint_is_the_kernel_peak_on_macos_and_absent_elsewhere():
+    import sys
+
+    fp = peak_footprint_bytes()
+    if sys.platform != "darwin":
+        assert fp is None
+        return
+    # A Python process with pytest loaded owns well over 10 MB, and its footprint excludes clean
+    # file-backed pages that its resident size counts — so it is positive and not above it by
+    # much (the two are sampled at different instants).
+    assert fp is not None and fp > 10 * 1024 * 1024
+    assert fp <= peak_resident_bytes() * 1.5
+
+
+def test_megabytes_is_decimal():
+    assert megabytes(600_000_000) == "600.0 MB"
+    assert megabytes(617_136_128) == "617.1 MB"
 
 
 def test_peak_resident_bytes_is_positive_and_in_bytes():

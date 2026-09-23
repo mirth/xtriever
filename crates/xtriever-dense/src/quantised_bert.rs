@@ -19,7 +19,7 @@
 //! arithmetic. `f16` was chosen first for its RAM (half the float model's) and held on the
 //! host but not across platforms: an `f16` activation carries 11 significant bits, and the
 //! Android emulator disagreed with macOS-minted goldens on 36 of 800 hits where the float
-//! models had agreed on all 800; under `f32` it agrees on all 800 again, for 37 MB more
+//! models had agreed on all 800; under `f32` it agrees on all 800 again, for 39 MB more
 //! resident memory across the two models (ADR-0015). The mode is fixed here in code: candle's
 //! `QMatMul::from_arc` reads it from two environment variables, and an environment variable
 //! must not be able to change a number, so the matmul is constructed explicitly and `from_arc`

@@ -90,9 +90,44 @@ def os_name() -> str:
 
 
 def peak_resident_bytes() -> int:
-    """The process's peak resident size: `ru_maxrss` is bytes on macOS, KiB on Linux."""
+    """The process's peak resident size: `ru_maxrss` is bytes on macOS, KiB on Linux. It counts
+    clean file-backed pages, so a memory-mapped index inflates it as queries page it in."""
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return peak if sys.platform == "darwin" else peak * 1024
+
+
+def peak_footprint_bytes() -> int | None:
+    """The process's lifetime peak `phys_footprint` on macOS, or None elsewhere.
+
+    `phys_footprint` is the counter iOS enforces when it terminates an app, and the one the
+    600 MB ceiling is defined on (ADR-0010; the device tests read its kernel ledger): it counts
+    the memory the process owns and excludes clean file-backed pages, which the system reclaims
+    freely. `ri_lifetime_max_phys_footprint` from `proc_pid_rusage(RUSAGE_INFO_V4)`, the same
+    kernel-kept peak the Swift package's `Measure.swift` reads (Feature 026).
+    """
+    if sys.platform != "darwin":
+        return None
+    import ctypes
+
+    class RusageV4(ctypes.Structure):
+        # <sys/resource.h> rusage_info_v4: a 16-byte uuid, then u64 fields;
+        # ri_lifetime_max_phys_footprint is the 29th of them.
+        _fields_ = [("uuid", ctypes.c_uint8 * 16), ("fields", ctypes.c_uint64 * 40)]
+
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+        info = RusageV4()
+        if libproc.proc_pid_rusage(os.getpid(), 4, ctypes.byref(info)) != 0:
+            return None
+        return int(info.fields[28])
+    except OSError:
+        return None
+
+
+def megabytes(n: int) -> str:
+    """Bytes as decimal megabytes to one place — the unit the 600 MB ceiling is written in
+    (600,000,000 bytes); a mebibyte figure beside it misled once (Feature 026)."""
+    return f"{n / 1_000_000:,.1f} MB"
 
 
 def threads() -> tuple[int, str]:

@@ -117,8 +117,9 @@ def test_stage_line_variants():
 
 
 def test_wall_line_and_footprint():
-    assert wall_line(251, 822, 612 * 1024 * 1024) == "wall: fused 251 ms · re-ranked 822 ms · total 1,073 ms · peak resident 612 MB"
-    assert wall_line(251, None, 100 * 1024 * 1024) == "wall: fused 251 ms · peak resident 100 MB"
+    # Decimal megabytes, the ceiling's unit (Feature 026): 612 MiB is 641.7 MB.
+    assert wall_line(251, 822, 612 * 1024 * 1024) == "wall: fused 251 ms · re-ranked 822 ms · total 1,073 ms · peak resident 641.7 MB"
+    assert wall_line(251, None, 100_000_000) == "wall: fused 251 ms · peak resident 100.0 MB"
 
 
 def test_multiline_passages_are_indented_on_every_line():

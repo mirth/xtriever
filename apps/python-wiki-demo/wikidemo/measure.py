@@ -18,7 +18,18 @@ import xtriever
 
 from . import DEFAULT_DEPTH, DEPTHS
 from .inputs import Paths, repo_root
-from .record import dir_bytes, machine_name, now_rfc3339, os_name, peak_resident_bytes, stamp, threads, write_json
+from .record import (
+    dir_bytes,
+    machine_name,
+    megabytes,
+    now_rfc3339,
+    os_name,
+    peak_footprint_bytes,
+    peak_resident_bytes,
+    stamp,
+    threads,
+    write_json,
+)
 from .search import Opened, open_artefact
 
 TOLERANCE_ABS = 1e-3
@@ -261,7 +272,24 @@ def summarise(runs: list[QueryRun], depths=DEPTHS) -> dict:
     }
 
 
-def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_ms, warmup_ms, runs, depths, comparison, peak_bytes, against=None, notes=()) -> dict:
+def footprint_record(resident_bytes: int, footprint_bytes: int | None) -> dict:
+    """The footprint block: `peakBytes` is the ceiling's own measure, `phys_footprint`, where
+    the platform reports it, and `ru_maxrss` otherwise — `peakMethod` says which, as the device
+    records say `ledger` or `sampled`. `residentPeakBytes` is always `ru_maxrss`, kept beside it
+    because every earlier record carries that figure; it counts clean pages of the
+    memory-mapped index and so exceeds the footprint by however much of the index was paged in
+    (Feature 026: 424.5 MB footprint against 618.8 MB resident on the full corpus)."""
+    peak, method = (footprint_bytes, "phys_footprint") if footprint_bytes else (resident_bytes, "ru_maxrss")
+    return {
+        "peakBytes": peak,
+        "peakMethod": method,
+        "residentPeakBytes": resident_bytes,
+        "ceilingBytes": CEILING_BYTES,
+        "underCeiling": peak <= CEILING_BYTES,
+    }
+
+
+def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_ms, warmup_ms, runs, depths, comparison, peak_bytes, footprint_bytes=None, against=None, notes=()) -> dict:
     n_threads, source = threads()
     record = {
         "schemaVersion": 1,
@@ -279,12 +307,7 @@ def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_
         "warmupMs": warmup_ms,
         "queries": [r.as_record() for r in runs],
         **summarise(runs, depths),
-        "footprint": {
-            "peakBytes": peak_bytes,
-            "peakMethod": "ru_maxrss",
-            "ceilingBytes": CEILING_BYTES,
-            "underCeiling": peak_bytes <= CEILING_BYTES,
-        },
+        "footprint": footprint_record(peak_bytes, footprint_bytes),
         "parity": comparison.as_record(),
         "notes": list(notes),
         "recordedAt": now_rfc3339(),
@@ -330,7 +353,8 @@ def print_summary(record: dict) -> None:
     print("per-depth max ms:    " + " · ".join(f"depth {d} {v}" for d, v in record["perDepthMaxMs"].items()))
     print(f"latency: fused {lat['medianFusedMs']} ms · re-ranked (depth {DEFAULT_DEPTH}) {lat['medianRerankedMs']} ms · total {lat['medianTotalMs']} ms · re-ranked (depth {ENGINE_DEFAULT_DEPTH}) {lat['medianRerankedAtEngineDefaultMs']} ms (medians)")
     fp = record["footprint"]
-    print(f"footprint: peak resident {fp['peakBytes'] // (1024 * 1024)} MB ({fp['peakMethod']}); the phone's ceiling is {fp['ceilingBytes'] // 1_000_000} MB, for comparison only")
+    resident = "" if fp["peakMethod"] == "ru_maxrss" else f"; resident {megabytes(fp['residentPeakBytes'])}, which counts clean pages of the mapped index"
+    print(f"footprint: peak {megabytes(fp['peakBytes'])} ({fp['peakMethod']}{resident}); the phone's ceiling is {megabytes(fp['ceilingBytes'])}, for comparison only")
     p = record["parity"]
     print(
         f"parity: {p['verdict']} ({p['queriesCompared']} queries; lexical bit-identical {p['lexicalBitIdentical']}, "
@@ -400,6 +424,7 @@ def run_measure(args, paths: Paths) -> int:
         depths=DEPTHS,
         comparison=comparison,
         peak_bytes=peak_resident_bytes(),
+        footprint_bytes=peak_footprint_bytes(),
         against=against,
         notes=[f"parity: {m}" for m in comparison.incomplete],
     )

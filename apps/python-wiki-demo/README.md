@@ -197,12 +197,15 @@ responses instead — a demo-built slice against the Rust-built slice of the sam
 
 The committed record (`MacBookPro18,3`, 10 threads, both models memory-mapped, the eight-bit
 artefacts and the format-3 corpus of Feature 026, `specs/026-eight-bit-precision/runs/`):
-parity **PASS**, 800 of 800 hits identical on every score bit; medians fused **153 ms**,
-re-ranked at depth 10 **989 ms** (total 1,143 ms), re-ranked at depth 20 1,829 ms. The
+parity **PASS**, 800 of 800 hits identical on every score bit; medians fused **123 ms**,
+re-ranked at depth 10 **841 ms** (total 966 ms), re-ranked at depth 20 1,514 ms. The
 iPhone 16e (Feature 018, float models and the format-2 corpus, same queries, depth 10):
-341.5 / 1,369 / 1,704.5 ms. The laptop's peak resident size, **543 MB**, includes the
-memory-mapped 585 MB index and is the first host measurement under the phone's 600 MB
-ceiling (the format-2 record was 1,013 MB over a 1,076 MB index); the ceiling is a phone rule,
+341.5 / 1,369 / 1,704.5 ms. The laptop's peak footprint is **440 MB** — `phys_footprint`,
+the measure the phone's 600 MB ceiling is defined on (ADR-0010), which a record carries as
+`peakBytes` since Feature 026. Its peak resident size, 638 MB, is kept beside it
+(`residentPeakBytes`, the figure earlier records carried): it also counts clean pages of the
+memory-mapped 585 MB index, which the system reclaims freely and iOS does not count, and it
+varies by some 20 MB between runs with what was paged in. The ceiling is a phone rule,
 recorded for comparison only.
 
 ## Threads

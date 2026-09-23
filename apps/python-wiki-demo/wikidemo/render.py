@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from .hits import DisplayedHit, render_feature
+from .record import megabytes
 
 WARMUP_LINE = "warm-up: the first search of a process pages the vectors in"
 
@@ -82,7 +83,7 @@ def wall_line(fused_ms: int, reranked_ms: int | None, peak_bytes: int) -> str:
     if reranked_ms is not None:
         parts.append(f"re-ranked {reranked_ms} ms")
         parts.append(f"total {fused_ms + reranked_ms:,} ms")
-    parts.append(f"peak resident {peak_bytes // (1024 * 1024)} MB")
+    parts.append(f"peak resident {megabytes(peak_bytes)}")
     return "wall: " + " · ".join(parts)
 
 

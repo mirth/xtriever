@@ -94,8 +94,8 @@ had agreed on all 800 within 5.2e-6: an `f16` activation carries 11 significant 
 seventh-decimal differences between two platforms' kernels become third-decimal ones and six
 blocks amplify them into rank flips among near ties. Under f32 the emulator agrees on all 800,
 the dense scores are identical to the bit and the largest re-rank difference is 6.7e-6 — the
-float models' parity. The cost is 37 MB of resident memory for the two models when mapped
-(embedder 151.8 → 170.6 MB, re-ranker 145.9 → 164.3 MB, `beir model-memory`), no change in
+float models' parity. The cost is 39 MB of resident memory for the two models when mapped
+(embedder 159.2 → 178.9 MB, re-ranker 153.0 → 172.3 MB, `beir model-memory`), no change in
 speed (123 ms per embedding against 120), none on disk or in a bundle. The parity contract the
 demonstrations have held since Feature 007 — the same index and query give the same answer on
 every platform — is worth more than the margin under the ceiling, which the measurement record

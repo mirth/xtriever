@@ -2,7 +2,7 @@
   "config": "hybrid-rerank-v3",
   "dataset": "fiqa",
   "lexical_commit": "94ddbe67f926badf962b93e8bd29d687e300189a",
-  "harness_commit": "de22c6a2bb76553629873d4b306d1a43d44e7309",
+  "harness_commit": "eabfa281bdd98448c8547575c28183e69fae8580",
   "dataset_hashes": {
     "corpus.jsonl": "ff593e4df9933955dc3af83be0c3fa28ac7465f627e08c2e53593e734d506517",
     "qrels/test.tsv": "6adc2a640dcdd22bb8b3858f89107adef2a7c3db20a63550dfa7a0f71e379e44",
@@ -19,11 +19,11 @@
   "dropped_identical": 0,
   "unjudged_queries": 0,
   "not_retrieved_queries": 0,
-  "mean_ndcg_10": 0.3901637748426137,
-  "mean_recall_100": 0.7081397726073653,
+  "mean_ndcg_10": 0.3896405662577061,
+  "mean_recall_100": 0.7059021182863776,
   "beir_rounded": {
-    "ndcg_10": 0.39016,
-    "recall_100": 0.70814
+    "ndcg_10": 0.38964,
+    "recall_100": 0.7059
   },
   "per_query": {
     "10034": [
@@ -260,14 +260,14 @@
     ],
     "1321": [
       0.0,
-      0.5
+      0.0
     ],
     "1322": [
       0.0,
       0.25
     ],
     "1391": [
-      0.1480409554829326,
+      0.14126697285982898,
       0.3333333333333333
     ],
     "1393": [
@@ -327,7 +327,7 @@
       1.0
     ],
     "1812": [
-      0.6131471927654584,
+      0.38685280723454163,
       0.5
     ],
     "1815": [
@@ -1015,7 +1015,7 @@
       0.0
     ],
     "42": [
-      0.0,
+      0.13565197343244778,
       0.6666666666666666
     ],
     "4205": [
@@ -1087,7 +1087,7 @@
       1.0
     ],
     "4465": [
-      0.14126697285982898,
+      0.1480409554829326,
       0.6666666666666666
     ],
     "4484": [
@@ -1119,7 +1119,7 @@
       0.5
     ],
     "4571": [
-      0.6508205185601091,
+      0.6364391809889587,
       1.0
     ],
     "4600": [
@@ -1252,7 +1252,7 @@
     ],
     "4999": [
       0.3903800499921017,
-      1.0
+      0.75
     ],
     "5021": [
       0.0,
@@ -1323,7 +1323,7 @@
       1.0
     ],
     "5150": [
-      0.3010299956639812,
+      0.31546487678572877,
       1.0
     ],
     "5155": [
@@ -1531,7 +1531,7 @@
       0.5
     ],
     "5853": [
-      0.361879195385413,
+      0.35079429740281753,
       0.5
     ],
     "5862": [
@@ -1579,7 +1579,7 @@
       0.4666666666666667
     ],
     "6002": [
-      0.78180487222265,
+      0.7885497208855957,
       1.0
     ],
     "6004": [
@@ -1623,7 +1623,7 @@
       1.0
     ],
     "6131": [
-      0.40350157154648025,
+      0.467122359745432,
       0.6666666666666666
     ],
     "6133": [
@@ -1699,7 +1699,7 @@
       1.0
     ],
     "6525": [
-      0.6049306994552042,
+      0.46927872602275644,
       0.6666666666666666
     ],
     "6554": [
@@ -1851,7 +1851,7 @@
       1.0
     ],
     "6907": [
-      0.3010299956639812,
+      0.31546487678572877,
       1.0
     ],
     "6909": [
@@ -2016,7 +2016,7 @@
     ],
     "7463": [
       0.09803928583135704,
-      0.8
+      0.6
     ],
     "7467": [
       0.6309297535714575,
@@ -2044,7 +2044,7 @@
     ],
     "7529": [
       0.21840743681816419,
-      1.0
+      0.5
     ],
     "753": [
       0.0,
@@ -2091,7 +2091,7 @@
       0.25
     ],
     "7702": [
-      0.5109559939712153,
+      0.5,
       1.0
     ],
     "7705": [
@@ -2107,7 +2107,7 @@
       0.5
     ],
     "7754": [
-      0.31546487678572877,
+      0.3333333333333333,
       1.0
     ],
     "7758": [
@@ -2247,7 +2247,7 @@
       1.0
     ],
     "8351": [
-      0.19342640361727081,
+      0.0,
       0.5
     ],
     "8378": [
@@ -2621,11 +2621,11 @@
   },
   "stage": {
     "kind": "hybrid-rerank",
-    "embedder_fingerprint": "leliuga/all-MiniLM-L6-v2-GGUF@ddf2e25d5b8530422e7b14aa39f33a657ff9aec0;weights=sha256:e5ec722e8c82dc4ffaf965175ca472f5da3f97b695590b5b0780bdbfa29bcaf3;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=q8_0;compute=f16;prefix=none;engine=candle-0.9.2",
+    "embedder_fingerprint": "leliuga/all-MiniLM-L6-v2-GGUF@ddf2e25d5b8530422e7b14aa39f33a657ff9aec0;weights=sha256:e5ec722e8c82dc4ffaf965175ca472f5da3f97b695590b5b0780bdbfa29bcaf3;dim=384;pool=mean-mask;norm=l2;max_tokens=256;dtype=q8_0;compute=f32;prefix=none;engine=candle-0.9.2",
     "load_path": "buffered",
     "thread_count": 10,
     "baseline": "guarded",
-    "reranker_model_id": "cstr/ms-marco-MiniLM-L-6-v2-GGUF@1a9ef5ce8cb08936338233731314f3ff61ce0930;weights=sha256:718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a;pooler=sha256:382eb35e6b806190f9781c0b3646090e696a9c4c6267eef88c4f70df949676b9;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=q8_0;compute=f16;engine=candle-0.9.2",
+    "reranker_model_id": "cstr/ms-marco-MiniLM-L-6-v2-GGUF@1a9ef5ce8cb08936338233731314f3ff61ce0930;weights=sha256:718e6861183047048bca4997ac2e03bd82babfc48c82f58e1a18b7d43136b15a;pooler=sha256:382eb35e6b806190f9781c0b3646090e696a9c4c6267eef88c4f70df949676b9;max_tokens=512;trunc=longest_first;head=cls-pooler-tanh-linear;act=identity;dtype=q8_0;compute=f32;engine=candle-0.9.2",
     "rerank_depth": 20,
     "rerank_mode": {
       "interpolate": {
