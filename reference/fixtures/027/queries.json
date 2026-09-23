@@ -1,0 +1,97 @@
+{
+ "queries": [
+  {
+   "id": "q1",
+   "terms": [
+    1040,
+    2015,
+    2515,
+    3147,
+    4652,
+    17663
+   ],
+   "text": "does vitamin d prevent colds"
+  },
+  {
+   "id": "q2",
+   "terms": [
+    2000,
+    2243,
+    4897,
+    7773,
+    7840,
+    11209,
+    22649
+   ],
+   "text": "rollover 401k to ira taxes"
+  },
+  {
+   "id": "q3",
+   "terms": [
+    2943,
+    3526
+   ],
+   "text": "cell cell cell energy energy"
+  },
+  {
+   "id": "q4",
+   "terms": [
+    2054,
+    2566,
+    3745,
+    13275,
+    16565
+   ],
+   "text": "what raises earnings per share"
+  },
+  {
+   "id": "q5",
+   "terms": [
+    1755,
+    1879,
+    1998,
+    1999,
+    7509,
+    9094,
+    23812
+   ],
+   "text": "cafés in São Paulo and 東京"
+  },
+  {
+   "id": "q6",
+   "terms": [
+    4360,
+    10210,
+    11663,
+    15422
+   ],
+   "text": "[CLS] mitochondria [SEP]"
+  },
+  {
+   "id": "q7",
+   "terms": [],
+   "text": ""
+  },
+  {
+   "id": "q8",
+   "terms": [
+    1029,
+    1037,
+    2003,
+    2005,
+    2007,
+    2075,
+    2084,
+    2152,
+    2488,
+    3446,
+    4070,
+    6604,
+    7058,
+    7328,
+    10995
+   ],
+   "text": "Is compounding monthly better than compounding annually for a savings account with a high rate?"
+  }
+ ]
+}

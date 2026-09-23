@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use crate::error::model_err;
+use crate::error::{model_err, sparse_err};
 use crate::gguf_header::{BertPin, GgufHeader};
 // The arithmetic's one literal, defined beside the matmul it selects (`quantised_bert`).
 use crate::quantised_bert::compute;
@@ -191,6 +191,83 @@ pub const FINGERPRINT_Q8: &str = concat!(
     ";prefix=none;engine=candle-0.9.2"
 );
 
+/// The sparse document encoder (Feature 027 research D1, D3): repository, revision and every
+/// file it needs — the model, its tokenizer and the query-side table (`idf.json`). Mirrors
+/// `reference/models/manifest-sparse-doc-v3.json`; `tests/sparse_pins.rs` keeps them equal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PinnedSparseEncoder {
+    /// Hugging Face repository.
+    pub repository: &'static str,
+    /// Git revision the files were fetched at.
+    pub revision: &'static str,
+    /// `config.json`, `tokenizer.json`, `model.safetensors`, `idf.json`, in verification order.
+    pub files: [PinnedFile; 4],
+    /// The activation the document weights go through, as the manifest names it.
+    pub activation: &'static str,
+    /// The encoder's window in model tokens, special tokens included.
+    pub max_tokens: usize,
+}
+
+macro_rules! sparse_repository {
+    () => {
+        "opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill"
+    };
+}
+macro_rules! sparse_revision {
+    () => {
+        "babf71f3c48695e2e53a978208e8aba48335e3c0"
+    };
+}
+macro_rules! sparse_weights_sha256 {
+    () => {
+        "83a3cc9757876b8590aac53f4f6685012f89d7fb4bbeb540815a54d325f7f70a"
+    };
+}
+
+/// The sparse document encoder this crate expands documents with (Feature 027).
+pub const PINNED_SPARSE: PinnedSparseEncoder = PinnedSparseEncoder {
+    repository: sparse_repository!(),
+    revision: sparse_revision!(),
+    files: [
+        PinnedFile {
+            name: "config.json",
+            bytes: 596,
+            sha256: "ee97780493e7d0a3b7b788ea98f3391e6be6b0b379921b465ca55bfdd0d9cbe3",
+        },
+        PinnedFile {
+            name: "tokenizer.json",
+            bytes: 711_649,
+            sha256: "91f1def9b9391fdabe028cd3f3fcc4efd34e5d1f08c3bf2de513ebb5911a1854",
+        },
+        PinnedFile {
+            name: "model.safetensors",
+            bytes: 267_954_768,
+            sha256: sparse_weights_sha256!(),
+        },
+        PinnedFile {
+            name: "idf.json",
+            bytes: 889_360,
+            sha256: "da23a1c0b9252776cc8c6d70fd14723e218f484d489cd9027ac6e4065d5b9edd",
+        },
+    ],
+    activation: "log1p_log1p_relu",
+    max_tokens: 512,
+};
+
+/// Short name used in the sparse encoder's `Error::Model { model, .. }`.
+pub const SPARSE_MODEL_NAME: &str = "opensearch-neural-sparse-encoding-doc-v3-distill";
+
+/// The sparse encoder's identity, recorded in a sparse index (Feature 027 data-model
+/// `SparseRecord.encoder`): every input whose change would change a document's expansion.
+pub const SPARSE_IDENTITY: &str = concat!(
+    sparse_repository!(),
+    "@",
+    sparse_revision!(),
+    ";weights=sha256:",
+    sparse_weights_sha256!(),
+    ";activation=log1p_log1p_relu;max_tokens=512;engine=candle-0.9.2"
+);
+
 /// The embedder fingerprint (spec FR-004, research D6): every input whose change would change
 /// the vectors — model identity, pooling, normalisation, truncation length, weight precision,
 /// prefixes (none) and the inference engine version (ADR-0001). Not included: thread count and
@@ -215,7 +292,7 @@ pub const FINGERPRINT: &str = concat!(
 /// `Error::Model` naming the file and both sizes or both hashes (spec FR-003).
 pub fn verify_files(dir: &Path) -> xtriever_core::Result<()> {
     for pin in &PINNED.files {
-        verify_file(dir, pin)?;
+        verify_file(dir, pin, model_err)?;
     }
     Ok(())
 }
@@ -227,7 +304,7 @@ pub fn verify_files(dir: &Path) -> xtriever_core::Result<()> {
 /// `Error::Model` naming the file and both sizes or both hashes.
 pub fn verify_files_q8(dir: &Path) -> xtriever_core::Result<()> {
     for pin in &PINNED_Q8.files {
-        verify_file(dir, pin)?;
+        verify_file(dir, pin, model_err)?;
     }
     Ok(())
 }
@@ -268,39 +345,64 @@ fn bert_pin() -> BertPin {
     }
 }
 
-fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {
+/// Verify the sparse encoder's directory ([`PINNED_SPARSE`]) the same way (Feature 027).
+///
+/// # Errors
+///
+/// `Error::Model` naming the encoder, the file and both sizes or both hashes.
+pub fn verify_files_sparse(dir: &Path) -> xtriever_core::Result<()> {
+    for pin in &PINNED_SPARSE.files {
+        verify_file(dir, pin, sparse_err)?;
+    }
+    Ok(())
+}
+
+/// The SHA-256 of a whole file, as lower-case hex, streamed in 1 MiB chunks; `err` names the
+/// model whose file it is.
+pub(crate) fn sha256_file(
+    path: &Path,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<String> {
     use sha2::{Digest, Sha256};
 
-    let path = dir.join(pin.name);
-    let size = std::fs::metadata(&path)
-        .map_err(|e| model_err(format!("cannot stat {}: {e}", path.display())))?
-        .len();
-    if size != pin.bytes {
-        return Err(model_err(format!(
-            "{} is {size} bytes, expected exactly {} bytes",
-            path.display(),
-            pin.bytes
-        )));
-    }
-    let mut file = std::fs::File::open(&path)
-        .map_err(|e| model_err(format!("cannot open {}: {e}", path.display())))?;
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| err(format!("cannot open {}: {e}", path.display())))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1 << 20];
     loop {
         let read = std::io::Read::read(&mut file, &mut buf)
-            .map_err(|e| model_err(format!("cannot hash {}: {e}", path.display())))?;
+            .map_err(|e| err(format!("cannot hash {}: {e}", path.display())))?;
         if read == 0 {
             break;
         }
         hasher.update(&buf[..read]);
     }
-    let digest: String = hasher
+    Ok(hasher
         .finalize()
         .iter()
         .map(|b| format!("{b:02x}"))
-        .collect();
+        .collect())
+}
+
+fn verify_file(
+    dir: &Path,
+    pin: &PinnedFile,
+    err: fn(String) -> xtriever_core::Error,
+) -> xtriever_core::Result<()> {
+    let path = dir.join(pin.name);
+    let size = std::fs::metadata(&path)
+        .map_err(|e| err(format!("cannot stat {}: {e}", path.display())))?
+        .len();
+    if size != pin.bytes {
+        return Err(err(format!(
+            "{} is {size} bytes, expected exactly {} bytes",
+            path.display(),
+            pin.bytes
+        )));
+    }
+    let digest = sha256_file(&path, err)?;
     if digest != pin.sha256 {
-        return Err(model_err(format!(
+        return Err(err(format!(
             "{} has sha256 {digest}, expected {}",
             path.display(),
             pin.sha256

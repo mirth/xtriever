@@ -4,12 +4,20 @@
 
 use xtriever_core::Error;
 
-use crate::model::MODEL_NAME;
+use crate::model::{MODEL_NAME, SPARSE_MODEL_NAME};
 
 /// A model file, assertion, tokenizer, weight or forward-pass failure.
 pub(crate) fn model_err(message: impl Into<String>) -> Error {
     Error::Model {
         model: MODEL_NAME.to_owned(),
+        message: message.into(),
+    }
+}
+
+/// A sparse encoder file, assertion, tokenizer, weight or forward-pass failure (Feature 027).
+pub(crate) fn sparse_err(message: impl Into<String>) -> Error {
+    Error::Model {
+        model: SPARSE_MODEL_NAME.to_owned(),
         message: message.into(),
     }
 }
