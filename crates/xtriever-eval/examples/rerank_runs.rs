@@ -17,10 +17,11 @@
 //! `RerankConfig::hybrid_rerank_v3()`, so fed the v2 lexical run and the dense run it reproduces
 //! `hybrid-rerank-v3`; `--depth` and `--alpha` override the last two, `--depth` within `1..=k`.
 //!
-//! Cross-encoder scores are cached per `(model, query, document)`: the model scores each pair
+//! Cross-encoder scores are cached per `(model, dataset, query, document)`: the model scores each pair
 //! alone (Feature 006), so a cached score is the score, and a new setting pays only for the
-//! pairs it adds. A line from another model is not reused; a line recording no model is refused
-//! (the cache predates the key — delete it); an unterminated tail from an interrupted run is
+//! pairs it adds. A line from another model or dataset is not reused; a line recording neither
+//! is refused (the cache predates the key — delete it); a run naming a document the dataset
+//! does not hold is refused; an unterminated tail from an interrupted run is
 //! cut before the run appends; a cache that exists but cannot be read is an error, not an
 //! empty cache; a non-finite score is refused rather than written; the cache is flushed
 //! explicitly so a failed final write is reported.
@@ -30,6 +31,8 @@
     clippy::print_stderr,
     clippy::print_stdout
 )]
+
+mod common;
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -44,27 +47,7 @@ use xtriever_eval::run::{RerankConfig, RerankMode, Run, build};
 use xtriever_pipeline::{order_interpolated, rrf};
 use xtriever_rerank::{LoadPath, MiniLmCrossEncoder};
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn flags() -> BTreeMap<String, String> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut out = BTreeMap::new();
-    let mut i = 0;
-    while i < args.len() {
-        if let Some(name) = args[i].strip_prefix("--") {
-            out.insert(
-                name.to_owned(),
-                args.get(i + 1).cloned().unwrap_or_default(),
-            );
-            i += 2;
-        } else {
-            i += 1;
-        }
-    }
-    out
-}
+use common::{flags, repo_root};
 
 #[derive(Deserialize)]
 struct RunRow {
@@ -75,17 +58,22 @@ struct RunRow {
 #[derive(Deserialize)]
 struct Cached {
     m: Option<String>,
+    ds: Option<String>,
     q: String,
     d: String,
     s: f32,
 }
 
-/// The cached scores `model` produced, keyed `(query, document)`.
-/// The cached scores `model` produced, keyed `(query, document)`. A missing file is an empty
+/// The cached scores `model` produced for `dataset`, keyed `(query, document)` — ids are only
+/// unique within a dataset (SciFact's and FiQA's are both numeric). A missing file is an empty
 /// cache; any other read failure is an error. Every record is written with its newline, so an
 /// unterminated tail is an interrupted write: the file is cut back to its last complete line
 /// before this run appends to it, and that pair is scored again.
-fn load_cache(path: &str, model: &str) -> anyhow::Result<BTreeMap<(String, String), f32>> {
+fn load_cache(
+    path: &str,
+    model: &str,
+    dataset: &str,
+) -> anyhow::Result<BTreeMap<(String, String), f32>> {
     let mut cache = BTreeMap::new();
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
@@ -105,20 +93,23 @@ fn load_cache(path: &str, model: &str) -> anyhow::Result<BTreeMap<(String, Strin
     for (n, line) in text[..complete].lines().enumerate() {
         let c: Cached =
             serde_json::from_str(line).with_context(|| format!("{path} line {}", n + 1))?;
-        match c.m.as_deref() {
-            Some(m) if m == model => {
+        match (c.m.as_deref(), c.ds.as_deref()) {
+            (Some(m), Some(ds)) if m == model && ds == dataset => {
                 anyhow::ensure!(c.s.is_finite(), "{path} line {}: score {}", n + 1, c.s);
                 cache.insert((c.q, c.d), c.s);
             }
-            Some(_) => other += 1,
-            None => anyhow::bail!(
-                "{path} line {}: no model recorded; the cache predates the model key, delete it",
+            (Some(_), Some(_)) => other += 1,
+            _ => anyhow::bail!(
+                "{path} line {}: no model or dataset recorded; the cache predates its key, \
+                 delete it",
                 n + 1
             ),
         }
     }
     if other > 0 || torn {
-        eprintln!("{path}: {other} lines from another model not reused; torn tail cut: {torn}");
+        eprintln!(
+            "{path}: {other} lines from another model or dataset not reused; torn tail cut: {torn}"
+        );
     }
     Ok(cache)
 }
@@ -136,7 +127,16 @@ fn load_run(path: &str) -> anyhow::Result<BTreeMap<String, Vec<String>>> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let f = flags();
+    let f = flags(&[
+        "dataset",
+        "lexical",
+        "dense",
+        "out",
+        "scores",
+        "depth",
+        "alpha",
+        "rerank-model-dir",
+    ])?;
     let get = |k: &str| f.get(k).map(String::as_str);
     let dataset = get("dataset").context("--dataset")?;
     let v3 = RerankConfig::hybrid_rerank_v3();
@@ -192,6 +192,23 @@ fn main() -> anyhow::Result<()> {
         .enumerate()
         .map(|(i, e)| (e.as_str(), DocId(i as u32)))
         .collect();
+    // A run from another dataset, or from a corpus that has since changed, names documents
+    // this corpus does not hold; fusing what remains would print quietly wrong numbers.
+    for (flag, run) in [("--lexical", &lexical), ("--dense", &dense)] {
+        let unknown: Vec<&str> = run
+            .values()
+            .flatten()
+            .map(String::as_str)
+            .filter(|e| !internal.contains_key(e))
+            .collect();
+        if let Some(first) = unknown.first() {
+            anyhow::bail!(
+                "{flag} names {} documents {dataset} does not hold (first: {first:?}); is it \
+                 this dataset's run?",
+                unknown.len()
+            );
+        }
+    }
     let hits = |list: &[String]| -> Vec<Hit> {
         list.iter()
             .filter_map(|e| internal.get(e.as_str()))
@@ -202,7 +219,7 @@ fn main() -> anyhow::Result<()> {
     let reranker = MiniLmCrossEncoder::load(&model_dir, LoadPath::Mmap)?;
     let model = reranker.model_id().to_owned();
     let mut cache = match get("scores") {
-        Some(path) => load_cache(path, &model)?,
+        Some(path) => load_cache(path, &model, dataset)?,
         None => BTreeMap::new(),
     };
     let mut cache_out = match get("scores") {
@@ -272,7 +289,7 @@ fn main() -> anyhow::Result<()> {
                     writeln!(
                         w,
                         "{}",
-                        serde_json::json!({ "m": model, "q": query_id, "d": ext, "s": s })
+                        serde_json::json!({ "m": model, "ds": dataset, "q": query_id, "d": ext, "s": s })
                     )?;
                 }
                 cache.insert((query_id.clone(), ext), s);

@@ -135,16 +135,46 @@ one recorded as a follow-up):
 10. `splade_field` counted terms by splitting each field string again. It now counts the
     separators, using `field_text`'s single-space contract, without restating the rounding rule.
 
+**Review round 3** (`/code-review`, nine findings: six fixed, three left with reasons):
+
+1. The score cache was keyed without the dataset. SciFact and FiQA ids are both numeric, so a
+   cache shared between them would have served one dataset's scores to the other. Each line now
+   records the dataset as well as the model. Lines from another dataset are not reused, and a
+   line recording neither is refused. The existing SciFact cache, tagged with its dataset,
+   still reproduces 0.721936 / 0.955.
+2. A run naming documents the dataset doesn't hold was fused anyway, with the unknown ids
+   dropped silently. It is now refused, naming the count and the first one. SciFact's runs given
+   with `--dataset nfcorpus` report 30,000 unknown documents.
+3. A flag with no value swallowed the next flag, so `--scores --depth 5` created a file named
+   `--depth`. The parser, now shared by both examples in `examples/common/mod.rs`, refuses a
+   missing value, a flag in the value position, an unknown flag, a repeated flag and a stray
+   argument. Each case was checked by hand.
+4. The sparse encoder's memory-mapped load, which goes through the crate's one `unsafe` block,
+   was not tested against the buffered load. `tests/sparse_load_paths.rs` now does that (ADR-0007
+   condition 3): bit-identical expansions over every fixture document.
+5. `idf.json` was read whole just to hash it. The encoder never parses it, so it is now verified
+   by the streamed hash (`verify_file`) and never held in memory. Left as is: a buffered load
+   holds the weights twice while candle copies them. Every model in the engine loads that way,
+   and `LoadPath::Mmap` is the path that avoids it. The loader's comment says so.
+6. Left as is: the embedder's verify-then-read gap is round 2's follow-up, recorded above.
+7. The `load_cache` doc comment repeated its first line. Fixed.
+8. `flags()` and `repo_root()` were copied between the two examples. There is now one copy, in
+   `examples/common/mod.rs` (see 3).
+9. Left as is: each cache lookup allocates its key. That is two small allocations beside a
+   cross-encoder call or a cache hit, a few milliseconds per sweep, and changing the map's shape
+   would add code for no measurable gain.
+
 **Local gate:**
 
 - `cargo fmt --check` and `cargo clippy --workspace --all-targets` (`-D warnings`) are clean.
-- `cargo nextest run --workspace`: 384 passed, 80 skipped. The skips are model-backed tests, as
+- `cargo nextest run --workspace`: 384 passed, 81 skipped. The skips are model-backed tests, as
   before.
 - `cargo deny check`: all four sections ok.
 - `cargo check` passes for iOS, the iOS simulator and Android. wasm32 fails on `getrandom`, as
   tracked, and this pull request adds no dependency.
 - `gen_026_fixtures.py`: both checks pass.
-- `gen_027_fixtures.py --check` passes, and the `sparse_oracle` binary passes 7 of 7.
+- `gen_027_fixtures.py --check` passes. The `sparse_oracle` and `sparse_load_paths` binaries
+  (with `--features mmap`) pass 8 of 8.
 - The Python wheel builds, and `pytest` passes 34 of 34.
 
 No `xtriever-core` trait, no `deny.toml` entry, no dependency and no on-disk format changes.

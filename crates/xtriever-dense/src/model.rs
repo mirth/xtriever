@@ -444,7 +444,9 @@ pub(crate) fn check_sha256(
     Ok(())
 }
 
-fn verify_file(
+/// Verify one pinned file by size and a streamed SHA-256, holding none of it: for a file the
+/// caller does not parse (the sparse encoder's query-side table).
+pub(crate) fn verify_file(
     dir: &Path,
     pin: &PinnedFile,
     err: fn(String) -> xtriever_core::Error,

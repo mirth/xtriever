@@ -15,12 +15,14 @@ scripts/setup-reference-venv.sh 027          # PyTorch + transformers for the or
 
 ```bash
 reference/.venv-027/bin/python reference/gen_027_fixtures.py            # writes reference/fixtures/027/
-cargo nextest run -p xtriever-dense --run-ignored all -E 'binary(sparse_oracle)'
+cargo nextest run -p xtriever-dense --features mmap --run-ignored all \
+  -E 'binary(sparse_oracle) | binary(sparse_load_paths)'
 ```
 
 Expected: every fixture weight within 1e-4 of the reference, every term frequency at scale 10
 equal apart from the boundary cases the fixture marks, every query's ids equal; the second run
-on another thread count (`RAYON_NUM_THREADS=1`) byte-identical.
+on another thread count (`RAYON_NUM_THREADS=1`) byte-identical; the memory-mapped load's
+expansions bit-identical to the buffered load's (ADR-0007 condition 3).
 
 ## 2. The index (PR B)
 

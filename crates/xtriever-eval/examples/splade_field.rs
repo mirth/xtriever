@@ -28,6 +28,8 @@
     clippy::print_stdout
 )]
 
+mod common;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -42,27 +44,7 @@ use xtriever_eval::report::score;
 use xtriever_eval::run::{EvalConfig, Run, build};
 use xtriever_lexical::TantivyIndex;
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn flags() -> BTreeMap<String, String> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut out = BTreeMap::new();
-    let mut i = 0;
-    while i < args.len() {
-        if let Some(name) = args[i].strip_prefix("--") {
-            out.insert(
-                name.to_owned(),
-                args.get(i + 1).cloned().unwrap_or_default(),
-            );
-            i += 2;
-        } else {
-            i += 1;
-        }
-    }
-    out
-}
+use common::{flags, repo_root};
 
 #[derive(Deserialize)]
 struct DocRow {
@@ -92,7 +74,17 @@ fn dir_bytes(dir: &Path) -> u64 {
 }
 
 fn main() -> anyhow::Result<()> {
-    let f = flags();
+    let f = flags(&[
+        "dataset",
+        "sparse-dir",
+        "scale",
+        "boosts",
+        "qweights",
+        "index-dir",
+        "runs-dir",
+        "chunk",
+        "cache",
+    ])?;
     let get = |k: &str| f.get(k).map(String::as_str);
     let dataset = get("dataset").context("--dataset")?;
     let sparse_dir = PathBuf::from(get("sparse-dir").context("--sparse-dir")?).join(dataset);

@@ -31,7 +31,9 @@ use xtriever_core::Result;
 
 use crate::LoadPath;
 use crate::error::{corrupt, schema_err, sparse_err};
-use crate::model::{PINNED_SPARSE, SPARSE_IDENTITY, check_sha256, read_pinned, sha256_hex};
+use crate::model::{
+    PINNED_SPARSE, SPARSE_IDENTITY, check_sha256, read_pinned, sha256_hex, verify_file,
+};
 
 /// The configuration the forward pass is written for; `config.json` must say exactly this.
 const DIM: usize = 768;
@@ -145,12 +147,15 @@ impl SparseEncoder {
     /// to load.
     pub fn load(dir: &Path, load_path: LoadPath) -> Result<Self> {
         let [config, tokenizer, weights, table] = &PINNED_SPARSE.files;
-        // Every file is read once and its bytes checked before any of them is parsed; the
-        // table is only verified here (the query side reads it from an index's copy).
+        // Every file this loader parses is read once and its bytes checked before any of them
+        // is parsed. The table is not parsed here (the query side reads an index's copy), so
+        // it is verified by a streamed hash and never held. A buffered load holds the weights
+        // twice while candle copies them, as every model in the engine does; `LoadPath::Mmap`
+        // is the path that avoids it.
         let config = read_pinned(dir, config, LoadPath::Buffered, sparse_err)?;
         let tokenizer_bytes = read_pinned(dir, tokenizer, LoadPath::Buffered, sparse_err)?;
         let weights = read_pinned(dir, weights, load_path, sparse_err)?;
-        drop(read_pinned(dir, table, LoadPath::Buffered, sparse_err)?);
+        verify_file(dir, table, sparse_err)?;
 
         assert_config(config.as_slice())?;
         let mut tokenizer = Tokenizer::from_bytes(tokenizer_bytes.as_slice())
