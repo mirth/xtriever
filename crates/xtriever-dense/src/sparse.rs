@@ -31,7 +31,7 @@ use xtriever_core::Result;
 
 use crate::LoadPath;
 use crate::error::{corrupt, schema_err, sparse_err};
-use crate::model::{PINNED_SPARSE, SPARSE_IDENTITY, read_pinned, sha256_hex};
+use crate::model::{PINNED_SPARSE, SPARSE_IDENTITY, check_sha256, read_pinned, sha256_hex};
 
 /// The configuration the forward pass is written for; `config.json` must say exactly this.
 const DIM: usize = 768;
@@ -55,6 +55,14 @@ pub const MAX_WEIGHT: f32 = 4.5;
 /// The tokens whose weights the recipe zeroes and the query side never keeps.
 const SPECIAL_TOKENS: [&str; 5] = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"];
 
+/// Their ids in the pinned tokenizer, ascending: `[PAD]` 0, `[UNK]` 100, `[CLS]` 101, `[SEP]`
+/// 102, `[MASK]` 103. The encoder refuses a tokenizer that disagrees, and the fixture records
+/// the same ids (`tests/sparse_rules.rs`), so [`Expansion::validate`] can check them without one.
+pub const SPECIAL_IDS: [u32; 5] = [0, 100, 101, 102, 103];
+
+/// The encoder's vocabulary: every token id is below this.
+pub const VOCABULARY_SIZE: u32 = 30_522;
+
 /// One document's expansion: its kept `(token id, weight)` entries, ascending by id, every
 /// weight above zero, special tokens absent (research D3).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -66,27 +74,40 @@ pub struct Expansion {
 }
 
 impl Expansion {
-    /// Check the shape the encoder produces and an index can store: ids strictly ascending
-    /// (so none repeats), every weight finite, above zero and at most [`MAX_WEIGHT`]. An
-    /// expansion from elsewhere — a cache, a caller — is refused, never repaired.
+    /// Check the shape the encoder produces and an index can store: every id in the
+    /// vocabulary and not a special token, ids strictly ascending (so none repeats), every
+    /// weight finite, above zero and at most [`MAX_WEIGHT`]. An expansion from elsewhere — a
+    /// cache, a caller — is refused, never repaired.
     ///
     /// # Errors
     ///
     /// `Error::Schema` naming the first offending entry.
     pub fn validate(&self) -> Result<()> {
         for (i, &(id, weight)) in self.entries.iter().enumerate() {
+            if id >= VOCABULARY_SIZE || SPECIAL_IDS.contains(&id) {
+                return Err(schema_err(format!(
+                    "expansion entry {i} names token {id}, which is {}",
+                    if id >= VOCABULARY_SIZE {
+                        "outside the encoder's vocabulary"
+                    } else {
+                        "a special token"
+                    }
+                )));
+            }
             if !(weight.is_finite() && weight > 0.0 && weight <= MAX_WEIGHT) {
                 return Err(schema_err(format!(
                     "expansion entry {i} (token {id}) has weight {weight}; weights must be \
                      finite, above zero and at most {MAX_WEIGHT}"
                 )));
             }
-            if let Some(&(previous, _)) = i.checked_sub(1).and_then(|j| self.entries.get(j))
-                && previous >= id
-            {
+        }
+        for (i, pair) in self.entries.windows(2).enumerate() {
+            let (previous, id) = (pair[0].0, pair[1].0);
+            if previous >= id {
                 return Err(schema_err(format!(
-                    "expansion entry {i} (token {id}) follows token {previous}; ids must be \
-                     strictly ascending"
+                    "expansion entry {} (token {id}) follows token {previous}; ids must be \
+                     strictly ascending",
+                    i + 1
                 )));
             }
         }
@@ -142,6 +163,11 @@ impl SparseEncoder {
             .map_err(|e| sparse_err(format!("cannot set truncation: {e}")))?;
         tokenizer.with_padding(None);
         let special = special_ids(&tokenizer);
+        if special != SPECIAL_IDS {
+            return Err(sparse_err(format!(
+                "tokenizer.json maps the special tokens to {special:?}, expected {SPECIAL_IDS:?}"
+            )));
+        }
 
         let device = Device::Cpu;
         let vb = VarBuilder::from_slice_safetensors(weights.as_slice(), DType::F32, &device)
@@ -480,13 +506,7 @@ impl SparseQuery {
 fn read_verified(path: &Path, expected: &str) -> Result<Vec<u8>> {
     let bytes =
         std::fs::read(path).map_err(|e| corrupt(format!("cannot read {}: {e}", path.display())))?;
-    let digest = sha256_hex(&bytes);
-    if digest != expected {
-        return Err(corrupt(format!(
-            "{} has sha256 {digest}, expected {expected}",
-            path.display()
-        )));
-    }
+    check_sha256(path, &sha256_hex(&bytes), expected, corrupt)?;
     Ok(bytes)
 }
 

@@ -372,7 +372,7 @@ pub(crate) fn read_pinned(
             pin.bytes
         )));
     }
-    check_sha256(&path, &sha256_hex(slice), pin, err)?;
+    check_sha256(&path, &sha256_hex(slice), pin.sha256, err)?;
     Ok(bytes)
 }
 
@@ -427,17 +427,18 @@ fn check_size(
     Ok(())
 }
 
-fn check_sha256(
+/// `digest` (of `path`) against `expected`; the one mismatch message every hash check in the
+/// crate gives, whichever error `err` raises.
+pub(crate) fn check_sha256(
     path: &Path,
     digest: &str,
-    pin: &PinnedFile,
+    expected: &str,
     err: fn(String) -> xtriever_core::Error,
 ) -> xtriever_core::Result<()> {
-    if digest != pin.sha256 {
+    if digest != expected {
         return Err(err(format!(
-            "{} has sha256 {digest}, expected {}",
-            path.display(),
-            pin.sha256
+            "{} has sha256 {digest}, expected {expected}",
+            path.display()
         )));
     }
     Ok(())
@@ -450,5 +451,5 @@ fn verify_file(
 ) -> xtriever_core::Result<()> {
     let path = dir.join(pin.name);
     check_size(&path, pin, err)?;
-    check_sha256(&path, &sha256_file(&path, err)?, pin, err)
+    check_sha256(&path, &sha256_file(&path, err)?, pin.sha256, err)
 }

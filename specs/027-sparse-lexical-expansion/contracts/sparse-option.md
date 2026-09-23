@@ -22,9 +22,12 @@ impl SparseEncoder {
 /// a build can count them (spec User Story 1, scenario 1).
 pub struct Expansion { pub entries: Vec<(u32, f32)>, pub truncated: bool }
 impl Expansion {
-    /// Ids strictly ascending; weights finite, > 0 and ≤ MAX_WEIGHT. `Error::Schema` otherwise.
+    /// Ids in the vocabulary, not special, strictly ascending; weights finite, > 0 and
+    /// ≤ MAX_WEIGHT. `Error::Schema` otherwise.
     pub fn validate(&self) -> Result<()>;
 }
+pub const SPECIAL_IDS: [u32; 5] = [0, 100, 101, 102, 103];   // the pinned tokenizer's; load refuses another
+pub const VOCABULARY_SIZE: u32 = 30_522;
 pub const MAX_SCALE: u32 = 1_000;
 pub const MAX_WEIGHT: f32 = 4.5;   // ≥ ln(1 + ln(1 + f32::MAX)), the encoder's largest weight
 

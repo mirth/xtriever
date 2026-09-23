@@ -12,15 +12,18 @@
 //! corpus order as the harness builds it), the first `depth` fused candidates are scored by the
 //! pinned cross-encoder over the pipeline's stored passage (the `contents` text:
 //! `title + " " + text`), and the list is ordered by the pipeline's own `order_interpolated`.
-//! Every setting — the fusion constant and depth, the re-rank depth and α — is read from
+//! Every setting — the per-stage candidate depth, the fusion constant and depth, the re-rank
+//! depth and α — is read from
 //! `RerankConfig::hybrid_rerank_v3()`, so fed the v2 lexical run and the dense run it reproduces
 //! `hybrid-rerank-v3`; `--depth` and `--alpha` override the last two, `--depth` within `1..=k`.
 //!
 //! Cross-encoder scores are cached per `(model, query, document)`: the model scores each pair
 //! alone (Feature 006), so a cached score is the score, and a new setting pays only for the
 //! pairs it adds. A line from another model is not reused; a line recording no model is refused
-//! (the cache predates the key — delete it); a torn last line from an interrupted run is
-//! skipped with a warning; a non-finite score is refused rather than written.
+//! (the cache predates the key — delete it); an unterminated tail from an interrupted run is
+//! cut before the run appends; a cache that exists but cannot be read is an error, not an
+//! empty cache; a non-finite score is refused rather than written; the cache is flushed
+//! explicitly so a failed final write is reported.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -78,23 +81,30 @@ struct Cached {
 }
 
 /// The cached scores `model` produced, keyed `(query, document)`.
+/// The cached scores `model` produced, keyed `(query, document)`. A missing file is an empty
+/// cache; any other read failure is an error. Every record is written with its newline, so an
+/// unterminated tail is an interrupted write: the file is cut back to its last complete line
+/// before this run appends to it, and that pair is scored again.
 fn load_cache(path: &str, model: &str) -> anyhow::Result<BTreeMap<(String, String), f32>> {
     let mut cache = BTreeMap::new();
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return Ok(cache);
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(cache),
+        Err(e) => return Err(e).with_context(|| format!("cannot read the score cache {path}")),
     };
-    let lines: Vec<&str> = text.lines().collect();
-    let (mut other, mut torn) = (0usize, 0usize);
-    for (n, line) in lines.iter().enumerate() {
-        let c: Cached = match serde_json::from_str(line) {
-            Ok(c) => c,
-            // An interrupted run can leave its last line half-written; that pair is re-scored.
-            Err(_) if n + 1 == lines.len() && !text.ends_with('\n') => {
-                torn += 1;
-                continue;
-            }
-            Err(e) => anyhow::bail!("{path} line {}: {e}", n + 1),
-        };
+    let complete = text.rfind('\n').map_or(0, |i| i + 1);
+    let torn = complete < text.len();
+    if torn {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(path)?
+            .set_len(complete as u64)
+            .with_context(|| format!("cannot cut the torn tail of {path}"))?;
+    }
+    let mut other = 0usize;
+    for (n, line) in text[..complete].lines().enumerate() {
+        let c: Cached =
+            serde_json::from_str(line).with_context(|| format!("{path} line {}", n + 1))?;
         match c.m.as_deref() {
             Some(m) if m == model => {
                 anyhow::ensure!(c.s.is_finite(), "{path} line {}: score {}", n + 1, c.s);
@@ -107,8 +117,8 @@ fn load_cache(path: &str, model: &str) -> anyhow::Result<BTreeMap<(String, Strin
             ),
         }
     }
-    if other + torn > 0 {
-        eprintln!("{path}: {other} lines from another model not reused, {torn} torn line skipped");
+    if other > 0 || torn {
+        eprintln!("{path}: {other} lines from another model not reused; torn tail cut: {torn}");
     }
     Ok(cache)
 }
@@ -221,8 +231,11 @@ fn main() -> anyhow::Result<()> {
         let Some(text) = texts.get(query_id.as_str()) else {
             continue;
         };
-        let lex = hits(lexical.get(query_id).map_or(&[][..], Vec::as_slice));
-        let den = hits(dense.get(query_id).map_or(&[][..], Vec::as_slice));
+        // Each stage contributes its first `candidate_depth` hits, as the pipeline fuses them.
+        let mut lex = hits(lexical.get(query_id).map_or(&[][..], Vec::as_slice));
+        let mut den = hits(dense.get(query_id).map_or(&[][..], Vec::as_slice));
+        lex.truncate(hybrid.candidate_depth);
+        den.truncate(hybrid.candidate_depth);
         let fused = rrf(&lex, &den, hybrid.rrf_k, hybrid.k);
         let n = depth.min(fused.len());
         let mut scores: Vec<Option<f32>> = vec![None; fused.len()];
@@ -272,7 +285,11 @@ fn main() -> anyhow::Result<()> {
         }
         results.insert(query_id.clone(), external);
     }
-    drop(cache_out);
+    // Flushed explicitly: a drop would discard a failed final write, and the cache would end
+    // torn or short while the run reported success.
+    if let Some(mut w) = cache_out {
+        w.flush().context("cannot flush the score cache")?;
+    }
     let run = Run {
         config: format!("rerank-d{depth}-a{alpha}"),
         dataset: ds.name.clone(),

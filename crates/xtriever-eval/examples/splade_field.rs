@@ -175,7 +175,11 @@ fn main() -> anyhow::Result<()> {
                     };
                     let text =
                         field_text(&expansion, scale).with_context(|| format!("document {ext}"))?;
-                    tokens += text.split(' ').filter(|t| !t.is_empty()).count() as u64;
+                    // Single-space separated, nothing leading or trailing (`field_text`'s
+                    // contract): the terms are the separators plus one.
+                    if !text.is_empty() {
+                        tokens += text.bytes().filter(|&b| b == b' ').count() as u64 + 1;
+                    }
                     text
                 }
                 None => {

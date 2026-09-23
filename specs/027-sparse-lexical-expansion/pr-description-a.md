@@ -97,10 +97,48 @@ its tests.
    Re-run on SciFact after the change, with a fresh cache: nDCG@10 0.721936 and Recall@100 0.955000, equal to the recorded `hybrid-rerank-v3` (0.7219361, 0.955).
 10. Size: accepted, as above.
 
+**Review round 2** (`/code-review`, ten findings: eight fixed, one checked and left as it is,
+one recorded as a follow-up):
+
+1. The round-1 torn-line recovery didn't hold. It skipped a half-written last cache line, then
+   appended after it, burying the fragment mid-file where the next run aborted on it. Every
+   record is written with its newline, so an unterminated tail can only be an interrupted
+   write. The loader now cuts the file back to its last complete line before appending.
+   Checked on a copy of the SciFact cache with a fragment appended: the tail is cut, the second
+   run loads cleanly, and all 6,000 pairs are reused.
+2. A score cache that exists but can't be read (permissions, a directory) was treated as empty,
+   which silently re-scored everything. Only a missing file now means an empty cache.
+3. The cache writer was flushed by drop, which discards a failed final write. It is now flushed
+   explicitly and the error is reported.
+4. `Expansion::validate` did not check what its documentation promised. It now also refuses
+   special-token ids and ids outside the 30,522-entry vocabulary. The special ids are a
+   constant (`SPECIAL_IDS`) tied two ways: the encoder refuses a tokenizer that disagrees, and a
+   model-free test compares the constant with the ids the reference recorded.
+5. `rerank_runs` did not cut each stage's input to `hybrid-rerank-v3`'s `candidate_depth`
+   (100). It does now. The exported runs held 100 per query, so the check was unaffected, and
+   it still gives 0.721936 / 0.955.
+6. Moving `splade_field` to the shipped rule could, in principle, refuse or re-round the spike's
+   exports. Checked, and it doesn't. Across the three exports (1.24 M, 0.79 M and 12.9 M entries)
+   no ids are out of order and no weight is zero, negative or above 4.5. The f32-to-f64 rounding
+   change alters one entry's term frequency in SciFact and none in NFCorpus or FiQA.
+7. **Follow-up, not in this pull request:** the float and eight-bit embedder loaders and the
+   re-ranker's loaders still verify a file's hash, then open it again to parse. That is the
+   gap round 1 closed for the sparse encoder. It predates this feature (Features 004, 006 and
+   026), and closing it touches `xtriever-rerank`, which this pull request otherwise leaves
+   alone. `model::read_pinned` is the fix to reuse.
+8. The `SAFETY` comment on the crate's one `unsafe` block said the weights are mapped "after
+   `model::verify_files`". The sparse loader verifies the mapped bytes instead. The comment now
+   names both orders. The argument itself (the crate never writes to a mapped byte) is
+   unchanged.
+9. There were two hash-mismatch paths. `read_verified` now uses `model::check_sha256`, which
+   takes the expected hash and the error to raise. The ordering check uses `windows(2)`.
+10. `splade_field` counted terms by splitting each field string again. It now counts the
+    separators, using `field_text`'s single-space contract, without restating the rounding rule.
+
 **Local gate:**
 
 - `cargo fmt --check` and `cargo clippy --workspace --all-targets` (`-D warnings`) are clean.
-- `cargo nextest run --workspace`: 382 passed, 80 skipped. The skips are model-backed tests, as
+- `cargo nextest run --workspace`: 384 passed, 80 skipped. The skips are model-backed tests, as
   before.
 - `cargo deny check`: all four sections ok.
 - `cargo check` passes for iOS, the iOS simulator and Android. wasm32 fails on `getrandom`, as

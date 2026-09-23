@@ -11,7 +11,8 @@ use xtriever_core::Error;
 use xtriever_dense::LoadPath;
 use xtriever_dense::model::SPARSE_MODEL_NAME;
 use xtriever_dense::sparse::{
-    Expansion, MAX_SCALE, MAX_WEIGHT, SparseEncoder, SparseQuery, field_text,
+    Expansion, MAX_SCALE, MAX_WEIGHT, SPECIAL_IDS, SparseEncoder, SparseQuery, VOCABULARY_SIZE,
+    field_text,
 };
 
 fn expansion(entries: &[(u32, f32)]) -> Expansion {
@@ -48,9 +49,9 @@ fn field_text_of_nothing_is_empty() {
 
 #[test]
 fn field_text_uses_single_spaces_and_ascending_ids() {
-    let text = field_text(&expansion(&[(3, 0.2), (100, 0.3), (30_521, 0.1)]), 10).unwrap();
+    let text = field_text(&expansion(&[(3, 0.2), (200, 0.3), (30_521, 0.1)]), 10).unwrap();
     assert!(!text.starts_with(' ') && !text.ends_with(' ') && !text.contains("  "));
-    assert_eq!(text, "s3 s3 s100 s100 s100 s30521");
+    assert_eq!(text, "s3 s3 s200 s200 s200 s30521");
 }
 
 fn refused(e: &Expansion, scale: u32) -> String {
@@ -80,6 +81,37 @@ fn field_text_refuses_weights_the_encoder_cannot_produce() {
         assert!(m.contains("entry 1") && m.contains("token 9"), "{bad}: {m}");
     }
     assert!(field_text(&expansion(&[(1, MAX_WEIGHT)]), 10).is_ok());
+}
+
+/// Review round 2: an id no encoder output can hold — a special token, or one beyond the
+/// vocabulary — is refused, not written as a term no query ever produces.
+#[test]
+fn field_text_refuses_special_and_out_of_vocabulary_ids() {
+    for id in SPECIAL_IDS {
+        let m = refused(&expansion(&[(id, 0.3)]), 10);
+        assert!(
+            m.contains(&format!("token {id}")) && m.contains("special"),
+            "{m}"
+        );
+    }
+    for id in [VOCABULARY_SIZE, u32::MAX] {
+        let m = refused(&expansion(&[(1, 0.3), (id, 0.3)]), 10);
+        assert!(m.contains("entry 1") && m.contains("vocabulary"), "{m}");
+    }
+    assert!(field_text(&expansion(&[(VOCABULARY_SIZE - 1, 0.3)]), 10).is_ok());
+}
+
+/// The special ids `validate` refuses are the pinned tokenizer's, as the reference recorded
+/// them (`reference/fixtures/027/documents.json`); the encoder also refuses a tokenizer that
+/// disagrees at load.
+#[test]
+fn special_ids_are_the_reference_tokenizers() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../reference/fixtures/027/documents.json");
+    let doc: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let recorded: Vec<u32> = serde_json::from_value(doc["special_ids"].clone()).unwrap();
+    assert_eq!(recorded, SPECIAL_IDS);
 }
 
 /// Review finding: no input may make the field text unboundedly long.
@@ -114,7 +146,11 @@ proptest! {
     /// every scale from 1 to 100; zero-count entries are absent.
     #[test]
     fn field_text_counts_are_the_rounded_scaled_weights(
-        weights in proptest::collection::btree_map(0u32..30_522, 0.000_01f32..4.0, 0..64),
+        weights in proptest::collection::btree_map(
+            (0u32..VOCABULARY_SIZE).prop_filter("not special", |id| !SPECIAL_IDS.contains(id)),
+            0.000_01f32..4.0,
+            0..64,
+        ),
         scale in 1u32..=100,
     ) {
         let e = expansion(&weights.iter().map(|(&i, &w)| (i, w)).collect::<Vec<_>>());
