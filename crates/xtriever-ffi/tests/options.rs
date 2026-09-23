@@ -126,8 +126,7 @@ fn responses_map_field_by_field() {
                 skipped: Some(PipelineReason::StageError("boom".into())),
             }),
             time_limit_ignored: false,
-            // Feature 027: the FFI surfaces it in PR C.
-            sparse_skipped: None,
+            sparse_skipped: Some(PipelineReason::StageError("cannot tokenise".into())),
         },
     };
     let r = from_response(response, 42);
@@ -181,6 +180,13 @@ fn responses_map_field_by_field() {
         })
     );
     assert!(!s.time_limit_ignored);
+    // Feature 027: a skipped sparse expansion reaches the bindings.
+    assert_eq!(
+        s.sparse_skipped,
+        Some(DegradeReason::StageError {
+            message: "cannot tokenise".into()
+        })
+    );
 }
 
 // ── Feature 015: the re-rank mode on the wire ────────────────────────────────────────────────

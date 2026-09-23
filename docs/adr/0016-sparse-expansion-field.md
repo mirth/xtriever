@@ -103,6 +103,16 @@ expansions and validates them.
   reaches `_sparse`, a field the caller did not declare. Those fields score exactly as
   `Match(None, …)` does on an index without the option; everything else in the query is sent
   as built. `explain`'s BM25 score is the whole lexical score, any `_sparse` clauses included.
+- **A document with no text has no expansion.** Given only `[CLS]` and `[SEP]`, the encoder
+  still weights about two dozen vocabulary entries. The pipeline writes an empty `_sparse` field
+  for a passage that is empty or blank, whatever expansion comes with it, so no document is
+  found through terms its text does not have.
+- **Follow-up: the reserved field is kept out of `Match(None, …)` by the pipeline, not the
+  lexical stage.** The lexical stage reads `Match(None, …)` as "every indexed text field", so
+  `search` and `search_lexical`, today the only lexical entry points, spell the user's fields
+  out. The cleaner fix is a schema flag that keeps a field out of default matching. That changes
+  `FieldDef`, a core type, so it needs an ADR of its own and the owner's approval (Rule 2). Any
+  new lexical entry point must spell the fields out until that lands.
 - **The expansion degrades like an ML stage.** If the stored query side cannot tokenise a
   query, `search` searches the text fields alone and reports it in
   `StageReport::sparse_skipped`; strict mode returns the error (Principle VI). A search that

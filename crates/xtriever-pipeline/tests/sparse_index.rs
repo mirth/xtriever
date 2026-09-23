@@ -515,3 +515,57 @@ fn set_sparse_encoder_refuses_another_encoder() {
         Err(Error::Schema(_))
     ));
 }
+
+/// Review round 7: a document with no text has an empty `_sparse` field. The encoder, given
+/// only `[CLS]` and `[SEP]`, weights some two dozen entries (the reference's empty document,
+/// `reference/fixtures/027`, `d07`: its heaviest is token 1029), and neither `add` nor
+/// `add_encoded` may let a document be found through them.
+#[test]
+#[ignore = "needs the sparse encoder"]
+fn a_document_with_no_text_has_no_expansion() {
+    use xtriever_core::LexicalQuery;
+
+    let h = hybrid();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut index = HybridIndex::create_sparse(
+        tmp.path(),
+        sparse_config(&h, SparseOption::default()),
+        // The passage of an empty title and a blank text is the blank text.
+        Box::new(TableEmbedder::from_fixture(&h).with("   ", vec![0.5; 8])),
+        encoder(),
+    )
+    .unwrap();
+    let empty = |id: &str| {
+        let mut fields = BTreeMap::new();
+        fields.insert(FieldName::from("title"), Value::Text(String::new()));
+        fields.insert(FieldName::from("text"), Value::Text("   ".into()));
+        SourceDocument {
+            external_id: id.into(),
+            fields,
+            chunk: None,
+        }
+    };
+    index.add(&[empty("by-add")]).unwrap();
+    let spurious = Expansion {
+        entries: vec![(1012, 0.21), (1029, 0.41)],
+        truncated: false,
+    };
+    index
+        .add_encoded(&[(empty("by-cache"), vec![0.5; 8], spurious)])
+        .unwrap();
+    index.commit().unwrap();
+
+    for id in [1012, 1029] {
+        let query = LexicalQuery::Term(FieldName::from(SPARSE_FIELD), format!("s{id}"));
+        let r = index
+            .search_lexical(
+                &query,
+                "",
+                None,
+                10,
+                &xtriever_pipeline::SearchOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(r.stages.lexical_candidates, 0, "token {id}");
+    }
+}

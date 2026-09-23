@@ -8,7 +8,8 @@
 | `hybrid-sparse-rerank-v1` | `hybrid-rerank-v3` with the same option |
 
 `beir run --config hybrid-sparse-rerank-v1 --sparse-encoder-dir DIR [--sparse-cache-dir C]`.
-The sparse cache: `C/<dataset>/{key.json, weights.bin}`; `key.json` holds the layout version
+The sparse cache: `C/<dataset>/<recipe>/{key.json, weights.bin}`, one directory per passage
+recipe; `key.json` holds the layout version
 (2), the dataset, the encoder identity, the passage recipe (the lexical configuration's name),
 the corpus SHA-256 and the document count, `weights.bin` every document's record in corpus
 order (entry count `u32`, truncation flag `u8`, then `(u32 id, f32 weight)` pairs). A run

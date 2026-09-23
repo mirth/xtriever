@@ -470,6 +470,7 @@ pub fn from_response(response: Response, elapsed_ms: u64) -> SearchResponse {
                 skipped: r.skipped.map(reason),
             }),
             time_limit_ignored: s.time_limit_ignored,
+            sparse_skipped: s.sparse_skipped.map(reason),
         },
         elapsed_ms,
     }

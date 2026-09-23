@@ -41,6 +41,17 @@ expectation was changed afterwards, and it is listed here for review):
   helper is gone); the degraded query was built separately (one builder). Deferred to PR C:
   the FFI does not yet surface `sparse_skipped` — it needs an FFI record change, which
   regenerates the bindings (T034).
+- Round 7: a document with no text was expanded from `[CLS]`/`[SEP]` alone (its `_sparse`
+  field is now empty, whatever expansion comes with it); the FFI dropped `sparse_skipped` (it
+  carries it; the generated bindings pick it up at their next build — this replaces the
+  earlier deferral to PR C); adding to a sparse index without the encoder named a method no
+  binding has (the message says documents are added only on the build host, through a handle
+  holding the encoder); the harness held the encoder through the queries (detached after
+  ingestion) and copied the corpus text on a cache hit (built only for an encode); the sparse
+  cache lived per dataset, so another passage recipe would have deleted it (one directory per
+  recipe). Recorded, not changed: the lexical stage's `Match(None, …)` includes `_sparse`, and
+  the pipeline spells fields out instead; a schema flag would be cleaner but changes a core
+  type (ADR-0016, Consequences). The owner kept PR B as one pull request.
 - Copilot: the resume path truncated `weights.partial` before checking the progress record
   against it, and `set_len` would have zero-filled a short file (the record is now checked
   first — documents within the corpus, bytes within the file — and a stale one means a fresh

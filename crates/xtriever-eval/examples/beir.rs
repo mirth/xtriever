@@ -183,11 +183,14 @@ fn sparse_cache_dir(a: &Args) -> PathBuf {
 fn sparse_expansions(
     dataset: &Dataset,
     recipe: &str,
-    passages: &[String],
+    documents: usize,
+    passages: impl FnOnce() -> Vec<String>,
     encoder: &SparseEncoder,
     a: &Args,
 ) -> anyhow::Result<Vec<Expansion>> {
-    let dir = sparse_cache_dir(a).join(&dataset.name);
+    // One directory per passage recipe: another recipe's cache, finished or mid-encode, is
+    // never the one a mismatch removes.
+    let dir = sparse_cache_dir(a).join(&dataset.name).join(recipe);
     let key = SparseCacheKey {
         format_version: SparseCacheKey::FORMAT_VERSION,
         dataset: dataset.name.clone(),
@@ -198,7 +201,7 @@ fn sparse_expansions(
             .get("corpus.jsonl")
             .cloned()
             .context("dataset hashes lack corpus.jsonl")?,
-        documents: passages.len() as u64,
+        documents: documents as u64,
     };
     let finished = dir.join("weights.bin");
     let partial = dir.join("weights.partial");
@@ -221,7 +224,7 @@ fn sparse_expansions(
     };
     let matches = key.mismatch(&dir).is_none();
     if matches && finished.exists() {
-        let expansions = from_cache(read_sparse_weights(&finished, passages.len())?);
+        let expansions = from_cache(read_sparse_weights(&finished, documents)?);
         eprintln!("encoded 0 passages (sparse cache hit: {})", dir.display());
         report(&expansions);
         return Ok(expansions);
@@ -237,7 +240,7 @@ fn sparse_expansions(
         match SparseProgress::read(&dir)? {
             Some(progress) => {
                 let length = std::fs::metadata(&partial)?.len();
-                if progress.documents > passages.len() as u64 || progress.bytes > length {
+                if progress.documents > documents as u64 || progress.bytes > length {
                     eprintln!(
                         "sparse cache at {}: {} records {} documents in {} bytes, but the corpus \
                          has {} and the file {} bytes; re-encoding",
@@ -245,7 +248,7 @@ fn sparse_expansions(
                         SparseProgress::FILE,
                         progress.documents,
                         progress.bytes,
-                        passages.len(),
+                        documents,
                         length
                     );
                     None
@@ -260,16 +263,15 @@ fn sparse_expansions(
     };
     let mut expansions = match progress {
         Some(progress) => {
-            let documents = usize::try_from(progress.documents)?;
+            let done = usize::try_from(progress.documents)?;
             let file = std::fs::OpenOptions::new().write(true).open(&partial)?;
             file.set_len(progress.bytes)?;
             file.sync_all()?;
             eprintln!(
-                "resuming the sparse encode at document {documents} of {} ({})",
-                passages.len(),
+                "resuming the sparse encode at document {done} of {documents} ({})",
                 dir.display()
             );
-            from_cache(read_sparse_weights(&partial, documents)?)
+            from_cache(read_sparse_weights(&partial, done)?)
         }
         None => {
             if dir.exists() {
@@ -283,6 +285,13 @@ fn sparse_expansions(
             Vec::new()
         }
     };
+    // The passages are built only now, when something has to be encoded.
+    let passages = passages();
+    anyhow::ensure!(
+        passages.len() == documents,
+        "{} passages for {documents} documents",
+        passages.len()
+    );
     let file = std::fs::OpenOptions::new().append(true).open(&partial)?;
     let mut bytes = file.metadata()?.len();
     let mut out = std::io::BufWriter::new(file);
@@ -848,11 +857,13 @@ fn evaluate_hybrid(
         Some(settings) => {
             let encoder = SparseEncoder::load(&sparse_encoder_dir(a), load_path)
                 .context("loading the sparse encoder")?;
-            let passages: Vec<String> = docs
-                .iter()
-                .map(|(_, fields)| dense_passage(&dense_fields, fields))
-                .collect();
-            let expansions = sparse_expansions(&ds, &cfg.lexical.name, &passages, &encoder, a)?;
+            let passages = || {
+                docs.iter()
+                    .map(|(_, fields)| dense_passage(&dense_fields, fields))
+                    .collect()
+            };
+            let expansions =
+                sparse_expansions(&ds, &cfg.lexical.name, docs.len(), passages, &encoder, a)?;
             let stage = SparseStage {
                 settings,
                 encoder: encoder.identity().to_owned(),
@@ -892,6 +903,9 @@ fn evaluate_hybrid(
         ingest(&mut index, &mut batch, expansions.as_mut())?;
     }
     index.commit()?;
+    // The encoder served `create_sparse` (the query side and the identity); searching never
+    // uses it, so it is not held through the queries and the re-rank.
+    index.set_sparse_encoder(None)?;
     eprintln!(
         "embedded 0 documents (004 cache); ingested {} documents in {:.1} s",
         index.len(),

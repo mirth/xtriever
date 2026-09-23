@@ -172,10 +172,9 @@ fn copy_query_side(
     Ok((record, query))
 }
 
-/// The sparse option's own rule, shared by `create` (a schema error) and `open` (corruption):
-/// the message, or `Ok`.
-/// The scale is the dense crate's rule (`field_text` applies it); the boost is the lexical
-/// field's, so its rule lives here. `Error::Schema`; `open` reports it as corruption.
+/// The sparse option's rule, checked by `create` and by `open` (which reports a failure as
+/// corruption): the scale is the dense crate's (`validate_scale`, which `field_text` applies),
+/// the boost is the lexical field's, so its rule lives here. `Error::Schema`.
 fn validate_sparse(option: &SparseOption) -> Result<()> {
     validate_scale(option.scale)?;
     if !(option.boost.is_finite() && option.boost > 0.0) {
@@ -611,15 +610,19 @@ impl HybridIndex {
     }
 
     /// The expansion of a passage for this index: `None` without the option, the attached
-    /// encoder's otherwise — and a sparse index with no encoder attached cannot be added to.
+    /// encoder's otherwise — none needed for a passage with no text (see `stage_one`) — and a
+    /// sparse index with no encoder attached cannot be added to.
     fn expand(&self, passage: &str) -> Result<Option<Expansion>> {
         match (&self.descriptor.sparse, &self.sparse_encoder) {
             (None, _) => Ok(None),
+            (Some(_), Some(_)) if passage.trim().is_empty() => Ok(Some(Expansion::default())),
             (Some(_), Some(encoder)) => Ok(Some(encoder.encode(passage)?)),
+            // Said the same way on every surface: the bindings cannot attach the encoder.
             (Some(_), None) => Err(Error::Model {
                 model: SPARSE_MODEL_NAME.to_owned(),
-                message: "this index is sparse and no sparse encoder is attached; attach one \
-                          with set_sparse_encoder before adding"
+                message: "this index is sparse: documents are added to it only on the build \
+                          host, through a handle holding the sparse document encoder (the \
+                          one create_sparse returns, or one given it with set_sparse_encoder)"
                     .to_owned(),
             }),
         }
@@ -627,8 +630,11 @@ impl HybridIndex {
 
     /// Stage one document: its passage, its vector and — on a sparse index — its expansion,
     /// written as the `_sparse` text at this index's scale (`field_text` refuses an expansion
-    /// the encoder could not have produced). Every add path ends here; a truncated expansion
-    /// is counted only once its document is staged.
+    /// the encoder could not have produced). A passage with no text has an empty `_sparse`
+    /// field whatever expansion comes with it: the encoder, given only `[CLS]` and `[SEP]`,
+    /// still weights some two dozen vocabulary entries, and a document with no text must not
+    /// be found through them. Every add path ends here; a truncated expansion is counted only
+    /// once its document is staged.
     fn stage_one(
         &mut self,
         doc: &SourceDocument,
@@ -643,7 +649,15 @@ impl HybridIndex {
             });
         }
         let sparse_text = match (&self.descriptor.sparse, expansion) {
-            (Some(record), Some(expansion)) => Some(field_text(expansion, record.scale)?),
+            (Some(record), Some(expansion)) => {
+                // Validated either way: an expansion the encoder could not produce is refused.
+                let text = field_text(expansion, record.scale)?;
+                Some(if passage.trim().is_empty() {
+                    String::new()
+                } else {
+                    text
+                })
+            }
             (None, None) => None,
             // The callers pair them by construction; say so rather than index half a document.
             (Some(_), None) | (None, Some(_)) => {
