@@ -13,14 +13,17 @@ use std::collections::BTreeMap;
 
 use xtriever_core::{AnalyzerId, FieldName, Schema, Value};
 use xtriever_dense::MiniLmEmbedder;
-use xtriever_pipeline::{HybridConfig, HybridIndex, OpenOptions, Response, SourceDocument};
+use xtriever_dense::sparse::SparseEncoder;
+use xtriever_pipeline::{
+    HybridConfig, HybridIndex, OpenOptions, Response, SourceDocument, SparseOption,
+};
 use xtriever_rerank::MiniLmCrossEncoder;
 
 use crate::ffi::error::{XtrieverError, poisoned};
 use crate::ffi::types::{
     ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
     HitExplain, IndexConfig, IndexInfo, LoadPath, RerankMode, RerankReport, SearchOptions,
-    SearchResponse, SparseOptionConfig, StageReport,
+    SearchResponse, SparseInfo, SparseOptionConfig, StageReport,
 };
 
 /// The open index and what it cost to load.
@@ -101,7 +104,10 @@ pub(crate) fn open(
 /// optional re-ranker loaded as `open` loads them (Feature 011 US4). Every requested model is
 /// loaded **before** the directory is touched, so a wrong model path leaves nothing behind
 /// and a retry with the right one succeeds (review round 1 #1). The directory is created
-/// writable: the handle can `add`, `delete` and `commit` at once.
+/// writable: the handle can `add`, `delete` and `commit` at once. With `config.sparse`
+/// (Feature 027) the sparse encoder is one of those models, loaded first like the others, and
+/// the index is created sparse with it attached; an omitted scale or boost is the engine's
+/// default.
 pub(crate) fn create(
     index_dir: &str,
     config: IndexConfig,
@@ -114,14 +120,20 @@ pub(crate) fn create(
         embedder_load,
         reranker,
     } = load_models(embedder_dir, reranker_dir, load_path)?;
-    let (config, sparse) = pipeline_config(config);
-    if sparse.is_some() {
-        // RED-CHECKPOINT STUB (Feature 027 T033): refused, never silently dropped.
-        return Err(XtrieverError::Schema {
-            message: format!("IndexConfig.sparse: {}", "not implemented"),
-        });
-    }
-    let index = HybridIndex::create(std::path::Path::new(index_dir), config, Box::new(embedder))?;
+    let (mut config, sparse) = pipeline_config(config);
+    let dir = std::path::Path::new(index_dir);
+    let index = match sparse {
+        None => HybridIndex::create(dir, config, Box::new(embedder))?,
+        Some(sparse) => {
+            let encoder = SparseEncoder::load(sparse.encoder_dir.as_ref(), load_path.into())?;
+            let defaults = SparseOption::default();
+            config.sparse = Some(SparseOption {
+                scale: sparse.scale.unwrap_or(defaults.scale),
+                boost: sparse.boost.unwrap_or(defaults.boost),
+            });
+            HybridIndex::create_sparse(dir, config, Box::new(embedder), encoder)?
+        }
+    };
     Ok(finish(index, embedder_load, reranker))
 }
 
@@ -370,9 +382,11 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
         dense_compact_dead_share: config.dense_compact_dead_share,
         embedder_load_ms: ms(inner.embedder_load),
         reranker_load_ms: inner.reranker_load.map(ms),
-        // RED-CHECKPOINT STUB (Feature 027 T033): "not implemented" — the record is not
-        // reported yet; scripts/check-no-stubs.sh fails while this line stands.
-        sparse: None,
+        sparse: guard.sparse().map(|r| SparseInfo {
+            scale: r.scale,
+            boost: r.boost,
+            encoder: r.encoder.clone(),
+        }),
     }
 }
 

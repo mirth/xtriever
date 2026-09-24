@@ -12,15 +12,17 @@ use std::time::Instant;
 
 use anyhow::{Context, bail};
 use xtriever_core::{Embedder, TextKind};
+use xtriever_dense::sparse::SparseEncoder;
 use xtriever_dense::{LoadPath, MiniLmEmbedder};
-use xtriever_pipeline::{HybridIndex, SourceDocument};
+use xtriever_pipeline::{HybridConfig, HybridIndex, SourceDocument, SparseOption, dense_passage};
 
 use super::BuildArgs;
 use super::cache::{cache_dir_for, read_shard, shard_key, write_shard};
 use super::chunking::{Article, documents_for, wiki_config};
 use super::manifest::{Manifest, verify_file};
 use super::record::{
-    BuildRecord, CacheStats, CorpusIdentity, Host, Models, artefact_bytes, attribution, now_rfc3339,
+    BuildRecord, CacheStats, CorpusIdentity, Host, Models, SparseBuild, SparseRef, artefact_bytes,
+    attribution, now_rfc3339,
 };
 use super::rules::excluded_by;
 use super::verify::verify_index;
@@ -58,11 +60,13 @@ impl Embedder for SharedEmbedder {
 /// it, the given scale and boost or the engine's defaults (`SparseOption::default()`). clap
 /// refuses a scale or boost without an encoder; the engine checks their values at creation.
 ///
-/// RED-CHECKPOINT STUB: not called by `run` until T037, so a build still works meanwhile.
-#[allow(dead_code)]
-pub fn sparse_option(_args: &BuildArgs) -> Option<xtriever_pipeline::SparseOption> {
-    // "not implemented" (scripts/check-no-stubs.sh fails while this stands).
-    None
+pub fn sparse_option(args: &BuildArgs) -> Option<SparseOption> {
+    args.sparse_encoder.as_ref()?;
+    let defaults = SparseOption::default();
+    Some(SparseOption {
+        scale: args.sparse_scale.unwrap_or(defaults.scale),
+        boost: args.sparse_boost.unwrap_or(defaults.boost),
+    })
 }
 
 /// Parse the load path flag.
@@ -136,6 +140,21 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
     let fingerprint = embedder.fingerprint().to_owned();
     let partial = args.limit.map(|n| n as u64);
     let mut identity = CorpusIdentity::new(&manifest, &fingerprint, partial);
+    // Feature 027: the sparse encoder, loaded with the embedder before anything is written; a
+    // sparse artefact's identity names its expansion.
+    let sparse = match (sparse_option(args), &args.sparse_encoder) {
+        (Some(option), Some(dir)) => {
+            let encoder = SparseEncoder::load(dir, load_path(&args.load_path)?)
+                .context("loading the sparse encoder")?;
+            identity = identity.with_sparse(SparseRef {
+                encoder: encoder.identity().to_owned(),
+                scale: option.scale,
+                boost: option.boost,
+            });
+            Some((option, encoder))
+        }
+        _ => None,
+    };
 
     let out = &args.out;
     let staging: PathBuf = out.with_file_name(format!(
@@ -153,8 +172,20 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
     }
     std::fs::create_dir_all(&staging)?;
     let index_dir = staging.join("index");
-    let mut index = HybridIndex::create(&index_dir, wiki_config(), Box::new(shared.clone()))
-        .context("creating the index")?;
+    let mut index = match sparse {
+        Some((option, encoder)) => HybridIndex::create_sparse(
+            &index_dir,
+            HybridConfig {
+                sparse: Some(option),
+                ..wiki_config()
+            },
+            Box::new(shared.clone()),
+            encoder,
+        ),
+        None => HybridIndex::create(&index_dir, wiki_config(), Box::new(shared.clone())),
+    }
+    .context("creating the index")?;
+    let mut sparse_ms = 0u64;
     let cache_dir = cache_dir_for(&args.cache_dir, &fingerprint);
     let mut cache = CacheStats {
         dir: cache_dir.display().to_string(),
@@ -227,6 +258,7 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
                     &mut cache,
                     &mut embed_ms,
                     &mut ingest_ms,
+                    &mut sparse_ms,
                 )?;
                 shard_no += 1;
             }
@@ -244,17 +276,22 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
             &mut cache,
             &mut embed_ms,
             &mut ingest_ms,
+            &mut sparse_ms,
         )?;
         shard_no += 1;
     }
     let read_total = ms(t_read.elapsed());
     phases.add(
         "read_exclude",
-        read_total.saturating_sub(chunk_ms + embed_ms + ingest_ms),
+        read_total.saturating_sub(chunk_ms + embed_ms + ingest_ms + sparse_ms),
     );
     phases.add("chunk", chunk_ms);
     phases.add("embed", embed_ms);
     phases.add("ingest", ingest_ms);
+    if index.sparse().is_some() {
+        phases.add("sparse_encode", sparse_ms);
+    }
+    let sparse_truncated = index.sparse_truncated();
     cache.shards = shard_no as u64;
     identity.counts.passages = passages_total;
     eprintln!(
@@ -318,6 +355,13 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
         embedding_cache: cache,
         artefact_bytes: artefact_bytes(&index_dir)?,
         verify,
+        sparse: identity.sparse.clone().map(|expansion| SparseBuild {
+            expansion,
+            truncated: sparse_truncated,
+            encode_ms: sparse_ms,
+            passages_per_second: identity.counts.passages as f64
+                / (sparse_ms as f64 / 1000.0).max(f64::MIN_POSITIVE),
+        }),
     };
     write_json(&staging.join("wiki-build.json"), &record)?;
     std::fs::write(
@@ -360,6 +404,7 @@ fn flush_shard(
     cache: &mut CacheStats,
     embed_ms: &mut u64,
     ingest_ms: &mut u64,
+    sparse_ms: &mut u64,
 ) -> anyhow::Result<()> {
     let texts: Vec<&str> = docs
         .iter()
@@ -404,16 +449,39 @@ fn flush_shard(
         }
     };
     *embed_ms += ms(t.elapsed());
-    let t = Instant::now();
-    let batch: Vec<(SourceDocument, Vec<f32>)> = docs
-        .drain(..)
-        .zip(vectors.chunks_exact(dim))
-        .map(|(d, v)| (d, v.to_vec()))
-        .collect();
-    index
-        .add_embedded(&batch)
-        .with_context(|| format!("ingesting shard {shard_no}"))?;
-    *ingest_ms += ms(t.elapsed());
+    if index.sparse().is_some() {
+        // Feature 027: each passage expanded by the index's own encoder — the text `add` would
+        // expand (`dense_passage`) — then added with its cached vector.
+        let t = Instant::now();
+        let encoder = index
+            .sparse_encoder()
+            .context("the sparse index has no encoder attached")?;
+        let dense_fields = index.config().dense_fields.clone();
+        let mut encoded = Vec::with_capacity(docs.len());
+        for (d, v) in docs.drain(..).zip(vectors.chunks_exact(dim)) {
+            let expansion = encoder
+                .encode(&dense_passage(&dense_fields, &d.fields))
+                .with_context(|| format!("expanding {}", d.external_id))?;
+            encoded.push((d, v.to_vec(), expansion));
+        }
+        *sparse_ms += ms(t.elapsed());
+        let t = Instant::now();
+        index
+            .add_encoded(&encoded)
+            .with_context(|| format!("ingesting shard {shard_no}"))?;
+        *ingest_ms += ms(t.elapsed());
+    } else {
+        let t = Instant::now();
+        let batch: Vec<(SourceDocument, Vec<f32>)> = docs
+            .drain(..)
+            .zip(vectors.chunks_exact(dim))
+            .map(|(d, v)| (d, v.to_vec()))
+            .collect();
+        index
+            .add_embedded(&batch)
+            .with_context(|| format!("ingesting shard {shard_no}"))?;
+        *ingest_ms += ms(t.elapsed());
+    }
     std::io::stderr().flush().ok();
     Ok(())
 }

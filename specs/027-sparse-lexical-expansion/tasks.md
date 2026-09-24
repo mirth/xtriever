@@ -148,14 +148,14 @@ searches with the engine's own results and reports the option in its information
 - [X] T030 [P] [US4] Write `crates/xtriever-ffi/tests/sparse.rs` (`#[ignore = "needs the sparse encoder and both models"]`): `IndexHandle::create` with `IndexConfig.sparse` builds a sparse index; `info()` reports `sparse` (scale, boost, encoder) and format version 3; `IndexHandle::open` with no new argument searches it with the same hits and scores as the pipeline's own `search`; an index without the option reports format version 2 and no `sparse`
 - [X] T031 [P] [US4] Write `python/tests/test_sparse.py` (marked `models`): create with the option, add, commit, search, `info().sparse`; results equal a second open's
 - [X] T032 [P] [US4] Write `crates/xtriever-ffi/tests/packagers.rs` (model-free): neither `scripts/build-ios-package.sh` nor `scripts/build-android-package.sh` names `manifest-sparse-doc-v3.json` or the encoder's directory (FR-012, FR-013)
-- [ ] T033 [US4] Add the FFI records as stubs, run T030–T032 to show them failing, **⛔ red checkpoint — the owner commits the failing tests**
+- [X] T033 [US4] Add the FFI records as stubs, run T030–T032 to show them failing, **⛔ red checkpoint — the owner commits the failing tests**
 
 ### Implementation for User Story 4
 
-- [ ] T034 [US4] In `crates/xtriever-ffi/src/ffi/types.rs`: `SparseOptionConfig { encoder_dir, scale, boost }`, `IndexConfig.sparse: Option<SparseOptionConfig>`, `SparseInfo { scale, boost, encoder }`, `IndexInfo.sparse: Option<SparseInfo>`, in `crates/xtriever-ffi/src/index.rs`: `create` loads the `SparseEncoder` and calls `create_sparse` when the option is set (`info` already reports the index's own descriptor version since PR B)
-- [ ] T035 [P] [US4] Python: rebuild the wheel, expose nothing hand-written beyond `sparse` in `python/src/xtriever/__init__.py`, which re-exports `IndexInfo`, and document the option in `python/README.md`
+- [X] T034 [US4] In `crates/xtriever-ffi/src/ffi/types.rs`: `SparseOptionConfig { encoder_dir, scale, boost }`, `IndexConfig.sparse: Option<SparseOptionConfig>`, `SparseInfo { scale, boost, encoder }`, `IndexInfo.sparse: Option<SparseInfo>`, in `crates/xtriever-ffi/src/index.rs`: `create` loads the `SparseEncoder` and calls `create_sparse` when the option is set (`info` already reports the index's own descriptor version since PR B)
+- [X] T035 [P] [US4] Python: rebuild the wheel, expose nothing hand-written beyond `sparse` in `python/src/xtriever/__init__.py`, which re-exports `IndexInfo`, and document the option in `python/README.md`
 - [ ] T036 [P] [US4] Swift and Kotlin: the wrappers alias the generated types (`IndexInfo`, `IndexConfig`, `StageReport`), so nothing hand-written changes; `scripts/build-ios-package.sh` and `scripts/build-android-package.sh` regenerate the bindings with `sparse`, `SparseInfo`, `SparseOptionConfig` and `sparse_skipped`, and both packages build (checked in T038's gate; no separate red test — there is no behaviour of their own to test)
-- [ ] T037 [US4] Command line: `--sparse-encoder DIR`, `--sparse-scale`, `--sparse-boost` on `xtriever wiki build` in `crates/xtriever-cli/src/wiki/mod.rs` and `build.rs` (`sparse_option`, red tests committed with T033), creating the index with `create_sparse` and encoding each passage for `add_encoded` through `HybridIndex::sparse_encoder()`; the build record (`crates/xtriever-cli/src/wiki/record.rs`) gains the encoder identity, the truncation count and the encoding throughput; run quickstart §4
+- [X] T037 [US4] Command line: `--sparse-encoder DIR`, `--sparse-scale`, `--sparse-boost` on `xtriever wiki build` in `crates/xtriever-cli/src/wiki/mod.rs` and `build.rs` (`sparse_option`, red tests committed with T033), creating the index with `create_sparse` and encoding each passage for `add_encoded` through `HybridIndex::sparse_encoder()`; the build record (`crates/xtriever-cli/src/wiki/record.rs`) gains the encoder identity, the truncation count and the encoding throughput; run quickstart §4
 - [ ] T038 [US4] PR C gate: the full local gate, the FFI and Python model-backed suites, the Kotlin library tests on the emulator; write `specs/027-sparse-lexical-expansion/pr-description-c.md`. **⛔ Checkpoint C — the owner commits, pushes and merges PR C**
 
 **Checkpoint**: applications can use the option.
@@ -164,8 +164,8 @@ searches with the engine's own results and reports the option in its information
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T039 Write `specs/027-sparse-lexical-expansion/report.md`: the verdict, the three pull requests, the three-dataset table beside the spike's, the oracle's largest difference, sizes and throughput, and "deliberately not done" (not the default, not applied to the Wikipedia artefact, no speed claim, no four-bit or eight-bit encoder)
-- [ ] T040 [P] Mention the option in `README.md`'s feature list and in `crates/xtriever-pipeline/src/lib.rs`'s overview, with the one-line rule of when to switch it on (corpora without titles and with vocabulary mismatch)
+- [X] T039 Write `specs/027-sparse-lexical-expansion/report.md`: the verdict, the three pull requests, the three-dataset table beside the spike's, the oracle's largest difference, sizes and throughput, and "deliberately not done" (not the default, not applied to the Wikipedia artefact, no speed claim, no four-bit or eight-bit encoder)
+- [X] T040 [P] Mention the option in `crates/xtriever-pipeline/src/lib.rs`'s overview, with the rule of when to switch it on (corpora without titles and with vocabulary mismatch, searched with the re-ranker), and in `python/README.md`. **As built**: the repository has no top-level `README.md`, so the crate docs and the Python README carry it
 
 ---
 

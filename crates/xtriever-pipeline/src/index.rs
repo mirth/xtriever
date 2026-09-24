@@ -512,6 +512,13 @@ impl HybridIndex {
         Ok(())
     }
 
+    /// The attached sparse document encoder, if any — for a caller that encodes passages itself
+    /// and adds them with [`add_encoded`](Self::add_encoded) (the command line's cached build).
+    #[must_use]
+    pub fn sparse_encoder(&self) -> Option<&SparseEncoder> {
+        self.sparse_encoder.as_ref()
+    }
+
     /// The sparse record, if this index has the option (Feature 027).
     #[must_use]
     pub fn sparse(&self) -> Option<&SparseRecord> {

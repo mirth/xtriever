@@ -58,7 +58,9 @@ final class ErrorTests: XCTestCase {
             XCTFail("must throw")
         } catch XtrieverError.Model(let model, let message) {
             XCTAssertFalse(model.isEmpty)
-            XCTAssertTrue(message.contains("bytes") || message.contains("sha256"), message)
+            // Since Feature 026 the embedder first checks which of its weights files the directory
+            // holds; the re-ranker's holds neither, and the refusal names both.
+            XCTAssertTrue(message.contains("holds neither"), message)
         }
     }
 
