@@ -279,12 +279,17 @@ pub struct IndexConfig {
     pub dense_compact_dead_share: Option<f32>,
     /// Sparse lexical expansion (Feature 027): `None` (the default) changes nothing; set, the
     /// index is created sparse with the encoder at `encoder_dir` (build host only) attached, so
-    /// the handle can `add` at once. An opened sparse index needs none of it.
+    /// the handle can `add` at once. An opened sparse index needs none of it. **Use it for
+    /// corpora whose questions are worded unlike their answers (FiQA-shaped: no titles), and
+    /// search it with the re-ranker**: re-ranked, FiQA gained +0.017 nDCG@10 and SciFact and
+    /// NFCorpus held within 0.005; without re-ranking SciFact and NFCorpus lost 0.006–0.007
+    /// (ADR-0017).
     #[uniffi(default = None)]
     pub sparse: Option<SparseOptionConfig>,
 }
 
-/// How a sparse index writes and scores its expansions, and where its encoder is.
+/// How a sparse index writes and scores its expansions, and where its encoder is (Feature 027).
+/// Pair the option with the re-ranker, and use it for FiQA-shaped corpora (ADR-0017).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct SparseOptionConfig {
     /// The pinned sparse document encoder's directory

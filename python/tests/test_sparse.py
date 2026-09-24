@@ -7,7 +7,7 @@ import pytest
 
 import xtriever
 from conftest import EMBEDDER, RERANKER, SPARSE_ENCODER, search_hit_tuples
-from test_build import config, document, fixture
+from test_build import build, config, fixture
 
 pytestmark = [
     pytest.mark.models,
@@ -21,12 +21,7 @@ pytestmark = [
 def build_sparse(tmp_path, h):
     cfg = config(h)
     cfg.sparse = xtriever.SparseOptionConfig(encoder_dir=str(SPARSE_ENCODER))
-    handle = xtriever.IndexHandle.create(
-        str(tmp_path / "idx"), cfg, str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP
-    )
-    handle.add([document(d) for d in h["documents"]])
-    handle.commit()
-    return handle
+    return build(tmp_path, h, cfg=cfg)
 
 
 def test_a_python_built_sparse_index_reports_the_option(tmp_path):
@@ -41,14 +36,12 @@ def test_a_reopened_sparse_index_answers_as_the_one_that_built_it(tmp_path):
     h = fixture()
     built = build_sparse(tmp_path, h)
     reopened = xtriever.IndexHandle.open(str(tmp_path / "idx"), str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP)
-    plain = xtriever.IndexHandle.create(
-        str(tmp_path / "plain"), config(h), str(EMBEDDER), str(RERANKER), xtriever.LoadPath.MMAP
-    )
-    plain.add([document(d) for d in h["documents"]])
-    plain.commit()
+    plain = build(tmp_path, h, name="plain")
     assert built.info().sparse is not None, "the index was not built sparse"
     assert reopened.info().sparse == built.info().sparse
-    opts = xtriever.SearchOptions(k=10, explain=True)
+    # Strict: a query whose expansion could not be built is an error here, not a quiet fallback
+    # to the text fields that both handles would share.
+    opts = xtriever.SearchOptions(k=10, explain=True, strict=True)
     differs = 0
     for q in h["queries"]:
         a = built.search(q["text"], opts)

@@ -20,7 +20,7 @@ use crate::ffi::error::{XtrieverError, poisoned};
 use crate::ffi::types::{
     ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
     HitExplain, IndexConfig, IndexInfo, LoadPath, RerankMode, RerankReport, SearchOptions,
-    SearchResponse, StageReport,
+    SearchResponse, SparseOptionConfig, StageReport,
 };
 
 /// The open index and what it cost to load.
@@ -114,17 +114,14 @@ pub(crate) fn create(
         embedder_load,
         reranker,
     } = load_models(embedder_dir, reranker_dir, load_path)?;
-    if config.sparse.is_some() {
+    let (config, sparse) = pipeline_config(config);
+    if sparse.is_some() {
         // RED-CHECKPOINT STUB (Feature 027 T033): refused, never silently dropped.
         return Err(XtrieverError::Schema {
             message: format!("IndexConfig.sparse: {}", "not implemented"),
         });
     }
-    let index = HybridIndex::create(
-        std::path::Path::new(index_dir),
-        HybridConfig::from(config),
-        Box::new(embedder),
-    )?;
+    let index = HybridIndex::create(std::path::Path::new(index_dir), config, Box::new(embedder))?;
     Ok(finish(index, embedder_load, reranker))
 }
 
@@ -205,10 +202,14 @@ impl From<FieldDef> for xtriever_core::FieldDef {
     }
 }
 
-impl From<IndexConfig> for HybridConfig {
-    fn from(c: IndexConfig) -> Self {
-        let to_usize = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
-        Self {
+/// The pipeline's configuration from the wire's, and the sparse part apart from it: the option
+/// needs its encoder loaded, which only `create` does, so the conversion hands it back rather
+/// than drop it (a private function, not a `From`, so no caller can lose it by accident).
+fn pipeline_config(c: IndexConfig) -> (HybridConfig, Option<SparseOptionConfig>) {
+    let to_usize = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
+    let sparse = c.sparse;
+    (
+        HybridConfig {
             schema: Schema {
                 fields: c.fields.into_iter().map(Into::into).collect(),
             },
@@ -222,10 +223,11 @@ impl From<IndexConfig> for HybridConfig {
             rerank_depth: to_usize(c.rerank_depth),
             rerank_mode: c.rerank_mode.map_or_else(Default::default, Into::into),
             dense_compact_dead_share: c.dense_compact_dead_share,
-            // Set by `create` from `IndexConfig.sparse`, which also needs the encoder loaded.
+            // Set by `create` from the returned sparse part, with the encoder it loads.
             sparse: None,
-        }
-    }
+        },
+        sparse,
+    )
 }
 
 impl From<RerankMode> for xtriever_pipeline::RerankMode {

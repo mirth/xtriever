@@ -54,25 +54,22 @@ impl Embedder for SharedEmbedder {
     }
 }
 
+/// The sparse option the flags ask for (Feature 027): `None` without `--sparse-encoder`; with
+/// it, the given scale and boost or the engine's defaults (`SparseOption::default()`). clap
+/// refuses a scale or boost without an encoder; the engine checks their values at creation.
+///
+/// RED-CHECKPOINT STUB: not called by `run` until T037, so a build still works meanwhile.
+#[allow(dead_code)]
+pub fn sparse_option(_args: &BuildArgs) -> Option<xtriever_pipeline::SparseOption> {
+    // "not implemented" (scripts/check-no-stubs.sh fails while this stands).
+    None
+}
+
 /// Parse the load path flag.
 ///
 /// # Errors
 ///
 /// Any value but `buffered` / `mmap`.
-/// The sparse option the flags ask for (Feature 027): `None` without `--sparse-encoder`; with
-/// it, the given scale and boost or the engine's defaults (`SparseOption::default()`). A scale
-/// or boost without an encoder is refused rather than ignored.
-///
-/// RED-CHECKPOINT STUB: not called by `run` until T037, so a build still works meanwhile.
-///
-/// # Errors
-///
-/// A scale or boost given without `--sparse-encoder`.
-#[allow(dead_code)]
-pub fn sparse_option(_args: &BuildArgs) -> anyhow::Result<Option<xtriever_pipeline::SparseOption>> {
-    bail!("not implemented")
-}
-
 pub fn load_path(flag: &str) -> anyhow::Result<LoadPath> {
     match flag {
         "buffered" => Ok(LoadPath::Buffered),
@@ -453,14 +450,14 @@ mod sparse_tests {
     /// Feature 027 (T037): no `--sparse-encoder`, no option — the build is what it was.
     #[test]
     fn without_the_encoder_flag_there_is_no_option() {
-        assert_eq!(sparse_option(&args(&[])).unwrap(), None);
+        assert_eq!(sparse_option(&args(&[])), None);
     }
 
     /// The encoder alone takes the engine's defaults, never restated here.
     #[test]
     fn the_encoder_alone_takes_the_engines_defaults() {
         assert_eq!(
-            sparse_option(&args(&["--sparse-encoder", "enc"])).unwrap(),
+            sparse_option(&args(&["--sparse-encoder", "enc"])),
             Some(SparseOption::default())
         );
     }
@@ -476,7 +473,7 @@ mod sparse_tests {
             "0.5",
         ]);
         assert_eq!(
-            sparse_option(&a).unwrap(),
+            sparse_option(&a),
             Some(SparseOption {
                 scale: 20,
                 boost: 0.5
@@ -484,11 +481,17 @@ mod sparse_tests {
         );
     }
 
-    /// A scale or boost without an encoder would be silently ignored; it is refused instead.
+    /// A scale or boost without an encoder would be silently ignored; clap refuses it when
+    /// the command line is parsed.
     #[test]
     fn a_scale_or_boost_without_the_encoder_is_refused() {
         for extra in [["--sparse-scale", "20"], ["--sparse-boost", "0.5"]] {
-            let e = sparse_option(&args(&extra)).unwrap_err().to_string();
+            let mut argv = vec!["xtriever", "build", "--out", "target/x"];
+            argv.extend_from_slice(&extra);
+            let e = Cli::try_parse_from(argv)
+                .err()
+                .expect("refused")
+                .to_string();
             assert!(e.contains("--sparse-encoder"), "{e}");
         }
     }

@@ -70,9 +70,14 @@ def document(d):
     )
 
 
-def build(tmp_path, h, reranker=True):
+def build(tmp_path, h, reranker=True, cfg=None, name="idx"):
+    """The fixture built through the wire and committed; `cfg` defaults to the fixture's config."""
     handle = xtriever.IndexHandle.create(
-        str(tmp_path / "idx"), config(h), str(EMBEDDER), str(RERANKER) if reranker else None, xtriever.LoadPath.MMAP
+        str(tmp_path / name),
+        cfg if cfg is not None else config(h),
+        str(EMBEDDER),
+        str(RERANKER) if reranker else None,
+        xtriever.LoadPath.MMAP,
     )
     handle.add([document(d) for d in h["documents"]])
     handle.commit()

@@ -60,14 +60,15 @@ pub struct BuildArgs {
     #[arg(long)]
     pub limit: Option<usize>,
     /// Build a sparse index (Feature 027) with the pinned sparse document encoder in this
-    /// directory. Off by default; pair it with the re-ranker (ADR-0017).
+    /// directory. Off by default; for corpora whose questions are worded unlike their answers
+    /// (FiQA-shaped), searched with the re-ranker (ADR-0017).
     #[arg(long)]
     pub sparse_encoder: Option<PathBuf>,
-    /// The sparse option's scale (needs `--sparse-encoder`; default: the engine's, 10).
-    #[arg(long)]
+    /// The sparse option's scale (default: the engine's); the engine checks its range.
+    #[arg(long, requires = "sparse_encoder")]
     pub sparse_scale: Option<u32>,
-    /// The `_sparse` field's boost (needs `--sparse-encoder`; default: the engine's, 1.0).
-    #[arg(long)]
+    /// The `_sparse` field's boost (default: the engine's); the engine checks it.
+    #[arg(long, requires = "sparse_encoder")]
     pub sparse_boost: Option<f32>,
 }
 

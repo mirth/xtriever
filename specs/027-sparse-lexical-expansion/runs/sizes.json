@@ -1,5 +1,5 @@
 {
-  "note": "Feature 027 T028: the lexical stage's bytes with and without the sparse field (the hybrid-sparse-rerank-v1 and hybrid-baseline-v2 builds; tantivy segment files vary by a few KB between builds of the same documents), the encoding throughput on the build host (10 threads, CPU, buffered load) and the passages truncated to the encoder's 512-token window, as printed by the harness and kept in runs/measure-027.log (reports keep no timings: spec 004 SC-006). SC-005 bound: at most 4x at the default scale (10).",
+  "note": "Feature 027 T028: the lexical stage's bytes with and without the sparse field (the hybrid-sparse-rerank-v1 and hybrid-baseline-v2 builds; two builds of the same documents differ because tantivy's segment layout does \u2014 measured here: 0 bytes on SciFact, 7,898 bytes on NFCorpus and 821,086 bytes (1.3%) on FiQA between the two sparse builds, 326 bytes on FiQA between the two plain ones), the encoding throughput on the build host (10 threads, CPU, buffered load) and the passages truncated to the encoder's 512-token window, as printed by the harness and kept in runs/measure-027.log (reports keep no timings: spec 004 SC-006). SC-005 bound: at most 4x at the default scale (10).",
   "datasets": {
     "scifact": {
       "documents": 5183,
