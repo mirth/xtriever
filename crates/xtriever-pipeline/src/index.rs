@@ -615,6 +615,18 @@ impl HybridIndex {
         Ok(())
     }
 
+    /// A vector the dense stage can store: the embedder's width.
+    fn check_vector(&self, vector: &[f32]) -> Result<()> {
+        if vector.len() == self.embedder.dim() {
+            Ok(())
+        } else {
+            Err(Error::DimensionMismatch {
+                expected: self.embedder.dim(),
+                actual: vector.len(),
+            })
+        }
+    }
+
     /// The expansion of a passage for this index: `None` without the option, the attached
     /// encoder's otherwise — none needed for a passage with no text (see `stage_one`) — and a
     /// sparse index with no encoder attached cannot be added to.
@@ -649,12 +661,7 @@ impl HybridIndex {
         vector: &[f32],
         expansion: Option<&Expansion>,
     ) -> Result<()> {
-        if vector.len() != self.embedder.dim() {
-            return Err(Error::DimensionMismatch {
-                expected: self.embedder.dim(),
-                actual: vector.len(),
-            });
-        }
+        self.check_vector(vector)?;
         let sparse_text = match (&self.descriptor.sparse, expansion) {
             (Some(record), Some(expansion)) => {
                 // Validated either way: an expansion the encoder could not produce is refused.
@@ -744,6 +751,8 @@ impl HybridIndex {
     /// attached; `Error::DimensionMismatch` if a vector is not `embedder.dim()` wide.
     pub fn add_embedded(&mut self, docs: &[(SourceDocument, Vec<f32>)]) -> Result<()> {
         for (doc, vector) in docs {
+            // The caller's vector first: a wrong width must not cost an encoder pass.
+            self.check_vector(vector)?;
             self.check_document(doc)?;
             let passage = self.passage(&doc.fields);
             let expansion = self.expand(&passage)?;

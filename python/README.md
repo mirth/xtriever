@@ -153,7 +153,9 @@ index.search("blue sky", xtriever.SearchOptions(k=3))
   when the counts differ.
 - **Reopen and extend**: `IndexHandle.open(...)` on an existing index is writable when the
   directory can be locked; a directory the process cannot write opens read-only and every
-  write raises `XtrieverError.Io` ("read-only index").
+  write raises `XtrieverError.Io` ("read-only index"). A **sparse** index (below) reopens
+  search-only: adding to it raises `XtrieverError.Model`, because only the handle `create`
+  returned holds the encoder.
 - **Ship**: `index.merge()` commits, compacts the dense vectors (live rows only) and folds the
   lexical stage into one segment; after deletes or replacements the lexical statistics move
   across it, so fused scores can change (dense scores never do).
@@ -179,6 +181,10 @@ index = xtriever.IndexHandle.create("path/to/new-index", config, embedder_dir, r
 index.info().sparse          # SparseInfo(scale=10, boost=1.0, encoder="opensearch-project/…")
 index.info().format_version  # 3 — an engine that cannot search the expansion refuses it
 ```
+
+**Build a sparse index in one go**, adding everything through the handle `create` returned
+(`add` or `add_embedded`, which both expand each passage): a sparse index opened later is
+searched without the encoder and cannot be added to.
 
 **Use it for corpora whose questions are worded unlike their answers** (FiQA-shaped: no titles)
 **and search it with the re-ranker**. Re-ranked, FiQA gained +0.017 nDCG@10 while SciFact and

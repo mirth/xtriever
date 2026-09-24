@@ -80,17 +80,42 @@ The FFI tests' wire helpers moved into `tests/support`.
 - `add_embedded` expands on a sparse index (above), which removes the command line's copy of
   the expansion step and its accessor.
 - Default merging lives in one helper.
-- The owner kept PR C as one pull request (about 1,230 changed lines outside the run
-  records).
+- The owner kept PR C as one pull request.
+
+**Second review round:**
+- Stale docs said `add_embedded` is refused (the pipeline crate's overview, the harness's
+  `ingest` comment), and the Python README did not say a reopened sparse index is
+  search-only. All three are fixed.
+- `wiki build` now validates its configuration before hashing the snapshot, loading a model or
+  writing anything, and `sparse_option` carries the encoder's directory, so there is one
+  condition, not two.
+- `add_embedded` checks a vector's width before running the encoder.
+- The FFI conversion carries the sparse option itself and returns only the encoder's directory.
+- The FFI tests share one fixture builder.
+
+**Size and test order, stated plainly.** This pull request changes about 1,340 lines outside
+the run records, over Rule 3's ~800. The owner reviewed that and kept it as one pull request.
+Rule 4's red checkpoint came first for the planned work (T030–T033), but two behaviour changes
+decided during review arrived with their tests in the same commit:
+- `add_embedded` expanding on a sparse index: `add_embedded_expands_as_add_does`, and the PR B
+  assertion changed from refusal to the missing-encoder `Model` error.
+- The corpus identity hashing the boost as `corpus.json` writes it:
+  `a_sparse_identity_recomputes_from_the_sidecar`.
+
+Rewriting the pushed history to put them first was not worth it. Neither was run against the
+code it replaced, but each fails against it by construction:
+- the first unwraps an `add_embedded` that the old code refused;
+- the second compares with the sidecar's `1.2`, which the old code hashed as
+  `1.2000000476837158`.
 
 **Local gate:**
 
 - fmt, clippy (`-D warnings`), `cargo deny`: pass.
 - iOS, iOS simulator and Android checks: pass. wasm32 fails on `getrandom`/`errno`, as tracked.
-- `cargo nextest run --workspace`: 411 passed (re-run after the review round).
+- `cargo nextest run --workspace`: 412 passed (re-run after the second review round).
 - FFI with models, single-threaded: 26 of 26. Pipeline sparse suite: 15 of 15. Encoder oracle
   and load paths: 9 of 9.
-- Command line: 21 of 21. A 20-article sparse Wikipedia build through the new `add_embedded`
+- Command line: 22 of 22. A 20-article sparse Wikipedia build through the new `add_embedded`
   path (113 passages at 5.0 per second) passes verify.
 - `gen_026` and `gen_027` checks: pass. `check-no-stubs.sh`: pass.
 - Python: 37 of 37.
@@ -109,7 +134,9 @@ The FFI tests' wire helpers moved into `tests/support`.
     requires a `Model` error, and now names the exact reason. It is the only change to an
     existing test's expectation in this pull request.
 - Android package builds, and the Kotlin library tests pass on the emulator. The iOS and
-  Android runs were repeated after the review round, and both pass.
+  Android runs were repeated after the first review round, and both pass. The second round
+  changed no FFI surface, only how `create` assembles the config internally, so they were not
+  repeated. The FFI suite with models (26 of 26) covers that path.
 
 Report: [`specs/027-sparse-lexical-expansion/report.md`](report.md).
 

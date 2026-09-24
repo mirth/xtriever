@@ -117,10 +117,7 @@ pub(crate) fn create(
 ) -> Result<Inner, XtrieverError> {
     // The configuration is checked before any model is loaded: a bad field or sparse option
     // costs nothing and is reported as the `Schema` error it is.
-    let (mut config, sparse) = pipeline_config(config);
-    if let Some(sparse) = &sparse {
-        config.sparse = Some(SparseOption::with_overrides(sparse.scale, sparse.boost));
-    }
+    let (config, encoder_dir) = pipeline_config(config);
     config.validate()?;
     let Models {
         embedder,
@@ -128,10 +125,10 @@ pub(crate) fn create(
         reranker,
     } = load_models(embedder_dir, reranker_dir, load_path)?;
     let dir = std::path::Path::new(index_dir);
-    let index = match sparse {
+    let index = match encoder_dir {
         None => HybridIndex::create(dir, config, Box::new(embedder))?,
-        Some(sparse) => {
-            let encoder = SparseEncoder::load(sparse.encoder_dir.as_ref(), load_path.into())?;
+        Some(encoder_dir) => {
+            let encoder = SparseEncoder::load(encoder_dir.as_ref(), load_path.into())?;
             HybridIndex::create_sparse(dir, config, Box::new(embedder), encoder)?
         }
     };
@@ -215,12 +212,23 @@ impl From<FieldDef> for xtriever_core::FieldDef {
     }
 }
 
-/// The pipeline's configuration from the wire's, and the sparse part apart from it: the option
-/// needs its encoder loaded, which only `create` does, so the conversion hands it back rather
-/// than drop it (a private function, not a `From`, so no caller can lose it by accident).
-fn pipeline_config(c: IndexConfig) -> (HybridConfig, Option<SparseOptionConfig>) {
+/// The pipeline's configuration from the wire's — the sparse option included, its omitted
+/// scale and boost the engine's defaults — and the sparse encoder's directory, which only
+/// `create` loads. A private function, not a `From`, so nothing can take the configuration
+/// without the directory it needs.
+fn pipeline_config(c: IndexConfig) -> (HybridConfig, Option<String>) {
     let to_usize = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
-    let sparse = c.sparse;
+    let (sparse, encoder_dir) = match c.sparse {
+        Some(SparseOptionConfig {
+            encoder_dir,
+            scale,
+            boost,
+        }) => (
+            Some(SparseOption::with_overrides(scale, boost)),
+            Some(encoder_dir),
+        ),
+        None => (None, None),
+    };
     (
         HybridConfig {
             schema: Schema {
@@ -236,10 +244,9 @@ fn pipeline_config(c: IndexConfig) -> (HybridConfig, Option<SparseOptionConfig>)
             rerank_depth: to_usize(c.rerank_depth),
             rerank_mode: c.rerank_mode.map_or_else(Default::default, Into::into),
             dense_compact_dead_share: c.dense_compact_dead_share,
-            // Set by `create` from the returned sparse part, with the encoder it loads.
-            sparse: None,
+            sparse,
         },
-        sparse,
+        encoder_dir,
     )
 }
 

@@ -11,17 +11,13 @@ mod support;
 
 use std::sync::Arc;
 
-use support::{config, document};
+use support::{config, document, s};
 use xtriever_dense::model::SPARSE_IDENTITY;
 use xtriever_dense::sparse::SparseEncoder;
 use xtriever_ffi::{IndexHandle, LoadPath, SearchOptions, SparseInfo, SparseOptionConfig};
 use xtriever_pipeline::{
-    FORMAT_VERSION, HybridConfig, HybridIndex, SPARSE_FORMAT_VERSION, SourceDocument, SparseOption,
+    FORMAT_VERSION, HybridConfig, HybridIndex, SPARSE_FORMAT_VERSION, SparseOption,
 };
-
-fn s(p: &std::path::Path) -> String {
-    p.to_string_lossy().into_owned()
-}
 
 fn sparse_option() -> SparseOptionConfig {
     SparseOptionConfig {
@@ -53,11 +49,6 @@ fn build_wire(dir: &std::path::Path, h: &support::Hybrid) -> Arc<IndexHandle> {
 
 /// The same documents through the pipeline's own `create_sparse`, re-ranker attached.
 fn build_pipeline(dir: &std::path::Path, h: &support::Hybrid) -> HybridIndex {
-    let embedder = xtriever_dense::MiniLmEmbedder::load(
-        &support::embedder_dir(),
-        xtriever_dense::LoadPath::Buffered,
-    )
-    .unwrap();
     let encoder = SparseEncoder::load(
         &support::sparse_encoder_dir(),
         xtriever_dense::LoadPath::Buffered,
@@ -67,18 +58,7 @@ fn build_pipeline(dir: &std::path::Path, h: &support::Hybrid) -> HybridIndex {
         sparse: Some(SparseOption::default()),
         ..HybridConfig::new(h.schema.clone(), h.dense_fields.clone())
     };
-    let mut index = HybridIndex::create_sparse(dir, config, Box::new(embedder), encoder).unwrap();
-    let docs: Vec<SourceDocument> = h
-        .documents
-        .iter()
-        .map(|d| SourceDocument {
-            external_id: d.external_id.clone(),
-            fields: d.fields.clone(),
-            chunk: d.chunk.clone(),
-        })
-        .collect();
-    index.add(&docs).unwrap();
-    index.commit().unwrap();
+    let mut index = support::build_fixture_index_with(dir, config, Some(encoder));
     let reranker = xtriever_rerank::MiniLmCrossEncoder::load(
         &support::reranker_dir(),
         xtriever_rerank::LoadPath::Buffered,

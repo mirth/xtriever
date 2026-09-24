@@ -7,12 +7,8 @@
 
 mod support;
 
-use support::{config, document};
+use support::{config, document, s};
 use xtriever_ffi::{FieldValue, IndexHandle, LoadPath, SearchOptions, XtrieverError};
-
-fn s(p: &std::path::Path) -> String {
-    p.to_string_lossy().into_owned()
-}
 
 fn create(
     dir: &std::path::Path,

@@ -14,6 +14,11 @@ use xtriever_ffi::{
 };
 use xtriever_pipeline::{HybridConfig, HybridIndex, SourceDocument};
 
+/// A path as the wire's `String`.
+pub fn s(p: &Path) -> String {
+    p.to_string_lossy().into_owned()
+}
+
 pub fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -78,12 +83,26 @@ pub fn fixture_docs() -> Hybrid {
 /// Every fixture document embedded with the real embedder (buffered), one commit.
 pub fn build_fixture_index(dir: &Path) -> HybridIndex {
     let h = fixture_docs();
-    let embedder = MiniLmEmbedder::load(&embedder_dir(), LoadPath::Buffered).expect("embedder");
-    let mut index = HybridIndex::create(
+    build_fixture_index_with(
         dir,
         HybridConfig::new(h.schema.clone(), h.dense_fields.clone()),
-        Box::new(embedder),
+        None,
     )
+}
+
+/// As [`build_fixture_index`] with the caller's configuration and, for a sparse one, the sparse
+/// encoder (Feature 027).
+pub fn build_fixture_index_with(
+    dir: &Path,
+    config: HybridConfig,
+    sparse: Option<xtriever_dense::sparse::SparseEncoder>,
+) -> HybridIndex {
+    let h = fixture_docs();
+    let embedder = MiniLmEmbedder::load(&embedder_dir(), LoadPath::Buffered).expect("embedder");
+    let mut index = match sparse {
+        Some(encoder) => HybridIndex::create_sparse(dir, config, Box::new(embedder), encoder),
+        None => HybridIndex::create(dir, config, Box::new(embedder)),
+    }
     .expect("create");
     let docs: Vec<SourceDocument> = h
         .documents
