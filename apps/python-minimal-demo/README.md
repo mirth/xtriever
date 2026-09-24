@@ -40,11 +40,11 @@ fused (lexical + dense), 5 hits
  5. doc-08  score=0.0308  Coral reefs
 
 re-ranked (depth 10), 5 hits
- 1. doc-04  score=0.0328  rerank=8.6443  Tides
- 2. doc-02  score=0.0323  rerank=-1.8167  The water cycle
- 3. doc-09  score=0.0308  rerank=-9.8342  Thunderstorms
- 4. doc-03  score=0.0312  rerank=-10.8323  Bread
- 5. doc-08  score=0.0308  rerank=-10.3801  Coral reefs
+ 1. doc-04  score=0.0328  rerank=8.6505  Tides
+ 2. doc-02  score=0.0323  rerank=-1.8185  The water cycle
+ 3. doc-09  score=0.0308  rerank=-9.8466  Thunderstorms
+ 4. doc-03  score=0.0312  rerank=-10.8343  Bread
+ 5. doc-08  score=0.0308  rerank=-10.3815  Coral reefs
 ```
 
 "why does the sea rise and fall": the fused stage puts *Tides* first on both lexical and
@@ -53,7 +53,9 @@ reading the question against each of the first ten fused candidates, keeps *Tide
 water cycle*, pulls *Thunderstorms* (air that rises) into the head and drops *The Moon*.
 `score` is the engine's fused score (RRF); `rerank` the cross-encoder's logit; the
 re-ranked order is `0.5·minmax(fused) + 0.5·minmax(rerank)` over the head (the engine's
-default since Feature 015).
+default since Feature 015). The output is the eight-bit models' (the default since Feature
+026); with the float re-ranker the logits differ in the third decimal and the order is the
+same.
 
 ## What is left out, and where it lives
 

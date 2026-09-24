@@ -162,6 +162,7 @@ class DemoModel(
         degraded = null,
         rerank = null,
         timeLimitIgnored = false,
+        sparseSkipped = null,
     )
 
     private companion object {

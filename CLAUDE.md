@@ -42,7 +42,12 @@ cargo check --workspace --target wasm32-unknown-unknown   # best-effort, may fai
 python3 reference/gen_026_fixtures.py && python3 reference/gen_026_fixtures.py --check-oracle   # Feature 026: dense goldens and oracle from reference/, exit 1 on any difference
 (cd python && .venv/bin/maturin build) && uv pip install --force-reinstall target/wheels/xtriever-*.whl \
   && python/.venv/bin/pytest python/tests -q                # Feature 011: the Python surface, models present (CI runs only `-m "not models"`)
+scripts/check-demos.sh                                      # every demo built against the engine as it stands: the Python demos' tests, the iOS and Android demos compiled with their tests (no device)
 ```
+
+A change to any binding-visible record (`xtriever-ffi` types) must pass `scripts/check-demos.sh`:
+the demos construct some of those records themselves, and a new field compiles in every library
+while breaking a demo (Feature 027's `StageReport.sparseSkipped` broke the Android demo that way).
 
 Ranking-affecting changes to `lexical` / `dense` / `rerank` / `ltr` / `pipeline` additionally need
 `xtriever-eval` on SciFact / NFCorpus / FiQA, with nDCG@10 and Recall@100 deltas in the PR
