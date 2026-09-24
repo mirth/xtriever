@@ -29,9 +29,13 @@ struct ReadyInfo: Equatable {
     let warmMs: UInt64
     let corpus: CorpusSidecar?
     let attribution: String?
-    /// "Simple English Wikipedia" or "007 fixture (40 documents)".
+    /// "Simple English Wikipedia" or "007 fixture (40 documents)"; display only.
     let indexName: String
     let indexBytes: UInt64
+    /// The Wikipedia index (the whole edition or a slice), not the fixture.
+    let isWikipedia: Bool
+
+    var title: String { isWikipedia ? "Wikipedia" : "Fixture" }
 }
 
 enum PreparationFailure: Equatable {

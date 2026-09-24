@@ -17,7 +17,7 @@ enum Support {
 
     static func skipUnlessWikipedia() throws {
         guard HarnessResources.modelsAreBundled, HarnessResources.wikipediaIsBundled
-        else { throw XCTSkip("Wikipedia index + models not bundled — scripts/build-ios-package.sh --with-models --with-wiki --demo") }
+        else { throw XCTSkip("Wikipedia index + models not bundled — scripts/build-ios-package.sh --with-models --with-wiki (or --with-wiki-slice) --demo") }
     }
 
     /// Poll a main-actor condition until it holds or the timeout passes.

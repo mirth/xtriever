@@ -20,5 +20,9 @@ final class AboutTests: XCTestCase {
         XCTAssertEqual(info.attribution, shipped)
         XCTAssertTrue(shipped.contains("creativecommons.org/licenses/by-sa/4.0"))
         XCTAssertEqual(info.indexName, "Simple English Wikipedia")
+        // A slice (--with-wiki-slice) is Wikipedia too: the title must not fall back to the
+        // fixture's, whatever the corpus is called.
+        XCTAssertTrue(info.isWikipedia)
+        XCTAssertEqual(info.title, "Wikipedia")
     }
 }

@@ -16,6 +16,7 @@ struct AboutView: View {
                     if let corpus = info.corpus {
                         row("edition", corpus.snapshot.edition)
                         row("snapshot", corpus.snapshot.snapshotDate)
+                        if let slice = corpus.sliceNote { row("slice", slice) }
                         row("articles", corpus.counts.articles.formatted())
                         row("selected", corpus.counts.selected.formatted())
                         row("passages", corpus.counts.passages.formatted())

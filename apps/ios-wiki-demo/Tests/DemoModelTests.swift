@@ -35,6 +35,8 @@ final class DemoModelTests: XCTestCase {
         XCTAssertNil(info.corpus, "the fixture has no corpus sidecar")
         XCTAssertNil(info.attribution)
         XCTAssertTrue(info.indexName.contains("fixture"))
+        XCTAssertFalse(info.isWikipedia)
+        XCTAssertEqual(info.title, "Fixture")
     }
 
     func testFusedThenRerankedEqualTheGoldens() async throws {

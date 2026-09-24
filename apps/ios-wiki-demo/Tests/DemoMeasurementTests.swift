@@ -97,7 +97,9 @@ final class DemoMeasurementTests: XCTestCase {
                                         medianTotalMs: median(totals), maxTotalMs: totals.max() ?? 0)
         let env = ProcessInfo.processInfo.environment
         let record = RunRecord(
-            schemaVersion: 2, feature: "009-ios-wiki-demo", corpus: "wikipedia", openedInPlace: true,
+            schemaVersion: 2, feature: "009-ios-wiki-demo",
+            // Without its sidecar a run cannot say how much of the edition it searched.
+            corpus: info.corpus?.runLabel ?? "wikipedia, no corpus sidecar (extent unknown)", openedInPlace: true,
             device: Measure.deviceModel, os: ProcessInfo.processInfo.operatingSystemVersionString,
             thermalState: Measure.thermalState, recordedAt: ISO8601DateFormatter().string(from: Date()),
             build: .init(configuration: Measure.isDebugBuild ? "Debug" : "Release",

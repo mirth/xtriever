@@ -7,7 +7,7 @@
 # Rust; the resources are pinned elsewhere). Feature 007 — replaces the 001 spike's
 # build-ios-harness.sh and encodes the traps that spike recorded (001 report F-004–F-008).
 #
-#     scripts/build-ios-package.sh [--debug] [--with-models] [--with-fixtures] [--with-scifact] [--with-wiki|--with-wiki-dev] [--app] [--demo]
+#     scripts/build-ios-package.sh [--debug] [--with-models] [--with-fixtures] [--with-scifact] [--with-wiki|--with-wiki-slice|--with-wiki-dev] [--app] [--demo]
 #
 #   --with-models    stage both pinned models into the library bundle (~51.5 MB eight-bit, Feature 026; needed by every
 #                    Swift test and by any device run — a device has no host filesystem)
@@ -15,6 +15,8 @@
 #   --with-scifact   stage the SciFact hybrid-rerank index and the measurement queries/truth
 #   --with-wiki      stage the Feature 008 Wikipedia index from target/xt-wiki (index, build
 #                    record, attribution, queries, host goldens); fails over the bundle budget
+#   --with-wiki-slice  the same from target/xt-wiki-slice, a --limit build (the README's is the
+#                    first 3922 articles, 19,998 passages) — a device run without the whole edition
 #   --with-wiki-dev  the same from target/xt-wiki-dev (a --limit build) — simulator work only
 #   --app            regenerate swift/XtrieverHarnessApp/*.xcodeproj (needs xcodegen)
 #   --demo           regenerate apps/ios-wiki-demo/*.xcodeproj — the Feature 009 demo app (needs xcodegen)
@@ -42,6 +44,7 @@ for arg in "$@"; do
         --with-fixtures) with_fixtures=true ;;
         --with-scifact)  with_scifact=true ;;
         --with-wiki)     with_wiki="target/xt-wiki" ;;
+        --with-wiki-slice) with_wiki="target/xt-wiki-slice" ;;
         --with-wiki-dev) with_wiki="target/xt-wiki-dev" ;;
         --app)           with_app=true ;;
         --demo)          with_demo=true ;;
@@ -190,19 +193,37 @@ if [ -n "$with_wiki" ]; then
     wiki="$repo_root/$with_wiki"
     if [ ! -f "$wiki/index/xtriever-pipeline.json" ]; then
         printf 'build-ios-package: FAIL — no Wikipedia index at %s. Build it with:\n' "$wiki" >&2
+        case "$with_wiki" in
+            target/xt-wiki-slice) limit=" --limit 3922" ;;
+            target/xt-wiki-dev) limit=" --limit 2000" ;;
+            *) limit="" ;;
+        esac
         printf '  RAYON_NUM_THREADS=1 cargo run --release -p xtriever-cli -- wiki build --out %s --cache-dir target/xt-wiki-cache%s\n' \
-            "$with_wiki" "$([ "$with_wiki" = target/xt-wiki-dev ] && printf ' --limit 2000')" >&2
+            "$with_wiki" "$limit" >&2
+        printf '  cargo run --release -p xtriever-cli -- wiki expected --index %s/index --out %s/expected.json\n' \
+            "$with_wiki" "$with_wiki" >&2
         exit 1
     fi
     for f in wiki-build.json ATTRIBUTION.txt expected.json; do
         [ -f "$wiki/$f" ] || { printf 'build-ios-package: FAIL — %s/%s missing (run `xtriever wiki expected` for expected.json)\n' "$wiki" "$f" >&2; exit 1; }
     done
+    if [ "$with_wiki" = target/xt-wiki-slice ]; then
+        # The limit the index was built with, as the app reads it — not the README's number.
+        slice_articles="$(plutil -extract partial raw -o - "$wiki/index/corpus.json" 2>/dev/null || true)"
+        if [ -z "$slice_articles" ]; then
+            printf 'build-ios-package: FAIL — %s/index/corpus.json has no article limit: not a --limit build\n' "$wiki" >&2
+            exit 1
+        fi
+    fi
     rm -rf "$resources/wikipedia"; mkdir -p "$resources/wikipedia"
     cp -R "$wiki/index" "$resources/wikipedia/index"
     cp "$wiki/wiki-build.json" "$wiki/ATTRIBUTION.txt" "$wiki/expected.json" "$resources/wikipedia/"
     cp "$repo_root/reference/fixtures/008/queries.json" "$resources/wikipedia/queries.json"
     if [ "$with_wiki" = target/xt-wiki-dev ]; then
         printf '    Wikipedia DEV index staged (%s) — a --limit build; not the artefact\n' "$(du -sh "$resources/wikipedia" | cut -f1)"
+    elif [ "$with_wiki" = target/xt-wiki-slice ]; then
+        printf '    Wikipedia SLICE index staged (%s) — the first %s articles; not the whole edition\n' \
+            "$(du -sh "$resources/wikipedia" | cut -f1)" "$slice_articles"
     else
         printf '    Wikipedia index staged (%s)\n' "$(du -sh "$resources/wikipedia" | cut -f1)"
     fi

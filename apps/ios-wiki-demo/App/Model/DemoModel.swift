@@ -98,7 +98,7 @@ final class DemoModel: ObservableObject {
             : nil
         preparation = .ready(ReadyInfo(info: opened.info, openMs: openMs, warmMs: warmMs, corpus: corpus,
                                        attribution: attribution, indexName: indexName,
-                                       indexBytes: Self.directoryBytes(indexDir)))
+                                       indexBytes: Self.directoryBytes(indexDir), isWikipedia: isWikipedia))
     }
 
     // MARK: search

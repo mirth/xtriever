@@ -3,7 +3,7 @@ import Xtriever
 
 /// Feature 008 US3 — the staged Wikipedia index opens **in place** inside the (read-only)
 /// bundle, searches, and every hit carries a title line, a derivable article URL and chunk
-/// provenance (contracts/artefact.md). Skips unless `--with-wiki` (or `--with-wiki-dev`) staged it.
+/// provenance (contracts/artefact.md). Skips unless `--with-wiki` (or `--with-wiki-slice`, `--with-wiki-dev`) staged it.
 final class WikipediaTests: XCTestCase {
     private struct MeasurementQuery: Decodable { let id: String; let text: String }
 
@@ -11,7 +11,7 @@ final class WikipediaTests: XCTestCase {
         guard HarnessResources.wikipediaIsBundled,
               let i = HarnessResources.wikipediaIndexDirectory,
               let q = HarnessResources.wikipediaQueries
-        else { throw XCTSkip("Wikipedia index not bundled — scripts/build-ios-package.sh --with-models --with-wiki[-dev]") }
+        else { throw XCTSkip("Wikipedia index not bundled — scripts/build-ios-package.sh --with-models --with-wiki (or --with-wiki-slice, --with-wiki-dev)") }
         let queries = try JSONDecoder().decode([MeasurementQuery].self, from: Data(contentsOf: q))
         return (i, queries, try Support.models())
     }

@@ -41,6 +41,23 @@ the cache once built); `--with-wiki-dev` stages a `--limit` build from `target/x
 for simulator work. Without either the app runs against the 40-document 007 fixture
 (`--with-fixtures`) and says so in About. The `.xcodeproj` is generated and gitignored.
 
+**A slice instead of the whole edition.** `--with-wiki-slice` stages the first 3922 articles,
+19,998 passages, from `target/xt-wiki-slice/`: a 36 MB index instead of 585 MB, so the app
+installs and opens in a fraction of the time. The same engine, models and pipeline; fewer
+passages to find answers in. About says so ("slice: first 3922 articles, not the whole
+edition") and a measured run's record says `"corpus": "wikipedia, first 3922 articles"`, so a
+slice's numbers are never read as the whole edition's. The packager reports the limit the
+staged index was built with, and refuses an index at `target/xt-wiki-slice/` built without
+one. Build it once (the first shards come from the full build's embedding cache):
+
+```bash
+RAYON_NUM_THREADS=1 cargo run --release -p xtriever-cli -- wiki build --limit 3922 \
+  --out target/xt-wiki-slice --cache-dir target/xt-wiki-cache
+cargo run --release -p xtriever-cli -- wiki expected --index target/xt-wiki-slice/index \
+  --out target/xt-wiki-slice/expected.json                  # the parity goldens for this slice
+scripts/build-ios-package.sh --with-models --with-fixtures --with-wiki-slice --demo
+```
+
 Since Feature 024 the dense vectors live in `index/dense/manifest.bin` with one row file per
 generation (`vectors.<generation>.bin`) instead of `index/dense/index.bin`, and since Feature
 026 every row is eight-bit (dense format 3): the Wikipedia artefact is 585 MB where it was

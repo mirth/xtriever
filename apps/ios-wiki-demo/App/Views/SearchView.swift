@@ -42,7 +42,7 @@ struct SearchView: View {
                 }
             }
             .animation(.default, value: model.search?.reranked != nil)
-            .navigationTitle(info.indexName == "Simple English Wikipedia" ? "Wikipedia" : "Fixture")
+            .navigationTitle(info.title)
             // The tapped hit travels with the navigation: if re-ranking finishes while the
             // detail is open and the hit drops out of the list, the detail stays as tapped.
             .navigationDestination(for: DisplayedHit.self) { hit in HitDetailView(hit: hit) }
