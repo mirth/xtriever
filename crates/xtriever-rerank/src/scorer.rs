@@ -17,10 +17,10 @@ use tokenizers::Tokenizer;
 use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Budget, Passage, Reranker, Result};
 
+use crate::LoadPath;
 use crate::error::model_err;
-use crate::model::{MODEL_ID, MODEL_ID_Q8, PINNED, PINNED_Q8, Precision};
+use crate::model::{MODEL_ID, MODEL_ID_Q8, PINNED, PINNED_Q8, Precision, read_pinned};
 use crate::quantised_bert::{QuantisedBert, Shape};
-use crate::{LoadPath, bytes};
 use candle_transformers::quantized_var_builder::VarBuilder as QuantisedVarBuilder;
 
 /// The encoder behind the cross-encoder: candle's float BERT, or this crate's over the
@@ -75,11 +75,12 @@ impl MiniLmCrossEncoder {
     /// float model's pooler cut byte for byte) — which one is what the manifest the installation
     /// fetched decided (Feature 026, spec FR-012).
     ///
-    /// Order: the directory's form (exactly one weights file) → every file's size and hash →
-    /// `config.json` parsed and asserted → tokenizer built from the verified bytes → the
-    /// weights' header asserted (safetensors, or GGUF against the pin including the
-    /// classification head) → weights read through `load_path` → encoder, pooler and
-    /// classifier built. Nothing is parsed before its bytes are verified.
+    /// Order: the directory's form (exactly one weights file) → every file read once (the
+    /// weights through `load_path`) and **those bytes** checked, size then hash, in the pin's
+    /// order → `config.json` parsed and asserted → tokenizer built → the weights' header
+    /// asserted (safetensors, or GGUF against the pin including the classification head) →
+    /// encoder, pooler and classifier built. Nothing is parsed before its bytes are verified,
+    /// and what is parsed is exactly what was verified: no file is read twice.
     ///
     /// # Errors
     ///
@@ -105,14 +106,13 @@ impl MiniLmCrossEncoder {
     }
 
     fn load_float(dir: &Path, load_path: LoadPath) -> Result<Self> {
-        crate::model::verify_files(dir)?;
+        let [config_pin, tokenizer_pin, weights_pin] = &PINNED.files;
+        let config_bytes = read_pinned(dir, config_pin, LoadPath::Buffered)?;
+        let tokenizer_bytes = read_pinned(dir, tokenizer_pin, LoadPath::Buffered)?;
+        let weights = read_pinned(dir, weights_pin, load_path)?;
 
-        let config = load_config(dir)?;
-        let tokenizer = load_tokenizer(dir)?;
-
-        let weights_path = dir.join(PINNED.files[2].name);
-        let weights = bytes::read(&weights_path, load_path)
-            .map_err(|e| model_err(format!("cannot read {}: {e}", weights_path.display())))?;
+        let config = load_config(&dir.join(config_pin.name), config_bytes.as_slice())?;
+        let tokenizer = load_tokenizer(&dir.join(tokenizer_pin.name), tokenizer_bytes.as_slice())?;
         assert_weights_header(weights.as_slice())?;
 
         let device = Device::Cpu;
@@ -146,14 +146,14 @@ impl MiniLmCrossEncoder {
     /// for bit); and the pooler, which the artefact lacks, from `pooler.safetensors`, the pinned
     /// float model's own two tensors (owner's decision, 2026-09-21).
     fn load_eight_bit(dir: &Path, load_path: LoadPath) -> Result<Self> {
-        crate::model::verify_files_q8(dir)?;
+        let [config_pin, tokenizer_pin, weights_pin, pooler_pin] = &PINNED_Q8.files;
+        let config_bytes = read_pinned(dir, config_pin, LoadPath::Buffered)?;
+        let tokenizer_bytes = read_pinned(dir, tokenizer_pin, LoadPath::Buffered)?;
+        let weights = read_pinned(dir, weights_pin, load_path)?;
+        let pooler_bytes = read_pinned(dir, pooler_pin, load_path)?;
 
-        let config = load_config(dir)?;
-        let tokenizer = load_tokenizer(dir)?;
-
-        let weights_path = dir.join(PINNED_Q8.files[2].name);
-        let weights = bytes::read(&weights_path, load_path)
-            .map_err(|e| model_err(format!("cannot read {}: {e}", weights_path.display())))?;
+        let config = load_config(&dir.join(config_pin.name), config_bytes.as_slice())?;
+        let tokenizer = load_tokenizer(&dir.join(tokenizer_pin.name), tokenizer_bytes.as_slice())?;
         let header = crate::model::checked_gguf_header(weights.as_slice())?;
         // The pinned configuration is the one source of the layer-norm epsilon; a file that
         // declares a different one is refused naming both, like every other pinned field.
@@ -176,9 +176,6 @@ impl MiniLmCrossEncoder {
             .map_err(|e| model_err(format!("cannot build the eight-bit encoder: {e}")))?;
         let classifier = classifier_from_gguf(&vb, &device)?;
 
-        let pooler_path = dir.join(PINNED_Q8.files[3].name);
-        let pooler_bytes = bytes::read(&pooler_path, load_path)
-            .map_err(|e| model_err(format!("cannot read {}: {e}", pooler_path.display())))?;
         let vb = VarBuilder::from_slice_safetensors(pooler_bytes.as_slice(), DTYPE, &device)
             .map_err(|e| model_err(format!("cannot load the pooler: {e}")))?;
         let pooler = candle_nn::linear(PINNED.hidden, PINNED.hidden, vb.pp("bert.pooler.dense"))
@@ -316,14 +313,13 @@ fn classifier_from_gguf(vb: &QuantisedVarBuilder, device: &Device) -> Result<Lin
     Ok(Linear::new(weight, Some(bias)))
 }
 
-/// Parse and assert `config.json` (FR-002). The bytes were verified by `verify_files`.
-fn load_config(dir: &Path) -> Result<Config> {
-    let path = dir.join(PINNED.files[0].name);
-    let text = std::fs::read_to_string(&path)
+/// Parse and assert `config.json` (FR-002) from its verified bytes; `path` names it in errors.
+fn load_config(path: &Path, bytes: &[u8]) -> Result<Config> {
+    let text = std::str::from_utf8(bytes)
         .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
-    let config: Config = serde_json::from_str(&text)
+    let config: Config = serde_json::from_str(text)
         .map_err(|e| model_err(format!("cannot parse {}: {e}", path.display())))?;
-    let raw: serde_json::Value = serde_json::from_str(&text)
+    let raw: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| model_err(format!("cannot parse {}: {e}", path.display())))?;
 
     let assert = |name: &str, actual: usize, expected: usize| {
@@ -380,11 +376,8 @@ fn load_config(dir: &Path) -> Result<Config> {
 
 /// Build the tokenizer from the verified bytes with the reference's truncation: `longest_first`
 /// at 512 (the `tokenizers` default strategy), no padding (research D4).
-fn load_tokenizer(dir: &Path) -> Result<Tokenizer> {
-    let path = dir.join(PINNED.files[1].name);
-    let bytes = std::fs::read(&path)
-        .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
-    let mut tokenizer = Tokenizer::from_bytes(&bytes)
+fn load_tokenizer(path: &Path, bytes: &[u8]) -> Result<Tokenizer> {
+    let mut tokenizer = Tokenizer::from_bytes(bytes)
         .map_err(|e| model_err(format!("cannot load {}: {e}", path.display())))?;
     tokenizer
         .with_truncation(Some(TruncationParams {

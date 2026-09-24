@@ -109,7 +109,8 @@ rate. The packagers never stage the encoder, which a test guards.
 
 - The embedder's and the re-ranker's loaders verify a file's hash and then read it again to
   parse; the sparse encoder reads once (`model::read_pinned`). Closing that gap touches
-  `xtriever-rerank`.
+  `xtriever-rerank`. **Closed on 2026-09-24:** both loaders now read each file once and parse
+  the bytes they checked.
 - A sparse command-line build caches its embeddings but not its expansions: an interrupted
   sparse build encodes every passage again. Nobody builds the full edition sparse (see below),
   and a slice takes minutes, so the cache was not built.

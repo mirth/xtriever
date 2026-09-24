@@ -31,13 +31,34 @@ enum Support {
     }
     struct WaitTimeout: Error {}
 
+    /// How far a re-rank score may be from the host's golden. On the simulator (the host's own
+    /// processor) nothing: bit-exact. On a phone the eight-bit re-ranker's scores differ from the
+    /// host's in the last bits — at most 3.8e-6 on an iPhone 16e, 6.7e-6 on the Android emulator
+    /// (Feature 026 report, F-007) — and the owner accepted 1e-5 there. Ids, order and every
+    /// other score stay exact on both.
+    #if targetEnvironment(simulator)
+    static let rerankTolerance: Float = 0
+    #else
+    static let rerankTolerance: Float = 1e-5
+    #endif
+
     /// Ids, order and score bits exactly (SC-003): the app must not transform the engine's hits.
+    /// Re-rank scores within `rerankTolerance`.
     static func assertHitsEqualGoldens(_ hits: [Hit], _ want: Expected.GoldenResponse, _ label: String,
                                        file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(hits.map(\.externalId), want.hits.map(\.externalId), "\(label): ids/order", file: file, line: line)
         for (g, w) in zip(hits, want.hits) {
             XCTAssertEqual(String(format: "%016llx", g.score.bitPattern), w.scoreBits, "\(label) \(w.externalId): score bits", file: file, line: line)
-            XCTAssertEqual(g.rerankScore.map { String(format: "%08x", $0.bitPattern) }, w.rerankScoreBits, "\(label) \(w.externalId): rerank bits", file: file, line: line)
+            if rerankTolerance == 0 {
+                XCTAssertEqual(g.rerankScore.map { String(format: "%08x", $0.bitPattern) }, w.rerankScoreBits, "\(label) \(w.externalId): rerank bits", file: file, line: line)
+            } else {
+                switch (g.rerankScore, w.rerankScoreBits.flatMap { UInt32($0, radix: 16) }) {
+                case let (got?, want?):
+                    XCTAssertLessThanOrEqual(abs(got - Float(bitPattern: want)), rerankTolerance, "\(label) \(w.externalId): rerank score", file: file, line: line)
+                case (nil, nil): break
+                default: XCTFail("\(label) \(w.externalId): re-rank score present on one side only", file: file, line: line)
+                }
+            }
             XCTAssertEqual(g.explain?.bm25Score.map { String(format: "%08x", $0.bitPattern) }, w.bm25ScoreBits, "\(label) \(w.externalId): bm25 bits", file: file, line: line)
             XCTAssertEqual(g.explain?.denseScore.map { String(format: "%08x", $0.bitPattern) }, w.denseScoreBits, "\(label) \(w.externalId): dense bits", file: file, line: line)
         }

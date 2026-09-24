@@ -3,7 +3,7 @@
 **Feature**: 026 · **Branches**: `026-eight-bit-precision` (PR A, #30), `026-eight-bit-precision-b`
 (PR B, #31), `026-eight-bit-precision-c` (PR C) · **Status**: done — eight-bit vectors and
 eight-bit model artefacts end to end, quality within the gate on all three datasets, parity on
-every platform measured; the phone itself unmeasured (no device)
+every platform measured; the phone measured after the feature merged (2026-09-24, below)
 
 ## Verdict
 
@@ -105,7 +105,13 @@ minutes) and its host goldens, the host measurement.
 | host, full corpus | `runs/measure-…T014434Z….json` | 800 of 800 hits bit-identical |
 | Android emulator, library fixture | instrumented tests | 6 of 6 |
 | Android emulator, 2,000-article slice | `runs/android-sdk_gphone64_arm64-….json` | 800 of 800, re-rank within 6.7e-6 |
-| iOS device and simulator | — | not run: no device (owner) |
+| iOS device, full corpus | `runs/iPhone17,5-20260924T053922-….json` | measurement PASS; no parity comparison in the demo's run |
+| iOS device, 40-document fixture | the demo's `DemoModelTests` | ids, order, lexical, dense and fused bits identical; re-rank within 3.8e-6 (F-007) |
+| iOS simulator, fixture and 3,922-article slice | the demo's tests | bit-identical, 21 of 21 |
+| Android emulator, 2,000-article slice, after Feature 027 | `runs/android-sdk_gphone64_arm64-20260924T054727Z-….json` | 800 of 800, re-rank within 6.7e-6 again |
+
+The iOS rows were added on 2026-09-24, after the feature merged: there was no device while it
+was built.
 
 **The host record carries the ceiling's own counter beside resident size** (the demo's
 `measure`, Feature 019's record contract amended): `peakBytes` and `underCeiling` keep their
@@ -127,6 +133,22 @@ prints in decimal megabytes, the ceiling's unit.
 
 The fused search roughly halves, consistent with the scan reading a quarter of the bytes. The build is no faster:
 it embeds one text at a time on about four cores, which neither format nor precision changes.
+
+**On the phone** (iPhone 16e, the demo app in Release, re-rank depth 10, 20 measurement
+queries; measured 2026-09-24 against Feature 018's float-model record on the same phone):
+
+| | float models, format 2 (018) | eight-bit models, format 3 | the same, 3,922-article slice |
+|---|---|---|---|
+| record | `specs/018-…/runs/iPhone17,5-20260916T192434-….json` | `runs/iPhone17,5-20260924T053922-….json` | `runs/iPhone17,5-20260924T103751-….json` |
+| passages | 427,947 | 427,947 | 19,998 |
+| peak `phys_footprint` (600 MB ceiling) | 305.0 MB | 335.4 MB | 296.5 MB |
+| median fused / re-ranked / total | 341.5 / 1,369 / 1,704.5 ms | 200.5 / 1,213 / 1,408.5 ms | 156 / 1,287 / 1,452.5 ms |
+| index open | 760 ms | 736 ms | 452 ms |
+
+The phone agrees with the host: the fused search is 41% faster, and the whole search 17%, under
+the ceiling with 265 MB to spare. The slice (the demo's `--with-wiki-slice`) opens faster and
+fuses faster; the re-ranker's ten calls, which do not depend on the corpus's size, are most of
+every search.
 
 ## Findings
 
@@ -150,9 +172,16 @@ it embeds one text at a time on about four cores, which neither format nor preci
 - **F-005 — candle's eight-bit kernel is built for one token at a time**: 442 ms per 256-token
   embedding against 125 ms for the float model. A kernel of our own is out of scope (Principle I).
 - **F-006 — The corpus build is no faster**: 12.4 h, embedding one passage at a time.
+- **F-007 — On the phone, the eight-bit re-ranker's scores differ from the host's in the last
+  bits** (found 2026-09-24, the first device run since this feature): at most 3.8e-6 on the
+  40-document fixture, with ids, order and every other score bit-identical. The same size as the
+  Android emulator's 6.7e-6. The demo's golden test demanded identical bits everywhere and failed
+  on the phone; by the owner's decision it now allows 1e-5 on re-rank scores on a device, and
+  stays bit-exact on the simulator. The package's device measurement already allowed 1e-3.
 
 ## Deliberately not done
 
 No rescoring pass over float vectors (owner: the measured 0.0006 was accepted for a small file),
 no four-bit, no neural accelerator, no arbitrary user-supplied models, no eight-bit kernel of our
-own, and no device measurement — there was no device.
+own. No device measurement while the feature was built — there was no device; the phone was
+measured afterwards (above).

@@ -52,8 +52,9 @@ pub(crate) fn read(path: &Path, load_path: LoadPath) -> std::io::Result<Bytes> {
 pub(crate) fn map_readonly(file: &std::fs::File) -> std::io::Result<memmap2::Mmap> {
     // SAFETY (ADR-0009; ADR-0007 condition 2). Requirement: the mapped file is not modified or
     // truncated for the lifetime of the map. What this crate guarantees: the weights are a
-    // read-only resource, opened after `model::verify_files` has checked their size and hash,
-    // and nothing in this crate ever writes them. What this crate cannot guarantee and
+    // read-only resource whose size is checked before the map and whose hash is checked over
+    // the mapped bytes before anything parses them (`model::read_pinned`), and nothing in this
+    // crate ever writes them. What this crate cannot guarantee and
     // documents as the caller's precondition on `LoadPath::Mmap`: that no *other* process
     // modifies or truncates the file meanwhile. The handle is read-only, so nothing through it
     // can write.

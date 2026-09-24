@@ -15,10 +15,10 @@ use tokenizers::utils::padding::{PaddingParams, PaddingStrategy};
 use tokenizers::utils::truncation::TruncationParams;
 use xtriever_core::{Embedder, Metric, Result, TextKind, Vector};
 
+use crate::LoadPath;
 use crate::error::model_err;
-use crate::model::{FINGERPRINT, FINGERPRINT_Q8, PINNED, PINNED_Q8, Precision};
+use crate::model::{FINGERPRINT, FINGERPRINT_Q8, PINNED, PINNED_Q8, Precision, read_pinned};
 use crate::quantised_bert::{QuantisedBert, Shape};
-use crate::{LoadPath, bytes};
 use candle_transformers::quantized_var_builder::VarBuilder as QuantisedVarBuilder;
 
 /// The encoder behind the embedder: candle's float BERT, or this crate's over the eight-bit
@@ -72,10 +72,11 @@ impl MiniLmEmbedder {
     /// (the same configuration and tokenizer beside the pinned GGUF) — which one is what the
     /// manifest the installation fetched decided (Feature 026, spec FR-012).
     ///
-    /// Order: the directory's form (exactly one weights file) → every file's size and hash →
-    /// `config.json` parsed and asserted → tokenizer built from the verified bytes → the
-    /// weights' header asserted → weights loaded through `load_path` → model built. Nothing is
-    /// parsed before its bytes are verified.
+    /// Order: the directory's form (exactly one weights file) → every file read once (the
+    /// weights through `load_path`) and **those bytes** checked, size then hash, in the pin's
+    /// order → `config.json` parsed and asserted → tokenizers built → the weights' header
+    /// asserted → model built. Nothing is parsed before its bytes are verified, and what is
+    /// parsed is exactly what was verified: no file is read twice.
     ///
     /// # Errors
     ///
@@ -101,14 +102,15 @@ impl MiniLmEmbedder {
     }
 
     fn load_float(dir: &Path, load_path: LoadPath) -> Result<Self> {
-        crate::model::verify_files(dir)?;
+        let [config_pin, tokenizer_pin, weights_pin] = &PINNED.files;
+        let config_bytes = read_pinned(dir, config_pin, LoadPath::Buffered, model_err)?;
+        let tokenizer_bytes = read_pinned(dir, tokenizer_pin, LoadPath::Buffered, model_err)?;
+        let weights = read_pinned(dir, weights_pin, load_path, model_err)?;
 
-        let config = load_config(dir)?;
-        let tokenizer = load_tokenizer(dir)?;
-        let counter = load_counter(dir)?;
-
-        let weights_path = dir.join(PINNED.files[2].name);
-        let weights = bytes::read(&weights_path, load_path)?;
+        let config = load_config(&dir.join(config_pin.name), config_bytes.as_slice())?;
+        let tokenizer_path = dir.join(tokenizer_pin.name);
+        let tokenizer = load_tokenizer(&tokenizer_path, tokenizer_bytes.as_slice())?;
+        let counter = load_counter(&tokenizer_path, tokenizer_bytes.as_slice())?;
         assert_weights_header(weights.as_slice())?;
 
         let device = Device::Cpu;
@@ -137,14 +139,15 @@ impl MiniLmEmbedder {
     /// candle copies every tensor into its own storage either way, as it does for the float
     /// weights.
     fn load_eight_bit(dir: &Path, load_path: LoadPath) -> Result<Self> {
-        crate::model::verify_files_q8(dir)?;
+        let [config_pin, tokenizer_pin, weights_pin] = &PINNED_Q8.files;
+        let config_bytes = read_pinned(dir, config_pin, LoadPath::Buffered, model_err)?;
+        let tokenizer_bytes = read_pinned(dir, tokenizer_pin, LoadPath::Buffered, model_err)?;
+        let weights = read_pinned(dir, weights_pin, load_path, model_err)?;
 
-        let config = load_config(dir)?;
-        let tokenizer = load_tokenizer(dir)?;
-        let counter = load_counter(dir)?;
-
-        let weights_path = dir.join(PINNED_Q8.files[2].name);
-        let weights = bytes::read(&weights_path, load_path)?;
+        let config = load_config(&dir.join(config_pin.name), config_bytes.as_slice())?;
+        let tokenizer_path = dir.join(tokenizer_pin.name);
+        let tokenizer = load_tokenizer(&tokenizer_path, tokenizer_bytes.as_slice())?;
+        let counter = load_counter(&tokenizer_path, tokenizer_bytes.as_slice())?;
         let header = crate::model::checked_gguf_header(weights.as_slice())?;
         // The pinned configuration is the one source of the layer-norm epsilon; a file that
         // declares a different one is refused naming both, like every other pinned field.
@@ -322,14 +325,13 @@ impl Embedder for MiniLmEmbedder {
     }
 }
 
-/// Parse and assert `config.json` (FR-002). The bytes were verified by `verify_files`.
-fn load_config(dir: &Path) -> Result<Config> {
-    let path = dir.join(PINNED.files[0].name);
-    let text = std::fs::read_to_string(&path)
+/// Parse and assert `config.json` (FR-002) from its verified bytes; `path` names it in errors.
+fn load_config(path: &Path, bytes: &[u8]) -> Result<Config> {
+    let text = std::str::from_utf8(bytes)
         .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
-    let config: Config = serde_json::from_str(&text)
+    let config: Config = serde_json::from_str(text)
         .map_err(|e| model_err(format!("cannot parse {}: {e}", path.display())))?;
-    let raw: serde_json::Value = serde_json::from_str(&text)
+    let raw: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| model_err(format!("cannot parse {}: {e}", path.display())))?;
 
     let assert = |name: &str, actual: usize, expected: usize| {
@@ -364,11 +366,8 @@ fn load_config(dir: &Path) -> Result<Config> {
 /// The counting tokenizer: the verified `tokenizer.json` with truncation and padding removed
 /// (`Tokenizer::with_truncation(None)`, `with_padding(None)`), so an encoding's length is the
 /// text's true position count (Feature 008 D7).
-fn load_counter(dir: &Path) -> Result<Tokenizer> {
-    let path = dir.join(PINNED.files[1].name);
-    let bytes = std::fs::read(&path)
-        .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
-    let mut tokenizer = Tokenizer::from_bytes(&bytes)
+fn load_counter(path: &Path, bytes: &[u8]) -> Result<Tokenizer> {
+    let mut tokenizer = Tokenizer::from_bytes(bytes)
         .map_err(|e| model_err(format!("cannot load {}: {e}", path.display())))?;
     tokenizer
         .with_truncation(None)
@@ -379,11 +378,8 @@ fn load_counter(dir: &Path) -> Result<Tokenizer> {
 
 /// Build the tokenizer from the verified bytes with the sentence-transformers overrides:
 /// truncation and fixed padding at `max_tokens` (`tokenizer.json` itself ships 128 — 001 D6).
-fn load_tokenizer(dir: &Path) -> Result<Tokenizer> {
-    let path = dir.join(PINNED.files[1].name);
-    let bytes = std::fs::read(&path)
-        .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
-    let mut tokenizer = Tokenizer::from_bytes(&bytes)
+fn load_tokenizer(path: &Path, bytes: &[u8]) -> Result<Tokenizer> {
+    let mut tokenizer = Tokenizer::from_bytes(bytes)
         .map_err(|e| model_err(format!("cannot load {}: {e}", path.display())))?;
     tokenizer
         .with_truncation(Some(TruncationParams {

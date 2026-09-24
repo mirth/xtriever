@@ -93,8 +93,8 @@ pub(crate) fn map_readonly(
     // SAFETY (ADR-0007 condition 2, as amended by ADR-0013). Requirement: the mapped bytes are
     // not modified or truncated for the lifetime of the map. What this crate guarantees: it
     // never modifies a mapped byte — a weights file is opened read-only and its bytes checked
-    // against the pin, either before the map (`model::verify_files`, the embedder) or over the
-    // mapped bytes themselves (`model::read_pinned`, the sparse encoder, Feature 027); a row file `vectors.<g>.bin` is mapped over exactly its committed
+    // against the pin over the mapped bytes themselves (`model::read_pinned`: the sparse
+    // encoder since Feature 027, the embedder since); a row file `vectors.<g>.bin` is mapped over exactly its committed
     // rows (`len` = the manifest's `rows × row_bytes`, never the file's length), and the crate
     // only ever *extends* it past that committed length (`FlatIndex::commit`) or *replaces* it
     // by `rename` (`FlatIndex::compact`), so an inode that has been mapped keeps its mapped

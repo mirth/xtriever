@@ -284,16 +284,7 @@ fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {
     use sha2::{Digest, Sha256};
 
     let path = dir.join(pin.name);
-    let size = std::fs::metadata(&path)
-        .map_err(|e| model_err(format!("cannot stat {}: {e}", path.display())))?
-        .len();
-    if size != pin.bytes {
-        return Err(model_err(format!(
-            "{} is {size} bytes, expected exactly {} bytes",
-            path.display(),
-            pin.bytes
-        )));
-    }
+    check_size(&path, pin)?;
     let mut file = std::fs::File::open(&path)
         .map_err(|e| model_err(format!("cannot open {}: {e}", path.display())))?;
     let mut hasher = Sha256::new();
@@ -306,11 +297,56 @@ fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {
         }
         hasher.update(&buf[..read]);
     }
-    let digest: String = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    check_sha256(&path, &hex(&hasher.finalize()), pin)
+}
+
+/// Read one pinned file whole through `load_path` and check **those bytes** — size, then SHA-256
+/// — before returning them, so what the loader parses is exactly what was verified and no file
+/// is read twice (the dense crate's `model::read_pinned`, the same contract). The size is checked
+/// from the metadata first, so a wrong file is refused before it is read.
+///
+/// # Errors
+///
+/// `Error::Model` naming the file and both sizes or both hashes, or why it could not be read.
+pub(crate) fn read_pinned(
+    dir: &Path,
+    pin: &PinnedFile,
+    load_path: crate::LoadPath,
+) -> xtriever_core::Result<crate::bytes::Bytes> {
+    use sha2::{Digest, Sha256};
+
+    let path = dir.join(pin.name);
+    check_size(&path, pin)?;
+    let bytes = crate::bytes::read(&path, load_path)
+        .map_err(|e| model_err(format!("cannot read {}: {e}", path.display())))?;
+    let slice = bytes.as_slice();
+    if slice.len() as u64 != pin.bytes {
+        return Err(model_err(format!(
+            "{} is {} bytes, expected exactly {} bytes",
+            path.display(),
+            slice.len(),
+            pin.bytes
+        )));
+    }
+    check_sha256(&path, &hex(&Sha256::digest(slice)), pin)?;
+    Ok(bytes)
+}
+
+fn check_size(path: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {
+    let size = std::fs::metadata(path)
+        .map_err(|e| model_err(format!("cannot stat {}: {e}", path.display())))?
+        .len();
+    if size != pin.bytes {
+        return Err(model_err(format!(
+            "{} is {size} bytes, expected exactly {} bytes",
+            path.display(),
+            pin.bytes
+        )));
+    }
+    Ok(())
+}
+
+fn check_sha256(path: &Path, digest: &str, pin: &PinnedFile) -> xtriever_core::Result<()> {
     if digest != pin.sha256 {
         return Err(model_err(format!(
             "{} has sha256 {digest}, expected {}",
@@ -319,4 +355,8 @@ fn verify_file(dir: &Path, pin: &PinnedFile) -> xtriever_core::Result<()> {
         )));
     }
     Ok(())
+}
+
+fn hex(digest: &[u8]) -> String {
+    digest.iter().map(|b| format!("{b:02x}")).collect()
 }
