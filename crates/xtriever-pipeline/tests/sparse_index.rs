@@ -256,8 +256,8 @@ fn a_sparse_index_searches_with_its_expansion_and_reopens_without_the_encoder() 
     assert_eq!(all_bits(&reopened, &h), before);
 }
 
-/// Adding needs the encoder; `add_embedded` has no expansion to write; a document may not
-/// supply the reserved field itself.
+/// Adding needs the encoder, through `add` or `add_embedded` alike; a document may not supply
+/// the reserved field itself.
 #[test]
 #[ignore = "needs the sparse encoder"]
 fn a_sparse_index_refuses_additions_it_cannot_expand() {
@@ -274,9 +274,10 @@ fn a_sparse_index_refuses_additions_it_cannot_expand() {
         }
         other => panic!("expected Model, got {other:?}"),
     }
+    // Since PR C's review, `add_embedded` expands as `add` does, so it needs the encoder too.
     match index.add_embedded(&[(doc.clone(), h.documents[0].vector.clone())]) {
-        Err(Error::Schema(m)) => assert!(m.contains("add_encoded"), "{m}"),
-        other => panic!("expected Schema, got {other:?}"),
+        Err(Error::Model { model, .. }) => assert_eq!(model, SPARSE_MODEL_NAME),
+        other => panic!("expected Model, got {other:?}"),
     }
 
     index.set_sparse_encoder(Some(encoder())).unwrap();
@@ -289,6 +290,34 @@ fn a_sparse_index_refuses_additions_it_cannot_expand() {
         Err(Error::Schema(m)) => assert!(m.contains(SPARSE_FIELD), "{m}"),
         other => panic!("expected Schema, got {other:?}"),
     }
+}
+
+/// PR C review: `add_embedded` with the encoder attached expands every passage as `add` does,
+/// so caller-supplied vectors and a sparse index give the index `add` builds.
+#[test]
+#[ignore = "needs the sparse encoder"]
+fn add_embedded_expands_as_add_does() {
+    let h = hybrid();
+    let by_add = tempfile::tempdir().unwrap();
+    let expected = all_bits(&build_sparse(by_add.path(), &h), &h);
+
+    let embedder = TableEmbedder::from_fixture(&h);
+    let embedded: Vec<(SourceDocument, Vec<f32>)> = h
+        .documents
+        .iter()
+        .map(|d| (d.source(), embedder_vector(&embedder, &d.passage)))
+        .collect();
+    let by_vectors = tempfile::tempdir().unwrap();
+    let mut index = HybridIndex::create_sparse(
+        by_vectors.path(),
+        sparse_config(&h, SparseOption::default()),
+        support::fixture_embedder(&h),
+        encoder(),
+    )
+    .unwrap();
+    index.add_embedded(&embedded).unwrap();
+    index.commit().unwrap();
+    assert_eq!(all_bits(&index, &h), expected);
 }
 
 /// `add_encoded` with the encoder's own expansions builds the same index `add` does; an

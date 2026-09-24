@@ -83,6 +83,19 @@ pub struct SparseOption {
     pub boost: f32,
 }
 
+impl SparseOption {
+    /// The engine's defaults, with a caller's scale and boost where given — the one place a
+    /// surface's optional values meet the defaults (the command line's flags, the FFI's config).
+    #[must_use]
+    pub fn with_overrides(scale: Option<u32>, boost: Option<f32>) -> Self {
+        let defaults = Self::default();
+        Self {
+            scale: scale.unwrap_or(defaults.scale),
+            boost: boost.unwrap_or(defaults.boost),
+        }
+    }
+}
+
 impl Default for SparseOption {
     /// The spike's settings: scale 10, boost 1.0.
     fn default() -> Self {

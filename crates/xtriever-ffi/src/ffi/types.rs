@@ -279,7 +279,10 @@ pub struct IndexConfig {
     pub dense_compact_dead_share: Option<f32>,
     /// Sparse lexical expansion (Feature 027): `None` (the default) changes nothing; set, the
     /// index is created sparse with the encoder at `encoder_dir` (build host only) attached, so
-    /// the handle can `add` at once. An opened sparse index needs none of it. **Use it for
+    /// **the handle `create` returns** can `add` and `add_embedded` (each passage is expanded).
+    /// A sparse index opened later needs nothing to be searched, but cannot be added to: the
+    /// encoder is not part of the index, and `add` / `add_embedded` there are `Model` errors.
+    /// Build a sparse index in one go, from the handle `create` returned. **Use it for
     /// corpora whose questions are worded unlike their answers (FiQA-shaped: no titles), and
     /// search it with the re-ranker**: re-ranked, FiQA gained +0.017 nDCG@10 and SciFact and
     /// NFCorpus held within 0.005; without re-ranking SciFact and NFCorpus lost 0.006–0.007

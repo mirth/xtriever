@@ -77,7 +77,8 @@ size.
 only (ADR-0016, accepted). `search` spells the user's text fields out and adds one `_sparse`
 term per kept query token. A query the query side cannot tokenise degrades to the text fields
 (`StageReport::sparse_skipped`). A document with no text has no expansion. `add` needs the
-encoder, `add_embedded` is refused, and `add_encoded` takes cached expansions. The harness gained
+encoder and `add_encoded` takes cached expansions; `add_embedded` was refused on a sparse
+index until PR C's review, and now expands with the attached encoder, as `add` does. The harness gained
 `hybrid-sparse-v1`, `hybrid-sparse-rerank-v1` and a resumable, per-recipe sparse cache. Seven
 review rounds and one Copilot round. The measurement moved to PR C by the owner's decision.
 
@@ -109,6 +110,9 @@ rate. The packagers never stage the encoder, which a test guards.
 - The embedder's and the re-ranker's loaders verify a file's hash and then read it again to
   parse; the sparse encoder reads once (`model::read_pinned`). Closing that gap touches
   `xtriever-rerank`.
+- A sparse command-line build caches its embeddings but not its expansions: an interrupted
+  sparse build encodes every passage again. Nobody builds the full edition sparse (see below),
+  and a slice takes minutes, so the cache was not built.
 - The lexical stage reads `Match(None, …)` as every indexed text field, `_sparse` included. The
   pipeline spells the user's fields out instead. A schema flag keeping a field out of default
   matching would be the cleaner fix; it changes a core type and needs its own ADR (ADR-0016,

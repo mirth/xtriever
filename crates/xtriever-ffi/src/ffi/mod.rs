@@ -116,17 +116,20 @@ impl IndexHandle {
     }
 
     /// Stage documents, embedded by the index's embedder; a known id replaces. Visible to
-    /// `search` and `contains` after `commit`.
+    /// `search` and `contains` after `commit`. On a sparse index (Feature 027) each passage is
+    /// also expanded — only on the handle `create` returned, which holds the encoder.
     ///
     /// # Errors
     ///
-    /// `Schema` (empty id, a value the schema rejects), `Model`, the stages' errors; `Io`
-    /// "read-only index" on a handle the process could not lock.
+    /// `Schema` (empty id, a value the schema rejects), `Model` (including a sparse index
+    /// opened with `open`, which holds no encoder), the stages' errors; `Io` "read-only index"
+    /// on a handle the process could not lock.
     pub fn add(&self, docs: Vec<Document>) -> Result<(), XtrieverError> {
         crate::index::add(&self.inner, docs)
     }
 
-    /// As [`add`](Self::add) with caller-supplied vectors, one per document in order.
+    /// As [`add`](Self::add) with caller-supplied vectors, one per document in order; on a
+    /// sparse index each passage is expanded as `add` expands it.
     ///
     /// # Errors
     ///

@@ -115,22 +115,23 @@ pub(crate) fn create(
     reranker_dir: Option<&str>,
     load_path: LoadPath,
 ) -> Result<Inner, XtrieverError> {
+    // The configuration is checked before any model is loaded: a bad field or sparse option
+    // costs nothing and is reported as the `Schema` error it is.
+    let (mut config, sparse) = pipeline_config(config);
+    if let Some(sparse) = &sparse {
+        config.sparse = Some(SparseOption::with_overrides(sparse.scale, sparse.boost));
+    }
+    config.validate()?;
     let Models {
         embedder,
         embedder_load,
         reranker,
     } = load_models(embedder_dir, reranker_dir, load_path)?;
-    let (mut config, sparse) = pipeline_config(config);
     let dir = std::path::Path::new(index_dir);
     let index = match sparse {
         None => HybridIndex::create(dir, config, Box::new(embedder))?,
         Some(sparse) => {
             let encoder = SparseEncoder::load(sparse.encoder_dir.as_ref(), load_path.into())?;
-            let defaults = SparseOption::default();
-            config.sparse = Some(SparseOption {
-                scale: sparse.scale.unwrap_or(defaults.scale),
-                boost: sparse.boost.unwrap_or(defaults.boost),
-            });
             HybridIndex::create_sparse(dir, config, Box::new(embedder), encoder)?
         }
     };

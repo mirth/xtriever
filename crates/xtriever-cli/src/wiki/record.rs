@@ -139,7 +139,13 @@ impl CorpusIdentity {
             basis["partial"] = serde_json::json!(n);
         }
         if let Some(sparse) = &self.sparse {
-            basis["sparse"] = serde_json::json!(sparse);
+            // Through its own JSON text, as `corpus.json` writes it: `json!` would widen the f32
+            // boost to f64 digits (1.2 → 1.2000000476837158) that the sidecar never shows, and the
+            // identity could not be recomputed from the sidecar's fields.
+            basis["sparse"] = serde_json::to_string(sparse)
+                .ok()
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or(serde_json::Value::Null);
         }
         let canonical = canonical_json(&basis);
         Sha256::digest(canonical.as_bytes())
@@ -225,9 +231,11 @@ pub struct SparseBuild {
     pub expansion: SparseRef,
     /// Passages expanded from a window truncated to the encoder's 512 tokens.
     pub truncated: u64,
-    /// Wall time spent encoding, in milliseconds.
-    pub encode_ms: u64,
-    /// Passages encoded per second.
+    /// The ingest phase's wall time, in milliseconds: on a sparse build `add_embedded` expands
+    /// every passage there, so it is the encoder's time plus the stages' staging (milliseconds
+    /// per shard against seconds of encoding).
+    pub ingest_ms: u64,
+    /// Passages ingested — and so encoded — per second.
     pub passages_per_second: f64,
 }
 
@@ -395,6 +403,37 @@ mod tests {
         );
         let text = serde_json::to_string(&plain).unwrap();
         assert!(!text.contains("sparse"), "{text}");
+    }
+
+    /// Review: the identity is recomputable from `corpus.json`'s own fields — a boost of 1.2 is
+    /// hashed as the file writes it, not widened to f64 digits.
+    #[test]
+    fn a_sparse_identity_recomputes_from_the_sidecar() {
+        let m = Manifest::load(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../reference/datasets/wiki-manifest.json"),
+        )
+        .unwrap();
+        let built = CorpusIdentity::new(&m, "fp-1", None).with_sparse(SparseRef {
+            encoder: "encoder@rev".into(),
+            scale: 10,
+            boost: 1.2,
+        });
+        let sidecar = serde_json::to_string_pretty(&built).unwrap();
+        assert!(sidecar.contains("\"boost\": 1.2"), "{sidecar}");
+        let read: serde_json::Value = serde_json::from_str(&sidecar).unwrap();
+        let mut basis = serde_json::json!({
+            "snapshot": read["snapshot"],
+            "exclusions": read["exclusions"],
+            "chunker": read["chunker"],
+            "embedder_fingerprint": read["embedder_fingerprint"],
+            "sparse": read["sparse"],
+        });
+        let recomputed: String = Sha256::digest(canonical_json(&basis.take()).as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(recomputed, built.corpus_identity);
     }
 
     #[test]

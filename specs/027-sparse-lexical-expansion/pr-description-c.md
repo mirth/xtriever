@@ -50,8 +50,12 @@ Records: `specs/027-sparse-lexical-expansion/runs/`. That holds the twelve repor
   200-article slice built through it: 873 passages at 5.2 per second, descriptor version 3,
   verify PASS.
 - **Packagers:** never stage the encoder; `tests/packagers.rs` guards that.
-- **Pipeline:** `HybridIndex::sparse_encoder()` lends the attached encoder to a caller that
-  encodes passages itself (the command line's cached build).
+- **Pipeline:** `add_embedded` on a sparse index now expands each passage with the attached
+  encoder, as `add` does; PR B had it refuse (review, owner's decision). Cached vectors and a
+  sparse index therefore work together on every surface: the command line's cached build and
+  the bindings' `add_embedded`. `HybridConfig::validate` is public, so the FFI refuses a bad
+  configuration before loading any model. `SparseOption::with_overrides` is the one place a
+  surface's optional scale and boost meet the defaults.
 
 ### Tests
 
@@ -64,14 +68,30 @@ The red checkpoint came first (Rule 4) and went through two review rounds:
 
 The FFI tests' wire helpers moved into `tests/support`.
 
+**Review round** (`/code-review` on the finished PR):
+- The Swift assertion I had narrowed to "holds neither" failed for the documented float
+  re-ranker override. It now accepts either refusal.
+- The corpus identity hashed a sparse boost as f64 digits that `corpus.json` never shows. It now
+  hashes the file's own form, with a test that recomputes the identity from the sidecar.
+- The bindings' docs now say a sparse index is added to only through the handle `create`
+  returned, and the missing-encoder message names no Rust-only method.
+- The build record's rate is floored at 1 ms, so it is never infinite.
+- The FFI validates before loading models.
+- `add_embedded` expands on a sparse index (above), which removes the command line's copy of
+  the expansion step and its accessor.
+- Default merging lives in one helper.
+- The owner kept PR C as one pull request (about 1,230 changed lines outside the run
+  records).
+
 **Local gate:**
 
 - fmt, clippy (`-D warnings`), `cargo deny`: pass.
 - iOS, iOS simulator and Android checks: pass. wasm32 fails on `getrandom`/`errno`, as tracked.
-- `cargo nextest run --workspace`: 410 passed.
-- FFI with models, single-threaded: 26 of 26. Pipeline sparse suite: 14 of 14. Encoder oracle
+- `cargo nextest run --workspace`: 411 passed (re-run after the review round).
+- FFI with models, single-threaded: 26 of 26. Pipeline sparse suite: 15 of 15. Encoder oracle
   and load paths: 9 of 9.
-- Command line: 20 of 20.
+- Command line: 21 of 21. A 20-article sparse Wikipedia build through the new `add_embedded`
+  path (113 passages at 5.0 per second) passes verify.
 - `gen_026` and `gen_027` checks: pass. `check-no-stubs.sh`: pass.
 - Python: 37 of 37.
 - iOS package (models and fixtures) builds. Swift tests on the iPhone 18 Pro simulator
@@ -88,7 +108,8 @@ The FFI tests' wire helpers moved into `tests/support`.
     introduced ("holds neither"). That is as strict as before, not looser: the test still
     requires a `Model` error, and now names the exact reason. It is the only change to an
     existing test's expectation in this pull request.
-- Android package builds, and the Kotlin library tests pass on the emulator.
+- Android package builds, and the Kotlin library tests pass on the emulator. The iOS and
+  Android runs were repeated after the review round, and both pass.
 
 Report: [`specs/027-sparse-lexical-expansion/report.md`](report.md).
 

@@ -81,7 +81,9 @@ the bump: a refusal by name instead of silently wrong results.
 opened index reports it. `HybridIndex::create_sparse(dir, config, embedder, encoder)` takes the
 loaded encoder and attaches it, and `set_sparse_encoder` attaches it to an opened index for
 further additions. Adding to a sparse index without an attached encoder is `Error::Model`.
-`add_embedded` has no expansion to write and is refused. `add_encoded` takes caller-supplied
+`add_embedded` expands each passage with the attached encoder, exactly as `add` does (it was
+refused until Feature 027's PR C review; the owner chose to let it expand, so cached vectors
+and a sparse index work together on every surface). `add_encoded` takes caller-supplied
 expansions and validates them.
 
 ## Consequences
