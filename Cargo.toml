@@ -6,7 +6,7 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.91.1"
-license = "MIT"
+license = "Apache-2.0"
 
 [workspace.dependencies]
 # Core crates: pure Rust only (Constitution §III). Add deps with `cargo add`, never from memory.

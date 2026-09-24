@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Xtriever's second demo: build and search Simple English Wikipedia from a Python command line (Feature 019)"
 readme = "README.md"
 requires-python = ">=3.12"
-license = "MIT"
+license = "Apache-2.0"
 dependencies = [
   # The engine's Python surface (Feature 011), installed from the locally built wheel —
   # `cd python && .venv/bin/maturin build --release` → target/wheels/xtriever-*.whl.
