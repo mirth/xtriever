@@ -70,9 +70,14 @@ def document(d):
     )
 
 
-def build(tmp_path, h, reranker=True):
+def build(tmp_path, h, reranker=True, cfg=None, name="idx"):
+    """The fixture built through the wire and committed; `cfg` defaults to the fixture's config."""
     handle = xtriever.IndexHandle.create(
-        str(tmp_path / "idx"), config(h), str(EMBEDDER), str(RERANKER) if reranker else None, xtriever.LoadPath.MMAP
+        str(tmp_path / name),
+        cfg if cfg is not None else config(h),
+        str(EMBEDDER),
+        str(RERANKER) if reranker else None,
+        xtriever.LoadPath.MMAP,
     )
     handle.add([document(d) for d in h["documents"]])
     handle.commit()
@@ -191,3 +196,12 @@ def test_dense_compact_dead_share_is_optional_and_recorded(tmp_path):
     c3.dense_compact_dead_share = 1.5
     with pytest.raises(xtriever.XtrieverError):
         xtriever.IndexHandle.create(str(tmp_path / "c"), c3, str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+
+
+def test_an_index_without_the_sparse_option_reports_none(tmp_path):
+    """Feature 027 (FR-002): an index built without the option is format version 2 and has no
+    sparse record — needs no sparse encoder."""
+    h = fixture()
+    handle = xtriever.IndexHandle.create(str(tmp_path / "idx"), config(h), str(EMBEDDER), None, xtriever.LoadPath.MMAP)
+    assert handle.info().format_version == 2
+    assert handle.info().sparse is None

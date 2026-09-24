@@ -1,6 +1,6 @@
 # ADR-0016: Sparse lexical expansion — a reserved field, a stored query side, descriptor format version 3
 
-- **Status**: Proposed — awaiting the repository owner's review at PR B's checkpoint
+- **Status**: Accepted — 2026-09-23 (the repository owner accepted it after PR B merged: the reserved field, the stored query side and descriptor format version 3 for sparse indexes only)
 - **Date**: 2026-09-23
 - **Deciders**: mirth (repository owner)
 - **Spec**: [027-sparse-lexical-expansion](../../specs/027-sparse-lexical-expansion/spec.md) FR-002–FR-009
@@ -81,7 +81,9 @@ the bump: a refusal by name instead of silently wrong results.
 opened index reports it. `HybridIndex::create_sparse(dir, config, embedder, encoder)` takes the
 loaded encoder and attaches it, and `set_sparse_encoder` attaches it to an opened index for
 further additions. Adding to a sparse index without an attached encoder is `Error::Model`.
-`add_embedded` has no expansion to write and is refused. `add_encoded` takes caller-supplied
+`add_embedded` expands each passage with the attached encoder, exactly as `add` does (it was
+refused until Feature 027's PR C review; the owner chose to let it expand, so cached vectors
+and a sparse index work together on every surface). `add_encoded` takes caller-supplied
 expansions and validates them.
 
 ## Consequences

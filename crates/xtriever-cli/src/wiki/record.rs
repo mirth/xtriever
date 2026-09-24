@@ -72,8 +72,23 @@ pub struct CorpusIdentity {
     /// Set by `--limit N`: this is not the whole edition.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub partial: Option<u64>,
+    /// Set by `--sparse-encoder` (Feature 027): the index carries a sparse expansion, so it is
+    /// another artefact than the same snapshot built without it. Part of the identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse: Option<SparseRef>,
     /// The counts (not part of the identity).
     pub counts: Counts,
+}
+
+/// What a sparse artefact's expansion is (Feature 027): the encoder's identity and the option.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct SparseRef {
+    /// `SparseEncoder::identity()`.
+    pub encoder: String,
+    /// As created.
+    pub scale: u32,
+    /// As created.
+    pub boost: f32,
 }
 
 impl CorpusIdentity {
@@ -97,10 +112,20 @@ impl CorpusIdentity {
             },
             embedder_fingerprint: embedder_fingerprint.to_owned(),
             partial,
+            sparse: None,
             counts: Counts::default(),
         };
         id.corpus_identity = id.compute_identity();
         id
+    }
+
+    /// The same identity for a sparse build (Feature 027): the expansion joins the basis, so a
+    /// sparse artefact never shares its identity with the plain one.
+    #[must_use]
+    pub fn with_sparse(mut self, sparse: SparseRef) -> Self {
+        self.sparse = Some(sparse);
+        self.corpus_identity = self.compute_identity();
+        self
     }
 
     fn compute_identity(&self) -> String {
@@ -112,6 +137,15 @@ impl CorpusIdentity {
         });
         if let Some(n) = self.partial {
             basis["partial"] = serde_json::json!(n);
+        }
+        if let Some(sparse) = &self.sparse {
+            // Through its own JSON text, as `corpus.json` writes it: `json!` would widen the f32
+            // boost to f64 digits (1.2 → 1.2000000476837158) that the sidecar never shows, and the
+            // identity could not be recomputed from the sidecar's fields.
+            basis["sparse"] = serde_json::to_string(sparse)
+                .ok()
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or(serde_json::Value::Null);
         }
         let canonical = canonical_json(&basis);
         Sha256::digest(canonical.as_bytes())
@@ -184,6 +218,25 @@ pub struct BuildRecord {
     pub artefact_bytes: BTreeMap<String, u64>,
     /// The verify pass.
     pub verify: Verify,
+    /// The sparse expansion's build (Feature 027; sparse builds only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse: Option<SparseBuild>,
+}
+
+/// What a sparse build cost and did (Feature 027).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SparseBuild {
+    /// The encoder, the scale and the boost (as in the identity).
+    #[serde(flatten)]
+    pub expansion: SparseRef,
+    /// Passages expanded from a window truncated to the encoder's 512 tokens.
+    pub truncated: u64,
+    /// The ingest phase's wall time, in milliseconds: on a sparse build `add_embedded` expands
+    /// every passage there, so it is the encoder's time plus the stages' staging (milliseconds
+    /// per shard against seconds of encoding).
+    pub ingest_ms: u64,
+    /// Passages ingested — and so encoded — per second.
+    pub passages_per_second: f64,
 }
 
 /// The build host.
@@ -322,6 +375,65 @@ mod tests {
             canonical_json(&v),
             r#"{"a":{"y":{},"z":"x\ny"},"b":[1,2.5,"é",null,true]}"#
         );
+    }
+
+    /// Feature 027: a sparse build is another artefact — its expansion joins the identity —
+    /// while a plain build's identity is what it was.
+    #[test]
+    fn a_sparse_build_has_its_own_identity() {
+        let m = Manifest::load(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../reference/datasets/wiki-manifest.json"),
+        )
+        .unwrap();
+        let plain = CorpusIdentity::new(&m, "fp-1", None);
+        let sparse = |scale| SparseRef {
+            encoder: "encoder@rev".into(),
+            scale,
+            boost: 1.0,
+        };
+        let a = CorpusIdentity::new(&m, "fp-1", None).with_sparse(sparse(10));
+        assert_ne!(a.corpus_identity, plain.corpus_identity);
+        assert_ne!(
+            a.corpus_identity,
+            CorpusIdentity::new(&m, "fp-1", None)
+                .with_sparse(sparse(20))
+                .corpus_identity,
+            "scale"
+        );
+        let text = serde_json::to_string(&plain).unwrap();
+        assert!(!text.contains("sparse"), "{text}");
+    }
+
+    /// Review: the identity is recomputable from `corpus.json`'s own fields — a boost of 1.2 is
+    /// hashed as the file writes it, not widened to f64 digits.
+    #[test]
+    fn a_sparse_identity_recomputes_from_the_sidecar() {
+        let m = Manifest::load(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../reference/datasets/wiki-manifest.json"),
+        )
+        .unwrap();
+        let built = CorpusIdentity::new(&m, "fp-1", None).with_sparse(SparseRef {
+            encoder: "encoder@rev".into(),
+            scale: 10,
+            boost: 1.2,
+        });
+        let sidecar = serde_json::to_string_pretty(&built).unwrap();
+        assert!(sidecar.contains("\"boost\": 1.2"), "{sidecar}");
+        let read: serde_json::Value = serde_json::from_str(&sidecar).unwrap();
+        let mut basis = serde_json::json!({
+            "snapshot": read["snapshot"],
+            "exclusions": read["exclusions"],
+            "chunker": read["chunker"],
+            "embedder_fingerprint": read["embedder_fingerprint"],
+            "sparse": read["sparse"],
+        });
+        let recomputed: String = Sha256::digest(canonical_json(&basis.take()).as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(recomputed, built.corpus_identity);
     }
 
     #[test]

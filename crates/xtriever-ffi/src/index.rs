@@ -13,14 +13,17 @@ use std::collections::BTreeMap;
 
 use xtriever_core::{AnalyzerId, FieldName, Schema, Value};
 use xtriever_dense::MiniLmEmbedder;
-use xtriever_pipeline::{HybridConfig, HybridIndex, OpenOptions, Response, SourceDocument};
+use xtriever_dense::sparse::SparseEncoder;
+use xtriever_pipeline::{
+    HybridConfig, HybridIndex, OpenOptions, Response, SourceDocument, SparseOption,
+};
 use xtriever_rerank::MiniLmCrossEncoder;
 
 use crate::ffi::error::{XtrieverError, poisoned};
 use crate::ffi::types::{
     ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
     HitExplain, IndexConfig, IndexInfo, LoadPath, RerankMode, RerankReport, SearchOptions,
-    SearchResponse, StageReport,
+    SearchResponse, SparseInfo, SparseOptionConfig, StageReport,
 };
 
 /// The open index and what it cost to load.
@@ -101,7 +104,10 @@ pub(crate) fn open(
 /// optional re-ranker loaded as `open` loads them (Feature 011 US4). Every requested model is
 /// loaded **before** the directory is touched, so a wrong model path leaves nothing behind
 /// and a retry with the right one succeeds (review round 1 #1). The directory is created
-/// writable: the handle can `add`, `delete` and `commit` at once.
+/// writable: the handle can `add`, `delete` and `commit` at once. With `config.sparse`
+/// (Feature 027) the sparse encoder is one of those models, loaded first like the others, and
+/// the index is created sparse with it attached; an omitted scale or boost is the engine's
+/// default.
 pub(crate) fn create(
     index_dir: &str,
     config: IndexConfig,
@@ -109,16 +115,23 @@ pub(crate) fn create(
     reranker_dir: Option<&str>,
     load_path: LoadPath,
 ) -> Result<Inner, XtrieverError> {
+    // The configuration is checked before any model is loaded: a bad field or sparse option
+    // costs nothing and is reported as the `Schema` error it is.
+    let (config, encoder_dir) = pipeline_config(config);
+    config.validate()?;
     let Models {
         embedder,
         embedder_load,
         reranker,
     } = load_models(embedder_dir, reranker_dir, load_path)?;
-    let index = HybridIndex::create(
-        std::path::Path::new(index_dir),
-        HybridConfig::from(config),
-        Box::new(embedder),
-    )?;
+    let dir = std::path::Path::new(index_dir);
+    let index = match encoder_dir {
+        None => HybridIndex::create(dir, config, Box::new(embedder))?,
+        Some(encoder_dir) => {
+            let encoder = SparseEncoder::load(encoder_dir.as_ref(), load_path.into())?;
+            HybridIndex::create_sparse(dir, config, Box::new(embedder), encoder)?
+        }
+    };
     Ok(finish(index, embedder_load, reranker))
 }
 
@@ -199,10 +212,25 @@ impl From<FieldDef> for xtriever_core::FieldDef {
     }
 }
 
-impl From<IndexConfig> for HybridConfig {
-    fn from(c: IndexConfig) -> Self {
-        let to_usize = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
-        Self {
+/// The pipeline's configuration from the wire's — the sparse option included, its omitted
+/// scale and boost the engine's defaults — and the sparse encoder's directory, which only
+/// `create` loads. A private function, not a `From`, so nothing can take the configuration
+/// without the directory it needs.
+fn pipeline_config(c: IndexConfig) -> (HybridConfig, Option<String>) {
+    let to_usize = |n: u32| usize::try_from(n).unwrap_or(usize::MAX);
+    let (sparse, encoder_dir) = match c.sparse {
+        Some(SparseOptionConfig {
+            encoder_dir,
+            scale,
+            boost,
+        }) => (
+            Some(SparseOption::with_overrides(scale, boost)),
+            Some(encoder_dir),
+        ),
+        None => (None, None),
+    };
+    (
+        HybridConfig {
             schema: Schema {
                 fields: c.fields.into_iter().map(Into::into).collect(),
             },
@@ -216,10 +244,10 @@ impl From<IndexConfig> for HybridConfig {
             rerank_depth: to_usize(c.rerank_depth),
             rerank_mode: c.rerank_mode.map_or_else(Default::default, Into::into),
             dense_compact_dead_share: c.dense_compact_dead_share,
-            // Feature 027 PR C adds the option to the FFI configuration.
-            sparse: None,
-        }
-    }
+            sparse,
+        },
+        encoder_dir,
+    )
 }
 
 impl From<RerankMode> for xtriever_pipeline::RerankMode {
@@ -362,6 +390,11 @@ pub(crate) fn info(inner: &Inner) -> IndexInfo {
         dense_compact_dead_share: config.dense_compact_dead_share,
         embedder_load_ms: ms(inner.embedder_load),
         reranker_load_ms: inner.reranker_load.map(ms),
+        sparse: guard.sparse().map(|r| SparseInfo {
+            scale: r.scale,
+            boost: r.boost,
+            encoder: r.encoder.clone(),
+        }),
     }
 }
 

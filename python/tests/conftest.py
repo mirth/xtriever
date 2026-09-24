@@ -20,6 +20,11 @@ EMBEDDER = Path(os.environ.get("XTRIEVER_MODEL_DIR", REPO / "reference/models/al
 RERANKER = Path(
     os.environ.get("XTRIEVER_RERANK_MODEL_DIR", REPO / "reference/models/ms-marco-MiniLM-L-6-v2-q8")
 )
+SPARSE_ENCODER = Path(
+    os.environ.get(
+        "XTRIEVER_SPARSE_MODEL_DIR", REPO / "reference/models/opensearch-neural-sparse-encoding-doc-v3-distill"
+    )
+)
 GOLDENS = REPO / "swift/Xtriever/Tests/Fixtures/expected.json"
 FIXTURE_DOCS = REPO / "reference/fixtures/005/hybrid.json"
 

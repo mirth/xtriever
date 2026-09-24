@@ -191,6 +191,9 @@ pub struct IndexInfo {
     pub embedder_load_ms: u64,
     /// Wall time the re-ranker took to load, in milliseconds, if one was loaded.
     pub reranker_load_ms: Option<u64>,
+    /// The sparse expansion, if the index has the option (Feature 027; its format version is
+    /// then 3).
+    pub sparse: Option<SparseInfo>,
 }
 
 /// How both models' weight files are brought into memory.
@@ -274,6 +277,46 @@ pub struct IndexConfig {
     /// them dead (`0.0..=1.0`); `None` = compact only on `merge` (Feature 024).
     #[uniffi(default = None)]
     pub dense_compact_dead_share: Option<f32>,
+    /// Sparse lexical expansion (Feature 027): `None` (the default) changes nothing; set, the
+    /// index is created sparse with the encoder at `encoder_dir` (build host only) attached, so
+    /// **the handle `create` returns** can `add` and `add_embedded` (each passage is expanded).
+    /// A sparse index opened later needs nothing to be searched, but cannot be added to: the
+    /// encoder is not part of the index, and `add` / `add_embedded` there are `Model` errors.
+    /// Build a sparse index in one go, from the handle `create` returned. **Use it for
+    /// corpora whose questions are worded unlike their answers (FiQA-shaped: no titles), and
+    /// search it with the re-ranker**: re-ranked, FiQA gained +0.017 nDCG@10 and SciFact and
+    /// NFCorpus held within 0.005; without re-ranking SciFact and NFCorpus lost 0.006–0.007
+    /// (ADR-0017).
+    #[uniffi(default = None)]
+    pub sparse: Option<SparseOptionConfig>,
+}
+
+/// How a sparse index writes and scores its expansions, and where its encoder is (Feature 027).
+/// Pair the option with the re-ranker, and use it for FiQA-shaped corpora (ADR-0017).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SparseOptionConfig {
+    /// The pinned sparse document encoder's directory
+    /// (`opensearch-neural-sparse-encoding-doc-v3-distill`).
+    pub encoder_dir: String,
+    /// A weight becomes `round(weight × scale)` occurrences of its term; `1..=1000`. `None` =
+    /// the engine's default (`SparseOption::default()`, 10) — taken from the engine, never
+    /// restated here.
+    #[uniffi(default = None)]
+    pub scale: Option<u32>,
+    /// The `_sparse` field's boost; finite and above zero. `None` = the engine's default (1.0).
+    #[uniffi(default = None)]
+    pub boost: Option<f32>,
+}
+
+/// What a sparse index records about its expansion (Feature 027).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SparseInfo {
+    /// As created.
+    pub scale: u32,
+    /// As created.
+    pub boost: f32,
+    /// The encoder's identity.
+    pub encoder: String,
 }
 
 /// A field's value — `xtriever_core::Value` on the wire. The kind must match the field's.

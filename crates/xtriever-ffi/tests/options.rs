@@ -201,6 +201,7 @@ fn rerank_mode_wire_defaults() {
         rerank_depth: 20,
         rerank_mode: None,
         dense_compact_dead_share: None,
+        sparse: None,
     };
     assert_eq!(
         cfg.rerank_mode, None,

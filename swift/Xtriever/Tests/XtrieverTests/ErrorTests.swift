@@ -58,7 +58,13 @@ final class ErrorTests: XCTestCase {
             XCTFail("must throw")
         } catch XtrieverError.Model(let model, let message) {
             XCTAssertFalse(model.isEmpty)
-            XCTAssertTrue(message.contains("bytes") || message.contains("sha256"), message)
+            // Since Feature 026 the embedder first checks which of its weights files the directory
+            // holds. The eight-bit re-ranker's holds neither ("holds neither …"); the float
+            // re-ranker (XTRIEVER_RERANK_MODEL_MANIFEST) holds a `model.safetensors` that fails
+            // the embedder's pin by size or hash. Either way a Model error that says why.
+            XCTAssertTrue(
+                message.contains("holds neither") || message.contains("bytes") || message.contains("sha256"),
+                message)
         }
     }
 

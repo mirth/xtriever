@@ -7,84 +7,8 @@
 
 mod support;
 
-use std::collections::HashMap;
-
-use xtriever_core::{FieldKind as CoreKind, Value};
-use xtriever_ffi::{
-    ChunkInfo, Document, FieldDef, FieldKind, FieldValue, IndexConfig, IndexHandle, LoadPath,
-    SearchOptions, XtrieverError,
-};
-
-fn s(p: &std::path::Path) -> String {
-    p.to_string_lossy().into_owned()
-}
-
-fn wire_kind(kind: &CoreKind) -> FieldKind {
-    match kind {
-        CoreKind::Text(a) => FieldKind::Text {
-            analyzer: a.0.clone(),
-        },
-        CoreKind::Keyword => FieldKind::Keyword,
-        CoreKind::U64 => FieldKind::U64,
-        CoreKind::I64 => FieldKind::I64,
-        CoreKind::F64 => FieldKind::F64,
-        CoreKind::Bool => FieldKind::Bool,
-        CoreKind::DateMillis => FieldKind::DateMillis,
-    }
-}
-
-fn wire_value(v: &Value) -> FieldValue {
-    match v {
-        Value::Text(t) => FieldValue::Text(t.clone()),
-        Value::Keyword(k) => FieldValue::Keyword(k.clone()),
-        Value::U64(n) => FieldValue::U64(*n),
-        Value::I64(n) => FieldValue::I64(*n),
-        Value::F64(x) => FieldValue::F64(*x),
-        Value::Bool(b) => FieldValue::Bool(*b),
-        Value::DateMillis(n) => FieldValue::DateMillis(*n),
-    }
-}
-
-/// The fixture's schema and dense fields as the wire config, pipeline defaults otherwise.
-fn config(h: &support::Hybrid) -> IndexConfig {
-    IndexConfig {
-        fields: h
-            .schema
-            .fields
-            .iter()
-            .map(|f| FieldDef {
-                name: f.name.to_string(),
-                kind: wire_kind(&f.kind),
-                indexed: f.indexed,
-                stored: f.stored,
-                boost: f.boost,
-            })
-            .collect(),
-        dense_fields: h.dense_fields.iter().map(ToString::to_string).collect(),
-        candidate_depth: 100,
-        rrf_k: 60,
-        rerank_depth: 20,
-        rerank_mode: None,
-        dense_compact_dead_share: None,
-    }
-}
-
-fn document(d: &support::FixtureDoc) -> Document {
-    Document {
-        external_id: d.external_id.clone(),
-        fields: d
-            .fields
-            .iter()
-            .map(|(k, v)| (k.to_string(), wire_value(v)))
-            .collect::<HashMap<_, _>>(),
-        chunk: d.chunk.as_ref().map(|c| ChunkInfo {
-            parent: c.parent.clone(),
-            ordinal: c.ordinal,
-            byte_start: c.byte_range.map(|r| r.0),
-            byte_end: c.byte_range.map(|r| r.1),
-        }),
-    }
-}
+use support::{config, document, s};
+use xtriever_ffi::{FieldValue, IndexHandle, LoadPath, SearchOptions, XtrieverError};
 
 fn create(
     dir: &std::path::Path,

@@ -153,7 +153,9 @@ index.search("blue sky", xtriever.SearchOptions(k=3))
   when the counts differ.
 - **Reopen and extend**: `IndexHandle.open(...)` on an existing index is writable when the
   directory can be locked; a directory the process cannot write opens read-only and every
-  write raises `XtrieverError.Io` ("read-only index").
+  write raises `XtrieverError.Io` ("read-only index"). A **sparse** index (below) reopens
+  search-only: adding to it raises `XtrieverError.Model`, because only the handle `create`
+  returned holds the encoder.
 - **Ship**: `index.merge()` commits, compacts the dense vectors (live rows only) and folds the
   lexical stage into one segment; after deletes or replacements the lexical statistics move
   across it, so fused scores can change (dense scores never do).
@@ -163,6 +165,34 @@ index.search("blue sky", xtriever.SearchOptions(k=3))
 
 An index built here is the engine's index: the test suite builds the 40-document fixture
 from Python and checks every golden query against it, score bits included.
+
+### Sparse lexical expansion (optional)
+
+An index can be built **sparse**: each passage is expanded by the pinned sparse document
+encoder (`opensearch-neural-sparse-encoding-doc-v3-distill`, 268 MB, fetched with
+`scripts/fetch-model.sh --manifest reference/models/manifest-sparse-doc-v3.json`) into
+weighted vocabulary terms that BM25 scores beside the text. Queries need no model: the index
+carries the query side, so opening and searching a sparse index takes nothing new.
+
+```python
+config = IndexConfig(fields=[...], dense_fields=["contents"],
+                     sparse=xtriever.SparseOptionConfig(encoder_dir=sparse_encoder_dir))
+index = xtriever.IndexHandle.create("path/to/new-index", config, embedder_dir, reranker_dir, xtriever.LoadPath.MMAP)
+index.info().sparse          # SparseInfo(scale=10, boost=1.0, encoder="opensearch-project/…")
+index.info().format_version  # 3 — an engine that cannot search the expansion refuses it
+```
+
+**Build a sparse index in one go**, adding everything through the handle `create` returned
+(`add` or `add_embedded`, which both expand each passage): a sparse index opened later is
+searched without the encoder and cannot be added to.
+
+**Use it for corpora whose questions are worded unlike their answers** (FiQA-shaped: no titles)
+**and search it with the re-ranker**. Re-ranked, FiQA gained +0.017 nDCG@10 while SciFact and
+NFCorpus held within 0.005; without re-ranking SciFact and NFCorpus lost 0.006–0.007 (ADR-0017).
+Encoding runs on the build host at a few passages per second on CPU; the lexical index grows
+about 2.5–3.9×. `scale` and `boost` default to the engine's (currently 10 and 1.0). A query the index's
+query side cannot tokenise is searched on the text fields alone and reported in
+`response.stages.sparse_skipped` (`strict=True` raises instead).
 
 ## Tests
 

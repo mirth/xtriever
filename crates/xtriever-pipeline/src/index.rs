@@ -87,7 +87,13 @@ impl std::fmt::Debug for HybridIndex {
 }
 
 impl HybridConfig {
-    fn validate(&self) -> Result<()> {
+    /// The configuration's own rules, as `create` and `create_sparse` apply them — public so a
+    /// caller can refuse a bad configuration before loading any model (the FFI does).
+    ///
+    /// # Errors
+    ///
+    /// `Error::Schema` naming the first rule broken.
+    pub fn validate(&self) -> Result<()> {
         if self.dense_fields.is_empty() {
             return Err(schema_err("dense_fields must name at least one text field"));
         }
@@ -609,6 +615,18 @@ impl HybridIndex {
         Ok(())
     }
 
+    /// A vector the dense stage can store: the embedder's width.
+    fn check_vector(&self, vector: &[f32]) -> Result<()> {
+        if vector.len() == self.embedder.dim() {
+            Ok(())
+        } else {
+            Err(Error::DimensionMismatch {
+                expected: self.embedder.dim(),
+                actual: vector.len(),
+            })
+        }
+    }
+
     /// The expansion of a passage for this index: `None` without the option, the attached
     /// encoder's otherwise — none needed for a passage with no text (see `stage_one`) — and a
     /// sparse index with no encoder attached cannot be added to.
@@ -621,8 +639,9 @@ impl HybridIndex {
             (Some(_), None) => Err(Error::Model {
                 model: SPARSE_MODEL_NAME.to_owned(),
                 message: "this index is sparse: documents are added to it only on the build \
-                          host, through a handle holding the sparse document encoder (the \
-                          one create_sparse returns, or one given it with set_sparse_encoder)"
+                          host, through a handle holding the sparse document encoder — the \
+                          handle that created the index (or, in Rust, one given the encoder \
+                          with set_sparse_encoder)"
                     .to_owned(),
             }),
         }
@@ -642,12 +661,7 @@ impl HybridIndex {
         vector: &[f32],
         expansion: Option<&Expansion>,
     ) -> Result<()> {
-        if vector.len() != self.embedder.dim() {
-            return Err(Error::DimensionMismatch {
-                expected: self.embedder.dim(),
-                actual: vector.len(),
-            });
-        }
+        self.check_vector(vector)?;
         let sparse_text = match (&self.descriptor.sparse, expansion) {
             (Some(record), Some(expansion)) => {
                 // Validated either way: an expansion the encoder could not produce is refused.
@@ -728,21 +742,21 @@ impl HybridIndex {
     }
 
     /// As [`add`](Self::add) with caller-supplied vectors (embedded offline, or from a cache).
+    /// On a sparse index each passage is expanded by the attached encoder, exactly as `add`
+    /// expands it (Feature 027, PR C review) — so a cached build and a plain one agree.
     ///
     /// # Errors
     ///
-    /// As [`add`](Self::add); `Error::DimensionMismatch` if a vector is not `embedder.dim()` wide;
-    /// `Error::Schema` on a sparse index, which needs an expansion per document
-    /// ([`add_encoded`](Self::add_encoded)).
+    /// As [`add`](Self::add), including `Error::Model` on a sparse index with no encoder
+    /// attached; `Error::DimensionMismatch` if a vector is not `embedder.dim()` wide.
     pub fn add_embedded(&mut self, docs: &[(SourceDocument, Vec<f32>)]) -> Result<()> {
-        if self.descriptor.sparse.is_some() {
-            return Err(schema_err(
-                "this index is sparse: add_embedded has no expansion to write; use add with the \
-                 encoder attached, or add_encoded",
-            ));
-        }
         for (doc, vector) in docs {
-            self.add_prepared(doc, vector, None)?;
+            // The caller's vector first: a wrong width must not cost an encoder pass.
+            self.check_vector(vector)?;
+            self.check_document(doc)?;
+            let passage = self.passage(&doc.fields);
+            let expansion = self.expand(&passage)?;
+            self.stage_one(doc, passage, vector, expansion.as_ref())?;
         }
         Ok(())
     }

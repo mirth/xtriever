@@ -71,7 +71,7 @@ create_sparse(dir, config{sparse: Some(opt)}, embedder, encoder)
 open(dir, embedder)                    → verify <dir>/sparse/* → SparseQuery ready (no encoder)
 set_sparse_encoder(Some(encoder))      → add() may encode; without it add() refuses
 add(docs)            → dense embed + sparse encode each passage → `_sparse` text → stage
-add_embedded(docs)   → refused on a sparse index (no expansion to write)
+add_embedded(docs)   → caller's vectors; expanded by the attached encoder, as add (PR C review)
 add_encoded(docs)    → caller-supplied vectors and expansions (the evaluation cache)
 search(text)         → Bool{Match per user text field, Term(_sparse, s<id>) per query term}
 search_lexical(q)    → unchanged: the caller's query, no expansion added

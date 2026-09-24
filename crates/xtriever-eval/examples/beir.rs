@@ -1093,8 +1093,10 @@ fn evaluate_hybrid(
 }
 
 /// Stage one batch through the add path the index takes: `add_embedded` without the sparse
-/// option, `add_encoded` with each document's cached expansion on a sparse index — never both,
-/// since each refuses the other kind of index.
+/// option, `add_encoded` with each document's cached expansion on a sparse index. On a sparse
+/// index `add_embedded` would run the attached encoder on every passage again; the expansions
+/// are already in the cache, and only `add_encoded` takes them (it refuses an index without
+/// the option).
 /// The batch is drained, keeping its capacity for the next one.
 fn ingest(
     index: &mut HybridIndex,

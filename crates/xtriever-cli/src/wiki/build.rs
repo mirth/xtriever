@@ -12,15 +12,17 @@ use std::time::Instant;
 
 use anyhow::{Context, bail};
 use xtriever_core::{Embedder, TextKind};
+use xtriever_dense::sparse::SparseEncoder;
 use xtriever_dense::{LoadPath, MiniLmEmbedder};
-use xtriever_pipeline::{HybridIndex, SourceDocument};
+use xtriever_pipeline::{HybridConfig, HybridIndex, SourceDocument, SparseOption};
 
 use super::BuildArgs;
 use super::cache::{cache_dir_for, read_shard, shard_key, write_shard};
 use super::chunking::{Article, documents_for, wiki_config};
 use super::manifest::{Manifest, verify_file};
 use super::record::{
-    BuildRecord, CacheStats, CorpusIdentity, Host, Models, artefact_bytes, attribution, now_rfc3339,
+    BuildRecord, CacheStats, CorpusIdentity, Host, Models, SparseBuild, SparseRef, artefact_bytes,
+    attribution, now_rfc3339,
 };
 use super::rules::excluded_by;
 use super::verify::verify_index;
@@ -52,6 +54,18 @@ impl Embedder for SharedEmbedder {
     fn embed(&self, texts: &[&str], kind: TextKind) -> xtriever_core::Result<Vec<Vec<f32>>> {
         self.0.embed(texts, kind)
     }
+}
+
+/// The sparse option the flags ask for (Feature 027), with the encoder's directory: `None`
+/// without `--sparse-encoder`; with it, the given scale and boost or the engine's defaults
+/// (`SparseOption::with_overrides`). clap refuses a scale or boost without an encoder; `run`
+/// validates the values before loading anything.
+pub fn sparse_option(args: &BuildArgs) -> Option<(SparseOption, &Path)> {
+    let dir = args.sparse_encoder.as_deref()?;
+    Some((
+        SparseOption::with_overrides(args.sparse_scale, args.sparse_boost),
+        dir,
+    ))
 }
 
 /// Parse the load path flag.
@@ -91,6 +105,15 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
     let started = Instant::now();
     let mut phases = Phases(Vec::new());
 
+    // --- the configuration, checked before the snapshot is hashed, any model is loaded or
+    //     anything is written (a bad sparse scale or boost costs nothing and leaves nothing).
+    let sparse_request = sparse_option(args);
+    let config = HybridConfig {
+        sparse: sparse_request.map(|(option, _)| option),
+        ..wiki_config()
+    };
+    config.validate().context("the index configuration")?;
+
     // --- fetch/verify: the snapshot must match the manifest before a line is read.
     let t = Instant::now();
     let manifest = Manifest::load(&args.manifest)?;
@@ -125,6 +148,19 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
     let fingerprint = embedder.fingerprint().to_owned();
     let partial = args.limit.map(|n| n as u64);
     let mut identity = CorpusIdentity::new(&manifest, &fingerprint, partial);
+    // Feature 027: the sparse encoder, loaded with the embedder before anything is written; a
+    // sparse artefact's identity names its expansion.
+    let mut encoder = None;
+    if let Some((option, dir)) = sparse_request {
+        let loaded = SparseEncoder::load(dir, load_path(&args.load_path)?)
+            .context("loading the sparse encoder")?;
+        identity = identity.with_sparse(SparseRef {
+            encoder: loaded.identity().to_owned(),
+            scale: option.scale,
+            boost: option.boost,
+        });
+        encoder = Some(loaded);
+    }
 
     let out = &args.out;
     let staging: PathBuf = out.with_file_name(format!(
@@ -142,8 +178,13 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
     }
     std::fs::create_dir_all(&staging)?;
     let index_dir = staging.join("index");
-    let mut index = HybridIndex::create(&index_dir, wiki_config(), Box::new(shared.clone()))
-        .context("creating the index")?;
+    let mut index = match encoder {
+        Some(encoder) => {
+            HybridIndex::create_sparse(&index_dir, config, Box::new(shared.clone()), encoder)
+        }
+        None => HybridIndex::create(&index_dir, config, Box::new(shared.clone())),
+    }
+    .context("creating the index")?;
     let cache_dir = cache_dir_for(&args.cache_dir, &fingerprint);
     let mut cache = CacheStats {
         dir: cache_dir.display().to_string(),
@@ -244,6 +285,7 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
     phases.add("chunk", chunk_ms);
     phases.add("embed", embed_ms);
     phases.add("ingest", ingest_ms);
+    let sparse_truncated = index.sparse_truncated();
     cache.shards = shard_no as u64;
     identity.counts.passages = passages_total;
     eprintln!(
@@ -307,6 +349,14 @@ pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
         embedding_cache: cache,
         artefact_bytes: artefact_bytes(&index_dir)?,
         verify,
+        sparse: identity.sparse.clone().map(|expansion| SparseBuild {
+            expansion,
+            truncated: sparse_truncated,
+            ingest_ms,
+            // Floored at 1 ms: a tiny build must not record an infinite rate (`null` in JSON).
+            passages_per_second: identity.counts.passages as f64
+                / (ingest_ms.max(1) as f64 / 1000.0),
+        }),
     };
     write_json(&staging.join("wiki-build.json"), &record)?;
     std::fs::write(
@@ -393,6 +443,8 @@ fn flush_shard(
         }
     };
     *embed_ms += ms(t.elapsed());
+    // On a sparse index `add_embedded` also expands each passage with the attached encoder
+    // (Feature 027), so the ingest phase is then mostly encoding.
     let t = Instant::now();
     let batch: Vec<(SourceDocument, Vec<f32>)> = docs
         .drain(..)
@@ -410,4 +462,93 @@ fn flush_shard(
 fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
     let text = serde_json::to_string_pretty(value)? + "\n";
     std::fs::write(path, text).with_context(|| format!("writing {}", path.display()))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod sparse_tests {
+    use clap::Parser;
+    use xtriever_pipeline::SparseOption;
+
+    use super::sparse_option;
+    use crate::wiki::{BuildArgs, WikiCommand};
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        wiki: WikiCommand,
+    }
+
+    fn args(extra: &[&str]) -> BuildArgs {
+        let mut argv = vec!["xtriever", "build", "--out", "target/x"];
+        argv.extend_from_slice(extra);
+        match Cli::try_parse_from(argv).unwrap().wiki {
+            WikiCommand::Build(a) => a,
+            _ => panic!("not a build"),
+        }
+    }
+
+    /// Feature 027 (T037): no `--sparse-encoder`, no option — the build is what it was.
+    #[test]
+    fn without_the_encoder_flag_there_is_no_option() {
+        assert_eq!(sparse_option(&args(&[])), None);
+    }
+
+    /// The encoder alone takes the engine's defaults, never restated here.
+    #[test]
+    fn the_encoder_alone_takes_the_engines_defaults() {
+        assert_eq!(
+            sparse_option(&args(&["--sparse-encoder", "enc"])),
+            Some((SparseOption::default(), std::path::Path::new("enc")))
+        );
+    }
+
+    #[test]
+    fn scale_and_boost_are_taken_as_given() {
+        let a = args(&[
+            "--sparse-encoder",
+            "enc",
+            "--sparse-scale",
+            "20",
+            "--sparse-boost",
+            "0.5",
+        ]);
+        assert_eq!(
+            sparse_option(&a),
+            Some((
+                SparseOption {
+                    scale: 20,
+                    boost: 0.5
+                },
+                std::path::Path::new("enc")
+            ))
+        );
+    }
+
+    /// A scale or boost without an encoder would be silently ignored; clap refuses it when
+    /// the command line is parsed.
+    #[test]
+    fn a_scale_or_boost_without_the_encoder_is_refused() {
+        for extra in [["--sparse-scale", "20"], ["--sparse-boost", "0.5"]] {
+            let mut argv = vec!["xtriever", "build", "--out", "target/x"];
+            argv.extend_from_slice(&extra);
+            let e = Cli::try_parse_from(argv)
+                .err()
+                .expect("refused")
+                .to_string();
+            assert!(e.contains("--sparse-encoder"), "{e}");
+        }
+    }
+
+    /// Review: a bad sparse value is refused before any model loads — `run` validates the whole
+    /// configuration first; the check itself is the engine's.
+    #[test]
+    fn a_bad_sparse_value_fails_the_configuration_check() {
+        let a = args(&["--sparse-encoder", "enc", "--sparse-scale", "0"]);
+        let config = xtriever_pipeline::HybridConfig {
+            sparse: sparse_option(&a).map(|(option, _)| option),
+            ..crate::wiki::chunking::wiki_config()
+        };
+        assert!(config.validate().is_err());
+    }
 }

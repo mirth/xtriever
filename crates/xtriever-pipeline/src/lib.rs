@@ -87,13 +87,15 @@
 //! - **Format**: a sparse index's descriptor is [`SPARSE_FORMAT_VERSION`] 3 with a `sparse`
 //!   record (scale, boost, field, encoder identity, the two files' SHA-256s); every other index
 //!   stays [`FORMAT_VERSION`] 2, byte for byte. An older engine refuses a sparse index by name.
-//! - **Adding**: `add` expands with the attached encoder ([`HybridIndex::set_sparse_encoder`];
-//!   none attached is `Error::Model`); `add_embedded` is refused on a sparse index;
+//! - **Adding**: `add` and `add_embedded` expand each passage with the attached encoder
+//!   ([`HybridIndex::set_sparse_encoder`]; none attached is `Error::Model`);
 //!   [`HybridIndex::add_encoded`] takes caller-supplied vectors and expansions (the evaluation
 //!   harness's caches) and writes them exactly as `add` does.
 //! - **When to switch it on**: corpora without titles and with vocabulary mismatch between
-//!   questions and answers — FiQA gained +0.017 nDCG@10 in the spike; SciFact and NFCorpus did
-//!   not. It is not the default (Feature 016's floor).
+//!   questions and answers, **searched with the re-ranker**. Measured through the full
+//!   pipeline (`specs/027-sparse-lexical-expansion/runs/`): FiQA +0.0172 nDCG@10, SciFact
+//!   −0.0003, NFCorpus −0.0048; without re-ranking SciFact and NFCorpus lose 0.0070 and 0.0056
+//!   while FiQA gains 0.0308 (ADR-0017). It is not the default (Feature 016's floor).
 //!
 //! # Feature 010
 //!

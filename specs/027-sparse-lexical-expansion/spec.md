@@ -35,6 +35,16 @@ travel inside the index (plan research D6).
   and the command-line build, plus the platform bindings — FFI, Python, Swift and Kotlin open
   and search a sparse index, and the Python package can build one. No new demonstration. Two
   pull requests: the engine and its measurement first, the surfaces second.
+- Q: The measurement (2026-09-23) passes SC-001, SC-002 and SC-005 on the full pipeline, and
+  SC-003 for `hybrid-rerank-v3`, the one option-off baseline recorded under the current models
+  (Feature 026), reproduced in every per-query score. `hybrid-baseline-v2`'s only committed
+  record (Feature 013) predates 026's eight-bit embedder and cannot be reproduced; its re-run
+  here is the comparator for `hybrid-sparse-v1`. Without the re-ranker the option lowers
+  nDCG@10 by 0.0070 on SciFact and 0.0056 on NFCorpus (FiQA +0.0308). Accept, require the
+  re-ranker, or stop? → A: **Accept and document**: the option ships as specified; its
+  documentation, the report and the pull request say to pair it with the re-ranker and to use
+  it for FiQA-shaped corpora (no titles, vocabulary mismatch between questions and answers).
+  Recorded in ADR-0017.
 
 ### Plan amendments (2026-09-23, research D6 and D11)
 

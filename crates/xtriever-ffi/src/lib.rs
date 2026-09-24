@@ -72,6 +72,6 @@ mod index;
 pub use ffi::{
     ChunkInfo, Degradation, DegradeReason, Document, FieldDef, FieldKind, FieldValue, Hit,
     HitExplain, IndexConfig, IndexHandle, IndexInfo, LoadPath, RerankMode, RerankReport,
-    SearchOptions, SearchResponse, StageReport, XtrieverError,
+    SearchOptions, SearchResponse, SparseInfo, SparseOptionConfig, StageReport, XtrieverError,
 };
 pub use index::{from_response, to_pipeline_options};

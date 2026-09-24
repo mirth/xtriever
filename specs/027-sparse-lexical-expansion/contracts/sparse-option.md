@@ -103,7 +103,7 @@ Behaviour on a sparse index:
 | `create_sparse` | refuses a missing option, a user schema field named `_sparse`, a scale outside `1..=1000`, a non-finite or non-positive boost; copies the query side (`write_query_side`); writes descriptor version 3; attaches the encoder |
 | `open*` | verifies `<dir>/sparse/*` against the recorded hashes; version 3 without a record, or 2 with one, is `Corrupt` |
 | `add` | refuses with `Error::Model` naming the missing encoder unless one is attached; refuses a document that supplies `_sparse` itself |
-| `add_embedded` | refuses: no expansion to write (use `add` or `add_encoded`) |
+| `add_embedded` | expands each passage with the attached encoder, as `add` does (PR C review); without an encoder, `Error::Model` as `add` |
 | `add_encoded` | refuses an expansion `field_text` refuses; on an index without the option, refuses altogether |
 | `search` | the query of research D7; if the query side cannot tokenise the query, the text fields alone, with `StageReport::sparse_skipped` set (strict mode: the error) |
 | `search_lexical` | no expansion added; every `Match(None, …)` in the caller's query means the caller's text fields, never `_sparse` |
