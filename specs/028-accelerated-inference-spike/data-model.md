@@ -29,6 +29,19 @@ The three harnesses keep their record shapes; each gains three fields.
 | `rerankBatch` | bool | as in Variant, same source |
 | `hitsDigest` | string, 64 hex | SHA-256 over every measured response, in order: for each query (the file's order), each depth (0, 5, 10, 20 — or the demo's fused then re-ranked), each hit in rank order — the external id, the fused score's bits, the re-rank score's bits or `-`. Two runs are identical exactly when their digests are equal. |
 
+**The digest, byte for byte** (one definition for Python and both Swift harnesses): one line
+per hit, in query order, then depth order, then rank order —
+
+```
+<query id> \t <depth> \t <rank, 1-based> \t <external id> \t <fused score: its f64 bits, 16 hex digits> \t <re-rank score: its f32 bits, 8 hex digits, or "-"> \n
+```
+
+— UTF-8, SHA-256 of the concatenation, lower-case hex. The bits are formatted as the goldens
+format them (`%016x` of the `f64` bit pattern, `%08x` of the `f32` one). The iOS demo, which has
+two phases rather than depths, writes depth `0` for the fused list and its re-rank depth for the
+re-ranked one. The shared test vector (two queries, depths 0 and 10, six hits; the tests hold it
+verbatim) digests to `ef38d0b89356527c392fea5745fcc5e3f789feb76926d9c8c0122b257754d509`.
+
 The iOS demo's record already names the corpus; the Swift package's and the Python demo's
 records already carry per-depth latency, footprint and parity. Nothing is removed or renamed, so
 earlier records still read.

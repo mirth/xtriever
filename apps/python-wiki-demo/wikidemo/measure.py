@@ -294,7 +294,12 @@ def footprint_record(resident_bytes: int, footprint_bytes: int | None) -> dict:
     }
 
 
-def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_ms, warmup_ms, runs, depths, comparison, peak_bytes, footprint_bytes=None, against=None, notes=()) -> dict:
+def hits_digest(responses, query_ids, depths) -> str:
+    """Red-checkpoint stub (Feature 028, T007)."""
+    return ""
+
+
+def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_ms, warmup_ms, runs, depths, comparison, peak_bytes, footprint_bytes=None, against=None, notes=(), compute_path="cpu", rerank_batch=False, hits_digest=None) -> dict:
     n_threads, source = threads()
     record = {
         "schemaVersion": 1,

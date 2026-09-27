@@ -32,6 +32,11 @@ default = []
 # Read-only memory mapping of the weights and the vector index: the crate's one `unsafe`
 # block (docs/adr/0007-unsafe-readonly-mmap-in-dense.md, constitution v1.2.0). Off by default.
 mmap = ["dep:memmap2"]
+# Feature 028, the accelerated inference spike (research D5): the compute path, chosen at compile
+# time, never at run time. Off by default and mutually exclusive; spike code, removed or promoted
+# by the follow-up the spike's verdict names (spec FR-012).
+spike-accelerate = ["candle-core/accelerate", "candle-nn/accelerate", "candle-transformers/accelerate"]
+spike-metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
 
 [dev-dependencies]
 criterion = "0.8.2"

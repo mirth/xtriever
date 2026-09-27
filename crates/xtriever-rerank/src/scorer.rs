@@ -293,6 +293,12 @@ impl Reranker for MiniLmCrossEncoder {
         passages: &[Passage<'_>],
         budget: &Budget,
     ) -> Result<Vec<Option<f32>>> {
+        #[cfg(feature = "spike-batch")]
+        {
+            let _ = (query, passages, budget);
+            Err(model_err("spike-batch: not implemented"))
+        }
+        #[cfg(not(feature = "spike-batch"))]
         crate::budget::rerank_with(&|q, p| self.score(q, p), query, passages, budget)
     }
 }
