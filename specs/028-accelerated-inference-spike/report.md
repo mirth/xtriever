@@ -183,6 +183,34 @@ datasets are evaluated on the host (FR-008), and the phone's scores differ from 
 most 8.2e-6 with identical dense scores. The batched laptop variants that are faster than the CPU
 are still slower than the same path unbatched and were run once, so they are not recommended.
 
+## Limits of the spike's builds (review)
+
+A code review of the finished spike found these; none changes a recorded number, and each is the
+follow-up's to settle:
+
+- **The compute-path label is the build's, not the library's.** The phone reads the label the
+  packager staged beside the framework; the laptop's `measure` takes it from a flag. Both were
+  set by the same command that chose the features, so this spike's records are right, but a
+  plain `wikidemo measure` over a leftover spike wheel would record `cpu`. The engine does not
+  report its own path through the bindings; adding it changes a binding-visible record, which
+  the spike avoided (FR-011). The follow-up should expose the path from the engine.
+- **The label is narrower than what it covers.** The sparse encoder stays on the CPU under
+  `spike-metal`; and Cargo unifies features, so `spike-accelerate` on one model crate reroutes
+  every candle matrix multiply in the build. Every run here enabled the same feature on both
+  crates (the packager and the host script do), so the records are consistent.
+- **Identity does not follow the arithmetic in a spike build.** A Metal-built index records the
+  CPU build's fingerprint, against the rule in `quantised_bert.rs` that the arithmetic and the
+  identity cannot drift apart. It is deliberate (research D6: a CPU-built index must open on the
+  GPU path), and the evidence for the follow-up's decision is above — dense scores bit-identical
+  on every path and the mixed case identical to the CPU's quality.
+- **Batching has no cap.** All of a call's pairs go into one padded tensor; at re-rank depth 100
+  with 512-token pairs the attention scores alone would be about 1.26 GB. The measured depth-20
+  runs already put batching over the ceiling (F-004); the follow-up drops batching.
+- **The batched time budget was only checked for zero** until this review: a pass that ran past a
+  non-zero limit reported every pair as scored. It now discards the pass (all or none), with a
+  test (`a_batch_that_overruns_its_budget_scores_nothing`). No recorded run was affected — the
+  demo's budget is 4 s and the slowest batched re-ranked phase took 1.8 s (1,790 ms); the harnesses set no budget.
+
 ## Findings
 
 - **F-001 — On the phone the GPU is the win; Apple's matrix library is not.** Metal cut the

@@ -4,8 +4,9 @@
 #
 #     scripts/spike-028-host.sh <cpu|accelerate|metal> [--batch] <measure|build|mixed|quality>
 #
-#   measure  build the wheel with the path's features into the Python demo's environment and run
-#            `wikidemo measure` on the Wikipedia artefact with the same labels; the record goes to
+#   measure  build the wheel with the path's features into the Python demo's environment and
+#            run `wikidemo measure` on the Wikipedia artefact with the same labels (the only
+#            command that takes --batch); the record goes to
 #            specs/028-accelerated-inference-spike/runs/<machine>-<path>-<single|batch>-measure-<stamp>.json
 #   build    `beir run --dataset scifact --config dense-baseline-v1` with the path's features and a
 #            fresh --cache-dir target/spike-028/<path> (the configuration that embeds the corpus
@@ -36,6 +37,12 @@ batch=false
 if [ "${1:-}" = --batch ]; then batch=true; shift; fi
 [ $# -eq 1 ] || usage
 command="$1"
+# The build, mixed and quality records carry no batching label in their file names or contents,
+# so a batched run would overwrite the single-pair record of the same path (review of the spike).
+if [ "$batch" = true ] && [ "$command" != measure ]; then
+    echo "spike-028-host: --batch applies to measure only (the $command records do not name it)" >&2
+    exit 1
+fi
 
 machine="$(sysctl -n hw.model)"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"

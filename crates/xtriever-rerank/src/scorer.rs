@@ -367,20 +367,28 @@ impl Reranker for MiniLmCrossEncoder {
         passages: &[Passage<'_>],
         budget: &Budget,
     ) -> Result<Vec<Option<f32>>> {
-        // Feature 028 spike (`spike-batch`, research D7): every pair in one forward pass. The
-        // budget is checked once, before the batch: a zero time limit scores nothing, an item
-        // limit scores that many pairs, and the result is those scores or an error.
+        // Feature 028 spike (`spike-batch`, research D7): every pair in one forward pass. An
+        // item limit scores that many pairs. The time limit is all or nothing: a zero limit
+        // scores nothing, and a pass that ends past the limit is a spent budget whose scores are
+        // discarded, so the pipeline degrades to the fused order (Principle VI) instead of
+        // reporting pairs scored out of time (review of the spike). `Instant` is permitted in
+        // this leaf crate, as in `budget::rerank_with`.
         #[cfg(feature = "spike-batch")]
         {
             let mut out = vec![None; passages.len()];
             if budget.max_time.is_some_and(|t| t.is_zero()) {
                 return Ok(out);
             }
+            let start = std::time::Instant::now();
             let n = budget
                 .max_items
                 .map_or(passages.len(), |m| m.min(passages.len()));
             let texts: Vec<&str> = passages.iter().take(n).map(|p| p.text).collect();
-            for (slot, score) in out.iter_mut().zip(self.score_batch(query, &texts)?) {
+            let scores = self.score_batch(query, &texts)?;
+            if budget.max_time.is_some_and(|t| start.elapsed() >= t) {
+                return Ok(out);
+            }
+            for (slot, score) in out.iter_mut().zip(scores) {
                 *slot = Some(score);
             }
             Ok(out)

@@ -1,8 +1,8 @@
 //! Feature 028, the accelerated inference spike (spec, research D3–D5): the compute path this
 //! build was compiled for, and the device the embedder is built on. Chosen at compile time by a
 //! non-default feature, never at run time — an environment variable must not be able to change a
-//! number (`quantised_bert`'s rule). The embedder's identity is the same on every path (research D6),
-//! so an index built on one path opens on another; the spike's records name the path instead.
+//! number (`quantised_bert`'s rule). The embedder's identity is the same on every path (research
+//! D6), so an index built on one path opens on another; the spike's records name the path instead.
 //!
 //! Spike code: removed or promoted by the follow-up feature the spike's verdict names (FR-012).
 

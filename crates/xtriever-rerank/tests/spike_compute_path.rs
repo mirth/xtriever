@@ -28,6 +28,11 @@ fn spike_metal_is_named() {
     assert_eq!(spike::COMPUTE_PATH, "metal");
 }
 
+/// The model loads on this build's path (on `spike-metal`, the GPU really opens) and keeps
+/// today's identity. The identity half guards the loader against a future change that would
+/// tie the identity to the path — research D6 keeps them apart on purpose, and the spike's report
+/// hands that decision to the follow-up; it does not check that the arithmetic is unchanged (the
+/// golden tests and the harnesses' parity do).
 #[test]
 #[ignore = "needs the model"]
 fn the_reranker_loads_on_the_path_with_todays_identity() {

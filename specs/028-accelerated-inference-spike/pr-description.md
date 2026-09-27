@@ -45,7 +45,12 @@ Report: [`specs/028-accelerated-inference-spike/report.md`](report.md) · record
   definition in Python and Swift, pinned by a shared test vector).
 - `scripts/build-ios-package.sh --spike-compute / --spike-batch` (and `compute-path.json` staged
   on every build); `scripts/spike-028-host.sh` for the host runs.
-- About 445 changed lines of code and tests, under Rule 3's 800; the rest is records and prose.
+- **Size, stated plainly**: 834 changed lines of code, tests and scripts (Rule 3 asks for about
+  800), 1,389 lines of spec documents and report, 522 of `Cargo.lock` (the optional Metal and
+  Accelerate crates), and 27,424 lines of run records. About 2,200 lines outside the records and
+  the lock file, like Feature 027's accepted exception; the owner decides whether it stays one
+  pull request. (An earlier draft of this description said "about 445": that was the plumbing
+  commit's count, not the pull request's.)
 
 ### Tests and gate
 
@@ -55,8 +60,12 @@ Report: [`specs/028-accelerated-inference-spike/report.md`](report.md) · record
   Accelerate and Metal (`runs/goldens-*.txt`).
 - The default build is unchanged: the whole local gate passes, including `check-demos.sh`; wasm32
   fails as tracked. Each spike feature: clippy with warnings denied, `xtriever-ffi` checked for
-  iOS, the two paths refused together. After the gate only `scripts/spike-028-host.sh` changed
-  (below); fmt, the stub check and the Python demo's 101 tests were re-run.
+  iOS, the two paths refused together. After the gate, `scripts/spike-028-host.sh` changed
+  (below) and the review round touched `scorer.rs`, the demo harness and two test comments:
+  re-run were fmt, clippy with warnings denied (default, and each path with the batch), the two
+  model crates' tests (139 passed), the batched suite on all three paths, `xtriever-ffi` for iOS
+  with Metal and the batch, the demo's spike tests on the simulator, the stub check and the
+  Python demo's 101 tests.
 - One existing test changed: `apps/python-wiki-demo/tests/test_measure.py` checks the record's
   exact key set, which now includes the three spike fields.
 
@@ -73,6 +82,26 @@ Report: [`specs/028-accelerated-inference-spike/report.md`](report.md) · record
 - **The Wikipedia build projection** in the build records divides by SciFact's rate; the
   harness embeds about 4.6× slower per passage than the command line does, so the report scales
   today's 12.4 h by each path's ratio instead (~3.0–3.2 h).
+
+### Review round (`/code-review` on the finished spike)
+
+- **The batched re-ranker ignored a non-zero time budget**: a pass that ran past the limit
+  reported every pair as scored. It now discards such a pass (all or none), so the pipeline
+  degrades as with the one-pair loop; test `a_batch_that_overruns_its_budget_scores_nothing`,
+  written first and failing, passes on all three paths. No recorded run was affected (the demo's
+  budget is 4 s, the slowest batched re-ranked phase 1.8 s; the harnesses set none).
+- **`spike-028-host.sh` now refuses `--batch` for `build`, `mixed` and `quality`**, whose records
+  do not name the batching mode and would have been overwritten.
+- **The demo harness** reads the compute-path label once and digests the re-ranked response it
+  bound in its guard.
+- **The identity tests' comments** now say what they guard (a loader change) and what they do
+  not (the arithmetic).
+- **The report gains "Limits of the spike's builds"**: the label comes from the build, not the
+  library; the label is narrower than what the features switch (the sparse encoder, Cargo's
+  feature unification); identity does not follow the arithmetic in a spike build (deliberate,
+  research D6); batching has no cap. Each is the follow-up's.
+- Left for the follow-up: exposing the compute path from the engine, declaring the link
+  frameworks in the package, sharing one `spike.rs` and the classifier head between the crates.
 
 ### Not measured
 

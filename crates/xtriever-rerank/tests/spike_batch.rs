@@ -8,6 +8,8 @@
 
 mod support;
 
+use std::time::Duration;
+
 use xtriever_core::{Budget, DocId, Passage, Reranker};
 use xtriever_rerank::{LoadPath, MiniLmCrossEncoder};
 
@@ -51,4 +53,32 @@ fn batched_scores_match_one_pair_at_a_time() {
         }
     }
     eprintln!("batched vs single, worst |Δ| over the golden pairs: {worst:.3e}");
+}
+
+/// Review of the spike: the batch honours a time budget as the one-pair loop does — a pass that
+/// ends past `max_time` is a spent budget, and the stage returns no score (all or none), so the
+/// pipeline degrades to the fused order instead of reporting pairs it scored out of time.
+#[test]
+#[ignore = "needs the model"]
+fn a_batch_that_overruns_its_budget_scores_nothing() {
+    let reranker = MiniLmCrossEncoder::load(&support::model_dir_q8(), LoadPath::Buffered)
+        .expect("load the pinned eight-bit re-ranker");
+    let q = &support::goldens().queries[0];
+    let passages: Vec<Passage<'_>> = q
+        .passages
+        .iter()
+        .enumerate()
+        .map(|(i, p)| Passage {
+            id: DocId(i as u32),
+            text: &p.text,
+        })
+        .collect();
+    // One nanosecond: never zero, never enough for a forward pass.
+    let budget = Budget {
+        max_time: Some(Duration::from_nanos(1)),
+        max_items: None,
+    };
+    let scores = reranker.rerank(&q.query, &passages, &budget).unwrap();
+    assert_eq!(scores.len(), passages.len());
+    assert!(scores.iter().all(Option::is_none), "{scores:?}");
 }

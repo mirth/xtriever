@@ -71,11 +71,11 @@ final class DemoMeasurementTests: XCTestCase {
             try await Support.waitUntil(120) { if case .done = model.search?.phase { return true }; if case .failed = model.search?.phase { return true }; return false }
             // Only a completed, re-ranked query is a data point; anything else is a failed run,
             // never a query that silently contributes zero to the totals.
-            guard let s = model.search, case .done = s.phase, let fused = s.fused, s.reranked != nil, s.rerankedMs != nil else {
+            guard let s = model.search, case .done = s.phase, let fused = s.fused, let reranked = s.reranked, s.rerankedMs != nil else {
                 return XCTFail("\(q.id): expected .done with a re-ranked response, got \(String(describing: model.search?.phase))")
             }
             let snap = Measure.snapshot(); samples.append(snap)
-            for (depth, response) in [(0, fused), (Int(model.settings.rerankDepth), s.reranked ?? fused)] {
+            for (depth, response) in [(0, fused), (Int(model.settings.rerankDepth), reranked)] {
                 digestResponses.append(.init(queryId: q.id, depth: depth, hits: response.hits.map {
                     SpikeDigest.Hit(id: $0.externalId, score: $0.score, rerank: $0.rerankScore)
                 }))
@@ -106,6 +106,7 @@ final class DemoMeasurementTests: XCTestCase {
                                         medianRerankedMs: median(rerankedMs), maxRerankedMs: rerankedMs.max() ?? 0,
                                         medianTotalMs: median(totals), maxTotalMs: totals.max() ?? 0)
         let env = ProcessInfo.processInfo.environment
+        let label = SpikeDigest.label(from: HarnessResources.computePathFile)
         let record = RunRecord(
             schemaVersion: 2, feature: "009-ios-wiki-demo",
             // Without its sidecar a run cannot say how much of the edition it searched.
@@ -124,8 +125,7 @@ final class DemoMeasurementTests: XCTestCase {
                              ledgerPeakBytes: ledgerPeak, peakBytes: peak, peakMethod: ledgerPeak >= sampledMax ? "ledger" : "sampled",
                              observedLimitBytes: afterOpen.observedLimitBytes, ceilingBytes: Self.ceilingBytes, verdict: verdict),
             queries: runs, latency: latency, notes: notes,
-            computePath: SpikeDigest.label(from: HarnessResources.computePathFile).computePath,
-            rerankBatch: SpikeDigest.label(from: HarnessResources.computePathFile).rerankBatch,
+            computePath: label.computePath, rerankBatch: label.rerankBatch,
             hitsDigest: SpikeDigest.digest(digestResponses))
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let json = try encoder.encode(record)
