@@ -3,8 +3,12 @@
 One JSON record per measured run, named for people as
 
 ```
-<device>-<computePath>-<single|batch>-<timestamp>.json
+<device>-<computePath>-<single|batch>-<demo|harness|measure>-<timestamp>.json
 ```
+
+- `demo`: the iOS demo's measured run (app-level latency and footprint, the Feature 009 shape)
+- `harness`: the Swift package's device measurement (depths 0/5/10/20, parity, footprint)
+- `measure`: the Python demo's `wikidemo measure` on the host
 
 - `<device>`: `iPhone17,5` (the iPhone 16e) or `MacBookPro18,3` (the 2021 MacBook Pro, M1 Pro)
 - `<computePath>`: `cpu`, `accelerate` or `metal`

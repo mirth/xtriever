@@ -83,10 +83,10 @@ the digest in the three harnesses (D8), the packager flag (D9) and the host scri
 **Independent Test**: `runs/` holds one host and one phone demo record per variant (or the
 recorded error), and `report.md`'s latency table cites each.
 
-- [ ] T016 [P] [US1] Host: `scripts/spike-028-host.sh <path> measure` and `scripts/spike-028-host.sh <path> --batch measure` for `cpu`, `accelerate`, `metal`, the machine otherwise idle; records in `specs/028-accelerated-inference-spike/runs/`
-- [ ] T017 [US1] Phone, link and first run per path: `scripts/build-ios-package.sh --with-models --with-wiki --demo --app --spike-compute <path>` and the demo's build with the printed `OTHER_LDFLAGS`, for `accelerate` and `metal`; a link failure, a missing Metal kernel or a device that will not open is recorded with its exact error in `specs/028-accelerated-inference-spike/runs/errors.md` and ends that path on the phone (spec Edge Cases) — candle and the engine's defaults are not patched
-- [ ] T018 [US1] Phone, the demo's measured run (`DemoMeasurementTests`, `XtrieverWikiDemo-Measure`, Release) for each path that builds, single and batched (`--spike-batch`), thermal state `nominal` or repeated; `scripts/extract-device-run.py` into `specs/028-accelerated-inference-spike/runs/`; the CPU single run is the in-spike reference beside Feature 026's record
-- [ ] T019 [US1] Write the latency table in `specs/028-accelerated-inference-spike/report.md`: per device, path and batching — query embedding (fused-phase median), re-ranked phase median and max, total median, model load and warm-up — against today's record, with every cell citing its record or error
+- [X] T016 [P] [US1] Host: `scripts/spike-028-host.sh <path> measure` and `scripts/spike-028-host.sh <path> --batch measure` for `cpu`, `accelerate`, `metal`, the machine otherwise idle; records in `specs/028-accelerated-inference-spike/runs/`
+- [X] T017 [US1] Phone, link and first run per path: `scripts/build-ios-package.sh --with-models --with-wiki --demo --app --spike-compute <path>` and the demo's build with the printed `OTHER_LDFLAGS`, for `accelerate` and `metal`; a link failure, a missing Metal kernel or a device that will not open is recorded with its exact error in `specs/028-accelerated-inference-spike/runs/errors.md` and ends that path on the phone (spec Edge Cases) — candle and the engine's defaults are not patched
+- [X] T018 [US1] Phone, the demo's measured run (`DemoMeasurementTests`, `XtrieverWikiDemo-Measure`, Release) for each path that builds, single and batched (`--spike-batch`), thermal state `nominal` or repeated; `scripts/extract-device-run.py` into `specs/028-accelerated-inference-spike/runs/`; the CPU single run is the in-spike reference beside Feature 026's record
+- [X] T019 [US1] Write the latency table in `specs/028-accelerated-inference-spike/report.md`: per device, path and batching — query embedding (fused-phase median), re-ranked phase median and max, total median, model load and warm-up — against today's record, with every cell citing its record or error
 
 **Checkpoint**: US1 answers "is any path faster, and where".
 
@@ -99,10 +99,10 @@ recorded error), and `report.md`'s latency table cites each.
 **Independent Test**: `report.md`'s cost table has peak memory, score and order differences and a
 repeatability verdict per path and device, each from a committed record.
 
-- [ ] T020 [US2] Phone: the Swift package harness (`XtrieverHarnessApp-DefaultThreads`, `DeviceMeasurementTests`, `TEST_RUNNER_XTRIEVER_CORPUS=wikipedia`) **twice** per path that builds, single, and once batched; records into `specs/028-accelerated-inference-spike/runs/`
-- [ ] T021 [P] [US2] Host: a second `scripts/spike-028-host.sh <path> measure` per variant, for the digest comparison
-- [ ] T022 [US2] Write the cost table in `specs/028-accelerated-inference-spike/report.md` from the records (data-model §Parity comparison): peak footprint against 600 MB, max dense and re-rank differences, lexical bit-identity, fused order at depth 0, order differences at depths 5 / 10 / 20, and `repeatable` = equal `hitsDigest` across the two runs; the batched runs' re-rank differences beside the single runs'
-- [ ] T023 [US2] Apply FR-010 conditions 1–3 and the tolerance part of 4; for each path that passes them, `scripts/spike-028-host.sh <path> quality` on SciFact, NFCorpus and FiQA (records `runs/<path>.hybrid-rerank-v3.<dataset>.json`) and the deltas into `report.md`. **⛔ A path whose nDCG@10 moves more than 0.005 on any dataset is no-go: report it — the threshold does not move**
+- [X] T020 [US2] Phone: the Swift package harness (`XtrieverHarnessApp-DefaultThreads`, `DeviceMeasurementTests`, `TEST_RUNNER_XTRIEVER_CORPUS=wikipedia`) **twice** per path that builds, single, and once batched; records into `specs/028-accelerated-inference-spike/runs/`
+- [X] T021 [P] [US2] Host: a second `scripts/spike-028-host.sh <path> measure` per variant, for the digest comparison
+- [X] T022 [US2] Write the cost table in `specs/028-accelerated-inference-spike/report.md` from the records (data-model §Parity comparison): peak footprint against 600 MB, max dense and re-rank differences, lexical bit-identity, fused order at depth 0, order differences at depths 5 / 10 / 20, and `repeatable` = equal `hitsDigest` across the two runs; the batched runs' re-rank differences beside the single runs'
+- [X] T023 [US2] Apply FR-010 conditions 1–3 and the tolerance part of 4; for each path that passes them, `scripts/spike-028-host.sh <path> quality` on SciFact, NFCorpus and FiQA (records `runs/<path>.hybrid-rerank-v3.<dataset>.json`) and the deltas into `report.md`. **⛔ A path whose nDCG@10 moves more than 0.005 on any dataset is no-go: report it — the threshold does not move**
 
 **Checkpoint**: US2 says which faster paths are also safe.
 
@@ -115,9 +115,9 @@ repeatability verdict per path and device, each from a committed record.
 **Independent Test**: `report.md`'s build table has passages per second per path, the Wikipedia
 projection and the mixed case's nDCG@10.
 
-- [ ] T024 [P] [US3] `scripts/spike-028-host.sh <path> build` for `cpu`, `accelerate`, `metal` (fresh cache each, then warm); build measurements into `specs/028-accelerated-inference-spike/runs/build-<path>.json`
-- [ ] T025 [US3] `scripts/spike-028-host.sh cpu mixed`: the CPU path searching the Metal-built SciFact cache; its report into `specs/028-accelerated-inference-spike/runs/mixed-scifact.json`
-- [ ] T026 [US3] Write the build table in `specs/028-accelerated-inference-spike/report.md`: passages per second, wall time, threads, `projectedWikipediaHours` against today's 12.4 h, and the mixed case's nDCG@10 against the all-CPU SciFact record
+- [X] T024 [P] [US3] `scripts/spike-028-host.sh <path> build` for `cpu`, `accelerate`, `metal` (fresh cache each, then warm); build measurements into `specs/028-accelerated-inference-spike/runs/build-<path>.json`
+- [X] T025 [US3] `scripts/spike-028-host.sh cpu mixed`: the CPU path searching the Metal-built SciFact cache; its report into `specs/028-accelerated-inference-spike/runs/mixed-scifact.json`
+- [X] T026 [US3] Write the build table in `specs/028-accelerated-inference-spike/report.md`: passages per second, wall time, threads, `projectedWikipediaHours` against today's 12.4 h, and the mixed case's nDCG@10 against the all-CPU SciFact record
 
 **Checkpoint**: US3 says whether the build gets faster, and whether a GPU-built index serves CPU queries.
 
@@ -125,8 +125,8 @@ projection and the mixed case's nDCG@10.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T027 Write the verdict in `specs/028-accelerated-inference-spike/report.md`: per path and device, FR-010's four conditions with their numbers, `go` or `no-go` naming the failing condition, and the follow-up a `go` implies (the path, the CPU fallback of Principle VI, the identity decision of research D6, the `criterion` bench, removing or promoting each `spike` item of FR-012) — one paragraph a follow-up spec can adopt verbatim (SC-003); findings in the house style
-- [ ] T028 Grep `specs/028-accelerated-inference-spike/` and the whole working tree for the device UDID and the team id (none may appear); re-run the default-build gate (SC-004); write `specs/028-accelerated-inference-spike/pr-description.md` with the latency, cost and build tables, the verdict and, for any recommended path, the nDCG@10 / Recall@100 deltas. **⛔ Final checkpoint — the owner commits, pushes and merges**
+- [X] T027 Write the verdict in `specs/028-accelerated-inference-spike/report.md`: per path and device, FR-010's four conditions with their numbers, `go` or `no-go` naming the failing condition, and the follow-up a `go` implies (the path, the CPU fallback of Principle VI, the identity decision of research D6, the `criterion` bench, removing or promoting each `spike` item of FR-012) — one paragraph a follow-up spec can adopt verbatim (SC-003); findings in the house style
+- [X] T028 Grep `specs/028-accelerated-inference-spike/` and the whole working tree for the device UDID and the team id (none may appear); re-run the default-build gate (SC-004); write `specs/028-accelerated-inference-spike/pr-description.md` with the latency, cost and build tables, the verdict and, for any recommended path, the nDCG@10 / Recall@100 deltas. **⛔ Final checkpoint — the owner commits, pushes and merges**
 
 ---
 

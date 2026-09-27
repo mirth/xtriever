@@ -43,11 +43,17 @@ scripts/spike-028-host.sh <cpu|accelerate|metal> [--batch] [measure|build|mixed|
 
 - `measure`: builds the wheel with the matching features into the Python demo's environment and
   runs `wikidemo measure` with `--compute-path` and `--rerank-batch` set to the same values.
-- `build`: `beir run --dataset scifact --config hybrid-rerank-v3` with the features, a fresh
+- `build`: `beir run --dataset scifact --config dense-baseline-v1` (the configuration that
+  embeds the corpus into the cache) with the features and a fresh
   `--cache-dir target/spike-028/<path>`, then again warm; prints the build measurement
-  (data-model "Build measurement").
+  (data-model "Build measurement"); then `hybrid-rerank-v3` once, which builds the hybrid index
+  the mixed case reuses. *(Corrected during the runs: `hybrid-rerank-v3` alone refuses an empty
+  cache.)*
 - `mixed`: the CPU path against `target/spike-028/metal` (D10).
-- `quality`: `beir run` on SciFact, NFCorpus and FiQA with the path, `--out` into
+- Two paths' `quality` may run at once only with separate `CARGO_TARGET_DIR`s: each `cargo run`
+  otherwise rebuilds the shared example binary with its own features.
+- `quality`: `beir run` (`dense-baseline-v1` to fill the cache, then `hybrid-rerank-v3`) on
+  SciFact, NFCorpus and FiQA with the path, `--out` into
   `specs/028-accelerated-inference-spike/runs/`, then `beir delta` against the committed CPU
   records.
 

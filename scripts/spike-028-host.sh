@@ -6,10 +6,12 @@
 #
 #   measure  build the wheel with the path's features into the Python demo's environment and run
 #            `wikidemo measure` on the Wikipedia artefact with the same labels; the record goes to
-#            specs/028-accelerated-inference-spike/runs/<machine>-<path>-<single|batch>-<stamp>.json
-#   build    `beir run --dataset scifact --config hybrid-rerank-v3` with the path's features and a
-#            fresh --cache-dir target/spike-028/<path>, then again warm; the difference is the
-#            corpus's embedding time (data-model "Build measurement") → runs/build-<path>.json
+#            specs/028-accelerated-inference-spike/runs/<machine>-<path>-<single|batch>-measure-<stamp>.json
+#   build    `beir run --dataset scifact --config dense-baseline-v1` with the path's features and a
+#            fresh --cache-dir target/spike-028/<path> (the configuration that embeds the corpus
+#            into the cache), then again warm; the difference is the corpus's embedding time
+#            (data-model "Build measurement") → runs/build-<path>.json. Then `hybrid-rerank-v3`
+#            once, which builds the hybrid index from those vectors (the mixed case reuses it)
 #   mixed    the CPU path searching the Metal-built SciFact cache (research D10); run `metal build`
 #            first → runs/mixed-scifact.json
 #   quality  `beir run` on SciFact, NFCorpus and FiQA with the path → runs/<path>.hybrid-rerank-v3.
@@ -68,16 +70,17 @@ case "$command" in
         uv pip install --python "$venv/bin/python" --force-reinstall target/wheels/xtriever-*.whl
         label=(--compute-path "$path")
         [ "$batch" = true ] && label+=(--rerank-batch)
-        out="$runs/$machine-$path-$mode-$stamp.json"
+        out="$runs/$machine-$path-$mode-measure-$stamp.json"
         "$venv/bin/wikidemo" measure "${label[@]}" --out "$out"
         echo "spike-028-host: measure $path $mode → $out"
         ;;
     build)
         cache="target/spike-028/$path"
         rm -rf "$cache"
-        t0="$(now)"; beir run --dataset scifact --config hybrid-rerank-v3 --cache-dir "$cache" >/dev/null
-        t1="$(now)"; beir run --dataset scifact --config hybrid-rerank-v3 --cache-dir "$cache" >/dev/null
+        t0="$(now)"; beir run --dataset scifact --config dense-baseline-v1 --cache-dir "$cache" >/dev/null
+        t1="$(now)"; beir run --dataset scifact --config dense-baseline-v1 --cache-dir "$cache" >/dev/null
         t2="$(now)"
+        beir run --dataset scifact --config hybrid-rerank-v3 --cache-dir "$cache" >/dev/null
         python3 - "$path" "$t0" "$t1" "$t2" "$runs/build-$path.json" <<'EOF'
 import json, sys
 path, t0, t1, t2, out = sys.argv[1], *map(float, sys.argv[2:5]), sys.argv[5]
@@ -88,7 +91,7 @@ record = {
     "freshSeconds": round(fresh, 1), "warmSeconds": round(warm, 1), "embedSeconds": round(embed, 1),
     "passagesPerSecond": round(5183 / embed, 2),
     "projectedWikipediaHours": round(427947 / (5183 / embed) / 3600, 2),
-    "note": "embedSeconds = fresh-cache run minus warm-cache run of the same configuration; wall clock, threads = candle's default",
+    "note": "embedSeconds = a fresh-cache dense-baseline-v1 run minus the same run warm; wall clock, threads = candle's default",
 }
 json.dump(record, open(out, "w"), indent=2); open(out, "a").write("\n")
 print(json.dumps(record))
@@ -103,6 +106,7 @@ EOF
     quality)
         for dataset in scifact nfcorpus fiqa; do
             out="$runs/$path.hybrid-rerank-v3.$dataset.json"
+            beir run --dataset "$dataset" --config dense-baseline-v1 --cache-dir "target/spike-028/$path" >/dev/null
             beir run --dataset "$dataset" --config hybrid-rerank-v3 --cache-dir "target/spike-028/$path" --out "$out"
             beir delta "specs/026-eight-bit-precision/runs/hybrid-rerank-v3.$dataset.json" "$out"
         done
