@@ -32,7 +32,12 @@ fn batched_scores_match_one_pair_at_a_time() {
         let batched = reranker
             .rerank(&q.query, &passages, &Budget::default())
             .unwrap_or_else(|e| panic!("{}: batched rerank: {e}", q.name));
-        assert_eq!(batched.len(), passages.len(), "{}: one score per pair", q.name);
+        assert_eq!(
+            batched.len(),
+            passages.len(),
+            "{}: one score per pair",
+            q.name
+        );
         for (i, (got, p)) in batched.iter().zip(&q.passages).enumerate() {
             let got = got.unwrap_or_else(|| panic!("{} passage {i}: no score", q.name));
             let single = reranker.score(&q.query, &p.text).unwrap();

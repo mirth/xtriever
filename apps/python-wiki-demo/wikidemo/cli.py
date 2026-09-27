@@ -85,6 +85,10 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--against", help="a second artefact to compare live responses with (slice parity)")
     m.add_argument("--queries", help="the measurement queries; default reference/fixtures/008/queries.json")
     m.add_argument("--out", help="the record path; default specs/019-python-wiki-demo/runs/<machine>-<stamp>-mmap-threads<n>.json")
+    # Feature 028 (the accelerated inference spike): the labels of the wheel's build, recorded
+    # verbatim; scripts/spike-028-host.sh sets them with the features it builds. Spike flags.
+    m.add_argument("--compute-path", choices=["cpu", "accelerate", "metal"], default="cpu", help="the compute path this wheel was built for (Feature 028 spike)")
+    m.add_argument("--rerank-batch", action="store_true", help="the wheel's re-ranker scores all pairs at once (Feature 028 spike)")
     return parser
 
 

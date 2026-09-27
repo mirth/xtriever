@@ -20,6 +20,13 @@
 #   --with-wiki-dev  the same from target/xt-wiki-dev (a --limit build) — simulator work only
 #   --app            regenerate swift/XtrieverHarnessApp/*.xcodeproj (needs xcodegen)
 #   --demo           regenerate apps/ios-wiki-demo/*.xcodeproj — the Feature 009 demo app (needs xcodegen)
+#   --spike-compute accelerate|metal
+#                    Feature 028 spike: build the engine for Apple's matrix library or the Apple GPU
+#                    (the xtriever-ffi spike features), and print the OTHER_LDFLAGS the app needs
+#   --spike-batch    Feature 028 spike: the re-ranker scores all pairs of a query in one pass
+#   Every build stages XtrieverData/compute-path.json naming its compute path (cpu unless a spike
+#   flag says otherwise), which the measurement harnesses record. Without the spike flags the
+#   framework is exactly the default build. Spike flags: removed or promoted by 028's follow-up.
 #
 # Prerequisite: scripts/check-toolchain.sh must pass. A cross-target build recorded without it
 # is void (001 research D14).
@@ -37,7 +44,10 @@ with_scifact=false
 with_wiki=""
 with_app=false
 with_demo=false
-for arg in "$@"; do
+spike_compute="cpu"
+spike_batch=false
+while [ $# -gt 0 ]; do
+    arg="$1"
     case "$arg" in
         --debug)         profile="debug"; profile_flag="" ;;
         --with-models)   with_models=true ;;
@@ -48,9 +58,25 @@ for arg in "$@"; do
         --with-wiki-dev) with_wiki="target/xt-wiki-dev" ;;
         --app)           with_app=true ;;
         --demo)          with_demo=true ;;
+        --spike-compute)
+            case "${2:-}" in
+                accelerate|metal) spike_compute="$2"; shift ;;
+                *) echo "--spike-compute takes accelerate or metal" >&2; exit 1 ;;
+            esac ;;
+        --spike-batch)   spike_batch=true ;;
         *) echo "unknown option: $arg" >&2; exit 1 ;;
     esac
+    shift
 done
+
+# Feature 028 spike: the xtriever-ffi features for this build (none by default).
+spike_features=()
+[ "$spike_compute" != cpu ] && spike_features+=("spike-$spike_compute")
+[ "$spike_batch" = true ] && spike_features+=("spike-batch")
+feature_flag=()
+if [ ${#spike_features[@]} -gt 0 ]; then
+    feature_flag=(--features "$(IFS=,; echo "${spike_features[*]}")")
+fi
 
 package="$repo_root/swift/Xtriever"
 frameworks="$package/Frameworks"
@@ -63,7 +89,7 @@ staging="$repo_root/build/swift"
 echo "==> building staticlibs ($profile)"
 for target in aarch64-apple-ios aarch64-apple-ios-sim; do
     # shellcheck disable=SC2086  # profile_flag is intentionally word-split (it may be empty)
-    cargo build -q -p xtriever-ffi $profile_flag --target "$target"
+    cargo build -q -p xtriever-ffi $profile_flag --target "$target" ${feature_flag[@]+"${feature_flag[@]}"}
     printf '    %-24s %s\n' "$target" \
         "$(ls -lh "target/$target/$profile/libxtriever_ffi.a" | awk '{print $5}')"
 done
@@ -112,6 +138,9 @@ echo "==> staging resources"
 rm -rf "$resources"
 mkdir -p "$resources"
 printf 'Staged by scripts/build-ios-package.sh; gitignored.\n' > "$resources/README.txt"
+# Feature 028 spike: the compute path this framework was built for, recorded by the harnesses.
+printf '{"computePath":"%s","rerankBatch":%s}\n' "$spike_compute" "$spike_batch" > "$resources/compute-path.json"
+printf '    compute path %s, re-rank batch %s\n' "$spike_compute" "$spike_batch"
 
 if [ "$with_models" = true ]; then
     # Feature 026: the eight-bit artefacts by default (25 MB each against 90), each directory
@@ -269,5 +298,9 @@ if [ "$with_demo" = true ]; then
 fi
 
 echo "build-ios-package: PASS"
+case "$spike_compute" in
+    accelerate) printf '    spike build: the app needs OTHER_LDFLAGS="-framework Accelerate"\n' ;;
+    metal) printf '    spike build: the app needs OTHER_LDFLAGS="-framework Metal -framework Foundation -framework CoreGraphics"\n' ;;
+esac
 printf '    xcframework %s  (%s)\n' "$frameworks/XtrieverFFI.xcframework" \
     "$(du -sh "$frameworks/XtrieverFFI.xcframework" | cut -f1)"

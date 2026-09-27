@@ -37,6 +37,10 @@ final class DemoMeasurementTests: XCTestCase {
         let build: Build; let index: IndexIdentity; let openMs: UInt64; let warmMs: UInt64?
         let embedderLoadMs: UInt64; let rerankerLoadMs: UInt64?
         let settings: Settings; let footprint: Footprint; let queries: [QueryRun]; let latency: Latency; let notes: [String]
+        /// Feature 028 (the accelerated inference spike): the compute path the framework was built
+        /// for (`XtrieverData/compute-path.json`, `unknown` if not staged) and a digest of every
+        /// fused (depth 0) and re-ranked (the app's depth) response. Spike fields.
+        let computePath: String; let rerankBatch: Bool; let hitsDigest: String
     }
 
     private struct MeasurementQuery: Decodable { let id: String; let text: String }
@@ -61,6 +65,7 @@ final class DemoMeasurementTests: XCTestCase {
         let afterOpen = Measure.snapshot()
         var samples = [baseline, afterOpen]
         var runs: [RunRecord.QueryRun] = []
+        var digestResponses: [SpikeDigest.Response] = []
         for q in queries {
             model.submit(q.text)
             try await Support.waitUntil(120) { if case .done = model.search?.phase { return true }; if case .failed = model.search?.phase { return true }; return false }
@@ -70,6 +75,11 @@ final class DemoMeasurementTests: XCTestCase {
                 return XCTFail("\(q.id): expected .done with a re-ranked response, got \(String(describing: model.search?.phase))")
             }
             let snap = Measure.snapshot(); samples.append(snap)
+            for (depth, response) in [(0, fused), (Int(model.settings.rerankDepth), s.reranked ?? fused)] {
+                digestResponses.append(.init(queryId: q.id, depth: depth, hits: response.hits.map {
+                    SpikeDigest.Hit(id: $0.externalId, score: $0.score, rerank: $0.rerankScore)
+                }))
+            }
             runs.append(.init(id: q.id, fusedMs: s.fusedMs ?? 0, rerankedMs: s.rerankedMs, engineFusedMs: fused.elapsedMs,
                               engineRerankedMs: s.reranked?.elapsedMs, hits: (s.reranked ?? fused).hits.count,
                               rerankCandidates: s.reranked?.stages.rerank?.candidates, rerankScored: s.reranked?.stages.rerank?.scored,
@@ -113,7 +123,10 @@ final class DemoMeasurementTests: XCTestCase {
             footprint: .init(baselineBytes: baseline.footprintBytes, afterOpenBytes: afterOpen.footprintBytes, sampledMaxBytes: sampledMax,
                              ledgerPeakBytes: ledgerPeak, peakBytes: peak, peakMethod: ledgerPeak >= sampledMax ? "ledger" : "sampled",
                              observedLimitBytes: afterOpen.observedLimitBytes, ceilingBytes: Self.ceilingBytes, verdict: verdict),
-            queries: runs, latency: latency, notes: notes)
+            queries: runs, latency: latency, notes: notes,
+            computePath: SpikeDigest.label(from: HarnessResources.computePathFile).computePath,
+            rerankBatch: SpikeDigest.label(from: HarnessResources.computePathFile).rerankBatch,
+            hitsDigest: SpikeDigest.digest(digestResponses))
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let json = try encoder.encode(record)
         print("XTRIEVER_DEVICE_RUN_BEGIN\n\(String(decoding: json, as: UTF8.self))\nXTRIEVER_DEVICE_RUN_END")

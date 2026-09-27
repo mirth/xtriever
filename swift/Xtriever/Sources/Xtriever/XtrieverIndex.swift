@@ -178,6 +178,11 @@ public enum HarnessResources {
     public static var wikipediaExpected: URL? { data?.appendingPathComponent("wikipedia/expected.json") }
     public static var wikipediaAttribution: URL? { data?.appendingPathComponent("wikipedia/ATTRIBUTION.txt") }
 
+    /// `XtrieverData/compute-path.json`: the compute path the packager built the framework for
+    /// (Feature 028, the accelerated inference spike; spike code, removed or promoted by its
+    /// follow-up). The measurement harnesses record it.
+    public static var computePathFile: URL? { data?.appendingPathComponent("compute-path.json") }
+
     public static var wikipediaIsBundled: Bool {
         guard let i = wikipediaIndexDirectory, let q = wikipediaQueries else { return false }
         return FileManager.default.fileExists(atPath: i.appendingPathComponent("xtriever-pipeline.json").path)

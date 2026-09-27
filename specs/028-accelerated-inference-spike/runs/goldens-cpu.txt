@@ -1,0 +1,8 @@
+Feature 028: the existing model-backed tests of xtriever-dense and xtriever-rerank on the cpu path
+cargo nextest run -p xtriever-dense -p xtriever-rerank --release --features "mmap" --run-ignored all -j 1
+recorded 2026-09-27T09:34:30Z on MacBookPro18,3
+
+exit 0
+Summary [ 264.910s] 205 tests run: 205 passed (1 slow), 0 skipped
+        PASS [   1.417s] ( 26/205) xtriever-dense::embed_golden every_golden_embeds_within_tolerance
+        PASS [   0.911s] (200/205) xtriever-rerank::score_golden every_golden_pair_scores_within_tolerance

@@ -113,7 +113,7 @@ impl MiniLmEmbedder {
         let counter = load_counter(&tokenizer_path, tokenizer_bytes.as_slice())?;
         assert_weights_header(weights.as_slice())?;
 
-        let device = Device::Cpu;
+        let device = crate::spike::compute_device()?;
         // Root prefix is empty: the safetensors keys carry no `bert.` prefix, and `BertModel::load`
         // applies `embeddings`/`encoder` itself.
         let vb = VarBuilder::from_slice_safetensors(weights.as_slice(), DTYPE, &device)
@@ -153,7 +153,7 @@ impl MiniLmEmbedder {
         // declares a different one is refused naming both, like every other pinned field.
         header.assert_layer_norm_epsilon(PINNED_Q8.architecture, config.layer_norm_eps)?;
 
-        let device = Device::Cpu;
+        let device = crate::spike::compute_device()?;
         let shape = Shape {
             vocabulary: config.vocab_size,
             blocks: PINNED_Q8.blocks,

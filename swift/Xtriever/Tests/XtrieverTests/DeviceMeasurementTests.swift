@@ -92,6 +92,12 @@ final class DeviceMeasurementTests: XCTestCase {
         let derivedPerPairMs: Double?
         let parity: Parity
         let notes: [String]
+        /// Feature 028 (the accelerated inference spike): the compute path the framework was
+        /// built for (`XtrieverData/compute-path.json`, `unknown` if not staged) and a digest of
+        /// every response, so two runs can be proven identical. Spike fields.
+        let computePath: String
+        let rerankBatch: Bool
+        let hitsDigest: String
     }
 
     struct Truth: Decodable {
@@ -276,6 +282,15 @@ final class DeviceMeasurementTests: XCTestCase {
             return (d20 - d0) / 20
         }()
 
+        let label = SpikeDigest.label(from: HarnessResources.computePathFile)
+        let digest = SpikeDigest.digest(queries.flatMap { q in
+            Self.depths.map { depth in
+                SpikeDigest.Response(queryId: q.id, depth: Int(depth), hits: (responses[q.id]?[depth]?.hits ?? []).map {
+                    SpikeDigest.Hit(id: $0.externalId, score: $0.score, rerank: $0.rerankScore)
+                })
+            }
+        })
+
         let formatter = ISO8601DateFormatter()
         let record = RunRecord(
             schemaVersion: 2, feature: corpus == "wikipedia" ? "008-wiki-corpus" : "007-ffi-surface",
@@ -298,7 +313,8 @@ final class DeviceMeasurementTests: XCTestCase {
             parity: .init(queriesCompared: compared, lexicalBitIdentical: lexicalOk, fusedOrderIdentical: fusedOk,
                           denseMaxAbsDiff: denseMax, rerankMaxAbsDiff: rerankMax, toleranceAbs: Self.toleranceAbs,
                           verdict: parityOk ? "PASS" : "FAIL"),
-            notes: notes)
+            notes: notes,
+            computePath: label.computePath, rerankBatch: label.rerankBatch, hitsDigest: digest)
         try emit(record)
         if verdict == "FAIL" {
             XCTFail("peak footprint \(peak) B exceeds the \(Self.ceilingBytes / 1_000_000) MB ceiling (ADR-0010) — stop and report (Rule 6)")
