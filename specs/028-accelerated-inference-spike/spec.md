@@ -193,9 +193,12 @@ the CPU path (the mixed case).
   non-default features or spike-only build flags. No on-disk format, no `xtriever-core` trait and
   no model artefact changes. The CPU path's records, goldens and tests are untouched.
 - **FR-012**: The spike's code MUST be labelled as spike code, confined to the dense and re-rank
-  crates, their examples, the iOS packager's spike flag and the demo's measurement, and either
-  removed or promoted by the follow-up feature the verdict names. CI is untouched (standing rule:
-  no models in CI).
+  crates, the FFI crate's manifest (forwarding the spike features, nothing else), the three
+  existing measurement harnesses (the Swift package's device measurement, the iOS demo's
+  measured run, the Python demo's `measure`), the iOS packager's spike flag and one host script,
+  and either removed or promoted by the follow-up feature the verdict names. CI is untouched
+  (standing rule: no models in CI). *(Amended at planning, 2026-09-27: the plan found the FFI
+  manifest, the Swift package harness and the host script necessary.)*
 
 ### Key Entities
 
