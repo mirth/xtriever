@@ -18,6 +18,11 @@ crate-type = ["lib", "cdylib", "staticlib"]
 default = []
 # Bindings generation only; never enabled for a device build.
 cli = ["uniffi/cli"]
+# Feature 028, the accelerated inference spike: forwards the model crates' spike features to every
+# binding (research D5). Off by default; spike code (spec FR-012).
+spike-accelerate = ["xtriever-dense/spike-accelerate", "xtriever-rerank/spike-accelerate"]
+spike-metal = ["xtriever-dense/spike-metal", "xtriever-rerank/spike-metal"]
+spike-batch = ["xtriever-rerank/spike-batch"]
 
 [dependencies]
 xtriever-core = { path = "../xtriever-core" }

@@ -1,0 +1,12 @@
+{
+  "feature": "028-accelerated-inference-spike",
+  "path": "metal",
+  "dataset": "scifact",
+  "passages": 5183,
+  "freshSeconds": 629.3,
+  "warmSeconds": 22.2,
+  "embedSeconds": 607.1,
+  "passagesPerSecond": 8.54,
+  "projectedWikipediaHours": 13.92,
+  "note": "embedSeconds = a fresh-cache dense-baseline-v1 run minus the same run warm; wall clock, threads = candle's default"
+}

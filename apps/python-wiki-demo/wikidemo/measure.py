@@ -6,6 +6,7 @@ this machine's latency per depth and its footprint (contracts/records.md).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import statistics
 import struct
@@ -294,7 +295,21 @@ def footprint_record(resident_bytes: int, footprint_bytes: int | None) -> dict:
     }
 
 
-def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_ms, warmup_ms, runs, depths, comparison, peak_bytes, footprint_bytes=None, against=None, notes=()) -> dict:
+def hits_digest(responses, query_ids, depths) -> str:
+    """Feature 028 (the accelerated inference spike): SHA-256 over every response, one line per
+    hit in query, depth and rank order — id, the fused score's f64 bits, the re-rank score's f32
+    bits or ``-`` — so two runs are identical exactly when their digests are (data-model
+    "Run-record additions"; the Swift harnesses compute the same). Spike code."""
+    h = hashlib.sha256()
+    for qid in query_ids:
+        for depth in depths:
+            for rank, hit in enumerate(responses[qid][depth], 1):
+                rerank = "-" if hit.rerank_score is None else f32_bits(hit.rerank_score)
+                h.update(f"{qid}\t{depth}\t{rank}\t{hit.external_id}\t{f64_bits(hit.score)}\t{rerank}\n".encode("utf-8"))
+    return h.hexdigest()
+
+
+def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_ms, warmup_ms, runs, depths, comparison, peak_bytes, footprint_bytes=None, against=None, notes=(), compute_path="cpu", rerank_batch=False, hits_digest=None) -> dict:
     n_threads, source = threads()
     record = {
         "schemaVersion": 1,
@@ -316,6 +331,11 @@ def make_record(*, corpus, index_meta, open_ms, embedder_load_ms, reranker_load_
         "parity": comparison.as_record(),
         "notes": list(notes),
         "recordedAt": now_rfc3339(),
+        # Feature 028 (the accelerated inference spike): what this build computed on, and a
+        # digest proving two runs identical. Spike fields.
+        "computePath": compute_path,
+        "rerankBatch": rerank_batch,
+        "hitsDigest": hits_digest,
     }
     if against is not None:
         record["against"] = against
@@ -442,6 +462,9 @@ def run_measure(args, paths: Paths) -> int:
         footprint_bytes=peak_footprint_bytes(),
         against=against,
         notes=[f"parity: {m}" for m in comparison.incomplete],
+        compute_path=args.compute_path,
+        rerank_batch=args.rerank_batch,
+        hits_digest=hits_digest(responses, [q["id"] for q in queries], DEPTHS),
     )
     out = Path(args.out) if args.out else default_record_path(against is not None)
     write_json(out, record)

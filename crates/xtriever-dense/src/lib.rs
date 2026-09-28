@@ -90,6 +90,7 @@ pub mod model;
 pub mod quantise;
 mod quantised_bert;
 pub mod sparse;
+pub mod spike;
 
 pub use embedder::MiniLmEmbedder;
 pub use index::{DenseStats, FlatIndex, validate_compaction_threshold};

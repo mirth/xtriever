@@ -41,6 +41,7 @@ mod gguf_header;
 pub mod model;
 mod quantised_bert;
 mod scorer;
+pub mod spike;
 
 pub use budget::rerank_with;
 pub use scorer::MiniLmCrossEncoder;

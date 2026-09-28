@@ -1,0 +1,12 @@
+{
+  "feature": "028-accelerated-inference-spike",
+  "path": "cpu",
+  "dataset": "scifact",
+  "passages": 5183,
+  "freshSeconds": 2574.6,
+  "warmSeconds": 64.8,
+  "embedSeconds": 2509.8,
+  "passagesPerSecond": 2.07,
+  "projectedWikipediaHours": 57.56,
+  "note": "embedSeconds = a fresh-cache dense-baseline-v1 run minus the same run warm; wall clock, threads = candle's default"
+}

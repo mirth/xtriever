@@ -239,6 +239,7 @@ def test_record_shape_and_no_hostname():
         "schemaVersion", "feature", "corpus", "machine", "os", "python", "xtrieverVersion", "build", "index",
         "openMs", "embedderLoadMs", "rerankerLoadMs", "warmupMs", "queries", "perDepthMedianMs", "perDepthMaxMs",
         "latency", "footprint", "parity", "notes", "recordedAt",
+        "computePath", "rerankBatch", "hitsDigest",  # Feature 028 spike fields
     }
     assert rec["schemaVersion"] == 1 and rec["feature"] == "019-python-wiki-demo"
     assert rec["parity"] == {

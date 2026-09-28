@@ -115,7 +115,7 @@ impl MiniLmCrossEncoder {
         let tokenizer = load_tokenizer(&dir.join(tokenizer_pin.name), tokenizer_bytes.as_slice())?;
         assert_weights_header(weights.as_slice())?;
 
-        let device = Device::Cpu;
+        let device = crate::spike::compute_device()?;
         let vb = VarBuilder::from_slice_safetensors(weights.as_slice(), DTYPE, &device)
             .map_err(|e| model_err(format!("cannot load weights: {e}")))?;
         // The safetensors keys carry the `bert.` prefix; the head sits beside it (research D2).
@@ -159,7 +159,7 @@ impl MiniLmCrossEncoder {
         // declares a different one is refused naming both, like every other pinned field.
         header.assert_layer_norm_epsilon(PINNED_Q8.architecture, config.layer_norm_eps)?;
 
-        let device = Device::Cpu;
+        let device = crate::spike::compute_device()?;
         let shape = Shape {
             vocabulary: config.vocab_size,
             blocks: PINNED_Q8.blocks,
@@ -275,6 +275,80 @@ impl MiniLmCrossEncoder {
         Ok(logit)
     }
 
+    /// Feature 028 spike (`spike-batch`, research D7): score every pair of `passages` against
+    /// `query` in one forward pass. Each pair is tokenised exactly as [`Self::score`] tokenises
+    /// it; the batch is padded to its longest pair with `[PAD]` (id 0), token type 0 and
+    /// attention mask 0, so padding is masked out of attention. Padding still changes the
+    /// arithmetic's shapes, so these scores are compared with `score`'s, not assumed equal.
+    #[cfg(feature = "spike-batch")]
+    fn score_batch(&self, query: &str, passages: &[&str]) -> Result<Vec<f32>> {
+        if passages.is_empty() {
+            return Ok(Vec::new());
+        }
+        let encodings = passages
+            .iter()
+            .map(|p| self.encode(query, p))
+            .collect::<Result<Vec<_>>>()?;
+        let rows = encodings.len();
+        let longest = encodings
+            .iter()
+            .map(|e| e.get_ids().len())
+            .max()
+            .unwrap_or(0);
+        let (mut ids, mut types, mut mask) = (
+            Vec::with_capacity(rows * longest),
+            Vec::with_capacity(rows * longest),
+            Vec::with_capacity(rows * longest),
+        );
+        for e in &encodings {
+            let pad = longest - e.get_ids().len();
+            ids.extend_from_slice(e.get_ids());
+            ids.extend(std::iter::repeat_n(0u32, pad));
+            types.extend_from_slice(e.get_type_ids());
+            types.extend(std::iter::repeat_n(0u32, pad));
+            mask.extend(std::iter::repeat_n(1u32, e.get_ids().len()));
+            mask.extend(std::iter::repeat_n(0u32, pad));
+        }
+        let shaped = |data: Vec<u32>, what: &str| {
+            Tensor::from_vec(data, (rows, longest), &self.device)
+                .map_err(|e| model_err(format!("{what} tensor: {e}")))
+        };
+        let (ids, types, mask) = (
+            shaped(ids, "input_ids")?,
+            shaped(types, "token_type_ids")?,
+            shaped(mask, "attention_mask")?,
+        );
+        let hidden = self
+            .encoder
+            .forward(&ids, &types, Some(&mask))
+            .map_err(|e| model_err(format!("forward pass: {e}")))?;
+        // The CLS rows of a batch are strided (one row per sequence); Apple's matrix library
+        // and the GPU multiply only contiguous operands, where the default CPU matmul does not
+        // care, so the rows are copied into one block first.
+        let cls = hidden
+            .narrow(1, 0, 1)
+            .and_then(|t| t.squeeze(1))
+            .and_then(|t| t.contiguous())
+            .map_err(|e| model_err(format!("cls rows: {e}")))?;
+        let pooled = self
+            .pooler
+            .forward(&cls)
+            .and_then(|t| t.tanh())
+            .map_err(|e| model_err(format!("pooler: {e}")))?;
+        let logits: Vec<f32> = self
+            .classifier
+            .forward(&pooled)
+            .and_then(|t| t.squeeze(1))
+            .and_then(|t| t.to_vec1::<f32>())
+            .map_err(|e| model_err(format!("classifier: {e}")))?;
+        if let Some(bad) = logits.iter().find(|l| !l.is_finite()) {
+            return Err(model_err(format!(
+                "model produced a non-finite score {bad}"
+            )));
+        }
+        Ok(logits)
+    }
+
     fn tensor(&self, data: &[u32], seq: usize, what: &str) -> Result<Tensor> {
         Tensor::new(data, &self.device)
             .and_then(|t| t.reshape((1, seq)))
@@ -293,6 +367,33 @@ impl Reranker for MiniLmCrossEncoder {
         passages: &[Passage<'_>],
         budget: &Budget,
     ) -> Result<Vec<Option<f32>>> {
+        // Feature 028 spike (`spike-batch`, research D7): every pair in one forward pass. An
+        // item limit scores that many pairs. The time limit is all or nothing: a zero limit
+        // scores nothing, and a pass that ends past the limit is a spent budget whose scores are
+        // discarded, so the pipeline degrades to the fused order (Principle VI) instead of
+        // reporting pairs scored out of time (review of the spike). `Instant` is permitted in
+        // this leaf crate, as in `budget::rerank_with`.
+        #[cfg(feature = "spike-batch")]
+        {
+            let mut out = vec![None; passages.len()];
+            if budget.max_time.is_some_and(|t| t.is_zero()) {
+                return Ok(out);
+            }
+            let start = std::time::Instant::now();
+            let n = budget
+                .max_items
+                .map_or(passages.len(), |m| m.min(passages.len()));
+            let texts: Vec<&str> = passages.iter().take(n).map(|p| p.text).collect();
+            let scores = self.score_batch(query, &texts)?;
+            if budget.max_time.is_some_and(|t| start.elapsed() >= t) {
+                return Ok(out);
+            }
+            for (slot, score) in out.iter_mut().zip(scores) {
+                *slot = Some(score);
+            }
+            Ok(out)
+        }
+        #[cfg(not(feature = "spike-batch"))]
         crate::budget::rerank_with(&|q, p| self.score(q, p), query, passages, budget)
     }
 }

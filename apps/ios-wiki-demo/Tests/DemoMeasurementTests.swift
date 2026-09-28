@@ -37,6 +37,10 @@ final class DemoMeasurementTests: XCTestCase {
         let build: Build; let index: IndexIdentity; let openMs: UInt64; let warmMs: UInt64?
         let embedderLoadMs: UInt64; let rerankerLoadMs: UInt64?
         let settings: Settings; let footprint: Footprint; let queries: [QueryRun]; let latency: Latency; let notes: [String]
+        /// Feature 028 (the accelerated inference spike): the compute path the framework was built
+        /// for (`XtrieverData/compute-path.json`, `unknown` if not staged) and a digest of every
+        /// fused (depth 0) and re-ranked (the app's depth) response. Spike fields.
+        let computePath: String; let rerankBatch: Bool; let hitsDigest: String
     }
 
     private struct MeasurementQuery: Decodable { let id: String; let text: String }
@@ -61,15 +65,21 @@ final class DemoMeasurementTests: XCTestCase {
         let afterOpen = Measure.snapshot()
         var samples = [baseline, afterOpen]
         var runs: [RunRecord.QueryRun] = []
+        var digestResponses: [SpikeDigest.Response] = []
         for q in queries {
             model.submit(q.text)
             try await Support.waitUntil(120) { if case .done = model.search?.phase { return true }; if case .failed = model.search?.phase { return true }; return false }
             // Only a completed, re-ranked query is a data point; anything else is a failed run,
             // never a query that silently contributes zero to the totals.
-            guard let s = model.search, case .done = s.phase, let fused = s.fused, s.reranked != nil, s.rerankedMs != nil else {
+            guard let s = model.search, case .done = s.phase, let fused = s.fused, let reranked = s.reranked, s.rerankedMs != nil else {
                 return XCTFail("\(q.id): expected .done with a re-ranked response, got \(String(describing: model.search?.phase))")
             }
             let snap = Measure.snapshot(); samples.append(snap)
+            for (depth, response) in [(0, fused), (Int(model.settings.rerankDepth), reranked)] {
+                digestResponses.append(.init(queryId: q.id, depth: depth, hits: response.hits.map {
+                    SpikeDigest.Hit(id: $0.externalId, score: $0.score, rerank: $0.rerankScore)
+                }))
+            }
             runs.append(.init(id: q.id, fusedMs: s.fusedMs ?? 0, rerankedMs: s.rerankedMs, engineFusedMs: fused.elapsedMs,
                               engineRerankedMs: s.reranked?.elapsedMs, hits: (s.reranked ?? fused).hits.count,
                               rerankCandidates: s.reranked?.stages.rerank?.candidates, rerankScored: s.reranked?.stages.rerank?.scored,
@@ -96,6 +106,7 @@ final class DemoMeasurementTests: XCTestCase {
                                         medianRerankedMs: median(rerankedMs), maxRerankedMs: rerankedMs.max() ?? 0,
                                         medianTotalMs: median(totals), maxTotalMs: totals.max() ?? 0)
         let env = ProcessInfo.processInfo.environment
+        let label = SpikeDigest.label(from: HarnessResources.computePathFile)
         let record = RunRecord(
             schemaVersion: 2, feature: "009-ios-wiki-demo",
             // Without its sidecar a run cannot say how much of the edition it searched.
@@ -113,7 +124,9 @@ final class DemoMeasurementTests: XCTestCase {
             footprint: .init(baselineBytes: baseline.footprintBytes, afterOpenBytes: afterOpen.footprintBytes, sampledMaxBytes: sampledMax,
                              ledgerPeakBytes: ledgerPeak, peakBytes: peak, peakMethod: ledgerPeak >= sampledMax ? "ledger" : "sampled",
                              observedLimitBytes: afterOpen.observedLimitBytes, ceilingBytes: Self.ceilingBytes, verdict: verdict),
-            queries: runs, latency: latency, notes: notes)
+            queries: runs, latency: latency, notes: notes,
+            computePath: label.computePath, rerankBatch: label.rerankBatch,
+            hitsDigest: SpikeDigest.digest(digestResponses))
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let json = try encoder.encode(record)
         print("XTRIEVER_DEVICE_RUN_BEGIN\n\(String(decoding: json, as: UTF8.self))\nXTRIEVER_DEVICE_RUN_END")

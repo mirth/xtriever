@@ -1,0 +1,8 @@
+Feature 028: the existing model-backed tests of xtriever-dense and xtriever-rerank on the metal path
+cargo nextest run -p xtriever-dense -p xtriever-rerank --release --features "spike-metal mmap" --run-ignored all -j 1
+recorded 2026-09-27T09:49:22Z on MacBookPro18,3
+
+exit 0
+Summary [ 242.722s] 205 tests run: 205 passed (1 slow), 0 skipped
+        PASS [   0.453s] ( 26/205) xtriever-dense::embed_golden every_golden_embeds_within_tolerance
+        PASS [   0.438s] (200/205) xtriever-rerank::score_golden every_golden_pair_scores_within_tolerance

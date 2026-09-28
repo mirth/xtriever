@@ -1,0 +1,74 @@
+{
+  "feature": "028-accelerated-inference-spike",
+  "device": "MacBookPro18,3",
+  "what": "hit order against the host goldens (target/xt-wiki/expected.json), the 20 measurement queries, k 10, at re-rank depths 0/5/10/20; one search per query per depth through the Python package built with each path's features",
+  "recordedAt": "2026-09-27",
+  "paths": {
+    "cpu": {
+      "0": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "5": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "10": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "20": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      }
+    },
+    "accelerate": {
+      "0": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "5": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "10": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "20": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      }
+    },
+    "metal": {
+      "0": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "5": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "10": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      },
+      "20": {
+        "positionsDiffering": 0,
+        "queriesWithAnyDifference": 0,
+        "of": 20
+      }
+    }
+  }
+}
